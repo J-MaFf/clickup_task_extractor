@@ -33,6 +33,8 @@ class ClickUpConfig:
     github_token: Optional[str] = None
     output_format: str = 'HTML'  # 'CSV', 'HTML', 'Both'
     interactive_selection: bool = False
+    # Exclude tasks with these statuses
+    exclude_statuses: list = field(default_factory=lambda: ['Dormant', 'On Hold', 'Document'])
 
 # --- Task DataClass ---
 @dataclass
@@ -198,15 +200,15 @@ class ClickUpTaskExtractor:
                         print(f"    Error fetching task {t}: {e}")
                         traceback.print_exc()
                         continue
-                    # Exclude statuses
+                    # Exclude tasks by status (from config)
                     try:
                         status_val = task_detail.get('status', {}).get('status')
                     except Exception as e:
                         print(f"    ERROR: Could not get status from task_detail: {task_detail}")
                         traceback.print_exc()
                         continue
-                    if status_val in ['Dormant', 'On Hold', 'Document']:
-                        print(f"    DEBUG: Skipping task {getattr(t, 'get', lambda x: None)('id')} due to status {status_val}")
+                    if status_val in self.config.exclude_statuses:
+                        print(f"    DEBUG: Skipping task {getattr(t, 'get', lambda x: None)('id')} due to status '{status_val}' (excluded)")
                         continue
                     # Custom fields
                     cf = {f['name']: f for f in task_detail.get('custom_fields', [])}
