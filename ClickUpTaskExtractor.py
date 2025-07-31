@@ -26,7 +26,7 @@ class ClickUpConfig:
     api_key: str
     workspace_name: str = 'KMS'
     space_name: str = 'Kikkoman'
-    output_path: str = f"output/WeeklyTaskList_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
+    output_path: str = f"output/WeeklyTaskList_{datetime.now().strftime('%d-%m-%Y_%I-%M%p')}.csv"
     include_completed: bool = False
     date_filter: str = 'AllOpen'  # 'ThisWeek', 'LastWeek', 'AllOpen'
     enable_ai_summary: bool = False
@@ -364,7 +364,7 @@ def main():
         api_key=api_key,
         workspace_name=args.workspace or 'KMS',
         space_name=args.space or 'Kikkoman',
-        output_path=args.output or f"output/WeeklyTaskList_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
+        output_path=args.output or f"output/WeeklyTaskList_{datetime.now().strftime('%d-%m-%Y_%I-%M%p')}.csv",
         include_completed=args.include_completed,
         date_filter=args.date_filter or 'AllOpen',
         enable_ai_summary=args.ai_summary,
