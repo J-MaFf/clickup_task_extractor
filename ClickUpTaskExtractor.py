@@ -207,7 +207,8 @@ class ClickUpTaskExtractor:
                         print(f"    ERROR: Could not get status from task_detail: {task_detail}")
                         traceback.print_exc()
                         continue
-                    if status_val in self.config.exclude_statuses:
+                    # Case-insensitive status exclusion
+                    if status_val and status_val.lower() in [s.lower() for s in self.config.exclude_statuses]:
                         print(f"    DEBUG: Skipping task {getattr(t, 'get', lambda x: None)('id')} due to status '{status_val}' (excluded)")
                         continue
                     # Custom fields
