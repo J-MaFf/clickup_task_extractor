@@ -32,7 +32,7 @@ from datetime import datetime, timedelta
 
 # 1Password SDK imports
 try:
-    from onepassword import Client as OnePasswordClient
+    from onepassword.client import Client as OnePasswordClient
 except ImportError:
     OnePasswordClient = None
 
@@ -77,6 +77,14 @@ class ClickUpAPIClient:
     def get(self, endpoint: str) -> Any:
         url = f"{self.BASE_URL}{endpoint}"
         resp = requests.get(url, headers=self.headers)
+
+        # Add debugging information for failed requests
+        if not resp.ok:
+            print(f"API Request failed:")
+            print(f"  URL: {url}")
+            print(f"  Status: {resp.status_code}")
+            print(f"  Response: {resp.text}")
+
         resp.raise_for_status()
         return resp.json()
 
@@ -117,49 +125,47 @@ def get_ai_summary(task_name: str, notes: str, github_token: str) -> str:
 def get_api_key_from_1password(secret_reference: str) -> Optional[str]:
     """
     Retrieve ClickUp API key from 1Password using the SDK.
-    
+
     Args:
         secret_reference: The 1Password secret reference (e.g., "op://Home Server/ClickUp personal API token/credential")
-    
+
     Returns:
         The API key string if successful, None if failed
-    
+
     Raises:
         Various exceptions for different failure modes (network, auth, not found, etc.)
     """
     if OnePasswordClient is None:
         raise ImportError("1Password SDK not available. Install with: pip install onepassword-sdk")
-    
+
     # Get service account token from environment
     service_token = os.environ.get('OP_SERVICE_ACCOUNT_TOKEN')
     if not service_token:
         raise ValueError("OP_SERVICE_ACCOUNT_TOKEN environment variable not set. Required for 1Password SDK authentication.")
-    
+
     try:
         import asyncio
-        
+
         async def _get_api_key():
-            # Initialize 1Password client
-            client = OnePasswordClient()
-            
-            # Authenticate with service token
-            authenticated_client = await client.authenticate(
+            # Authenticate with 1Password using service account token
+            # This creates an authenticated client directly
+            client = await OnePasswordClient.authenticate(
                 auth=service_token,
                 integration_name="ClickUp Task Extractor",
                 integration_version="1.0.0"
             )
-            
+
             # Resolve the secret reference to get the API key
-            api_key = await authenticated_client.secrets.resolve(secret_reference)
-            
+            api_key = await client.secrets.resolve(secret_reference)
+
             if not api_key:
                 raise ValueError(f"Secret reference '{secret_reference}' resolved to empty value")
-            
+
             return api_key.strip()
-        
+
         # Run the async function
         return asyncio.run(_get_api_key())
-        
+
     except Exception as e:
         # Re-raise with more context
         error_msg = f"Failed to retrieve API key from 1Password: {type(e).__name__}: {e}"
@@ -420,7 +426,7 @@ def main():
       python ClickUpTaskExtractor.py --api-key ... --workspace ... --space ...
 
     API key 1Password reference: "op://Home Server/ClickUp personal API token/credential"
-    
+
     Authentication priority:
     1. --api-key command line argument
     2. CLICKUP_API_KEY environment variable
@@ -445,7 +451,7 @@ def main():
 
     # 1Password reference for API key: "op://Home Server/ClickUp personal API token/credential"
     api_key = args.api_key or os.environ.get('CLICKUP_API_KEY')
-    
+
     if not api_key:
         # Try to get API key from 1Password SDK
         try:
@@ -469,7 +475,7 @@ def main():
             print(f"Could not read API key from 1Password SDK: {e}")
             print("Please provide via --api-key or CLICKUP_API_KEY.")
             api_key = None
-    
+
     # If still no API key, prompt for manual input
     if not api_key:
         api_key = input('Enter ClickUp API Key: ')
