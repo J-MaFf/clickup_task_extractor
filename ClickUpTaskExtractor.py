@@ -401,6 +401,7 @@ def main():
             print("\nDefaulting to automatic mode.")
             interactive_mode = False
 
+    TIMESTAMP_FORMAT = '%d-%m-%Y_%I-%M%p'
     config = ClickUpConfig(
         api_key=api_key,
         workspace_name=args.workspace or 'KMS',
