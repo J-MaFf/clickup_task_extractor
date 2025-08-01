@@ -147,8 +147,10 @@ def get_api_key_from_1password(secret_reference: str) -> Optional[str]:
         import asyncio
 
         async def _get_api_key():
+            # Ensure OnePasswordClient is not None before using it
+            if OnePasswordClient is None:
+                raise ImportError("1Password SDK not available. Install with: pip install onepassword-sdk")
             # Authenticate with 1Password using service account token
-            # This creates an authenticated client directly
             client = await OnePasswordClient.authenticate(
                 auth=service_token,
                 integration_name="ClickUp Task Extractor",
