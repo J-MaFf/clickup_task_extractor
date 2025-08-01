@@ -165,48 +165,38 @@ class ClickUpTaskExtractor:
             # 4. Get tasks
             all_tasks = []
             for idx, lst in enumerate(lists, 1):
-                print(f"\n--- DEBUG: Processing list {idx}/{len(lists)}: {lst}")
+                print(f"Processing list {idx}/{len(lists)}: {lst.get('name', 'Unknown')}")
                 params = []
                 if not self.config.include_completed:
                     params.append('archived=false')
                 # Date filter (not implemented in detail)
                 q = '?' + '&'.join(params) if params else ''
                 try:
-                    print(f"  DEBUG: Fetching tasks for list id={getattr(lst, 'get', lambda x: None)('id')} name={getattr(lst, 'get', lambda x: None)('name')}, endpoint=/list/{lst.get('id')}/task{q}")
-                    print(f"  DEBUG: lst type: {type(lst)}, value: {lst}")
                     resp = self.api.get(f"/list/{lst['id']}/task{q}")
-                    print(f"  DEBUG: Raw API response for tasks: {json.dumps(resp, indent=2) if isinstance(resp, dict) else resp}")
                     if not resp or not isinstance(resp, dict) or 'tasks' not in resp:
                         print(f"  Unexpected API response for list {lst.get('name')}: {resp}")
                         continue
                     tasks = resp.get('tasks', [])
                 except Exception as e:
                     print(f"  Error fetching tasks for list {lst}: {e}")
-                    traceback.print_exc()
                     continue
-                print(f"  DEBUG: Number of tasks fetched: {len(tasks)}")
+                print(f"  Found {len(tasks)} tasks")
                 for t in tasks:
                     try:
-                        print(f"    DEBUG: t type: {type(t)}, value: {t}")
-                        print(f"    DEBUG: Fetching task detail for task id={getattr(t, 'get', lambda x: None)('id')} name={getattr(t, 'get', lambda x: None)('name')}")
                         task_detail = self.api.get(f"/task/{t['id']}")
-                        print(f"    DEBUG: Raw task detail: {json.dumps(task_detail, indent=2) if isinstance(task_detail, dict) else task_detail}")
                         if not task_detail or not isinstance(task_detail, dict):
-                            print(f"    Unexpected task detail for task {getattr(t, 'get', lambda x: None)('id')}: {task_detail}")
+                            print(f"    Unexpected task detail for task {t.get('id')}: {task_detail}")
                             continue
                     except Exception as e:
                         print(f"    Error fetching task {t}: {e}")
-                        traceback.print_exc()
                         continue
                     # Exclude statuses
                     try:
                         status_val = task_detail.get('status', {}).get('status')
                     except Exception as e:
-                        print(f"    ERROR: Could not get status from task_detail: {task_detail}")
-                        traceback.print_exc()
+                        print(f"    ERROR: Could not get status from task_detail")
                         continue
                     if status_val in ['Dormant', 'On Hold', 'Document']:
-                        print(f"    DEBUG: Skipping task {getattr(t, 'get', lambda x: None)('id')} due to status {status_val}")
                         continue
                     # Custom fields
                     cf = {f['name']: f for f in task_detail.get('custom_fields', [])}
@@ -216,10 +206,7 @@ class ClickUpTaskExtractor:
                         val = branch_field.get('value')
                         type_ = branch_field.get('type')
                         options = branch_field.get('type_config', {}).get('options', [])
-                        print(f"    DEBUG: Branch field value: {val}")
-                        print(f"    DEBUG: Branch options: {[{'id': o.get('id'), 'name': o.get('name')} for o in options]}")
                         branch_name = LocationMapper.map_location(val, type_, options)
-                        print(f"    DEBUG: Branch mapped name: {branch_name}")
                     # Notes
                     notes_parts = []
                     for fname in ['Subject', 'Description', 'Resolution']:
@@ -256,7 +243,10 @@ class ClickUpTaskExtractor:
             print(f"Total tasks fetched: {len(all_tasks)}")
             # Interactive selection
             if self.config.interactive_selection and all_tasks:
+                print(f"\nInteractive mode enabled - prompting for task selection...")
                 all_tasks = self.interactive_include(all_tasks)
+            elif self.config.interactive_selection and not all_tasks:
+                print("Interactive mode enabled but no tasks found to select from.")
             # Export
             self.export(all_tasks)
         except Exception as e:
@@ -271,27 +261,35 @@ class ClickUpTaskExtractor:
         
         selected_tasks = []
         
-        for task in tasks:
+        for i, task in enumerate(tasks, 1):
             # Display task details
-            print(f"\nTask: {task.Task}")
-            print(f"Company: {task.Company}")
-            print(f"Branch: {task.Branch}")
-            print(f"Status: {task.Status}")
+            print(f"\nTask {i}/{len(tasks)}:")
+            print(f"  Name: {task.Task}")
+            print(f"  Company: {task.Company}")
+            print(f"  Branch: {task.Branch}")
+            print(f"  Status: {task.Status}")
             if task.Notes:
                 # Show first 100 characters of notes
                 notes_preview = task.Notes[:100] + "..." if len(task.Notes) > 100 else task.Notes
-                print(f"Notes: {notes_preview}")
+                print(f"  Notes: {notes_preview}")
             
             # Prompt for user input with validation
             while True:
-                response = input(f"Would you like to export task '{task.Task}'? (y/n): ").strip().lower()
-                if response in ['y', 'yes']:
-                    selected_tasks.append(task)
-                    break
-                elif response in ['n', 'no']:
-                    break
-                else:
-                    print("Please enter 'y' for yes or 'n' for no.")
+                try:
+                    sys.stdout.flush()  # Ensure output is flushed before input
+                    response = input(f"Would you like to export task '{task.Task}'? (y/n): ").strip().lower()
+                    if response in ['y', 'yes']:
+                        selected_tasks.append(task)
+                        print("  ✓ Added to export list")
+                        break
+                    elif response in ['n', 'no']:
+                        print("  ✗ Skipped")
+                        break
+                    else:
+                        print("  Please enter 'y' for yes or 'n' for no.")
+                except (EOFError, KeyboardInterrupt):
+                    print("\n\nOperation cancelled by user.")
+                    return []
         
         # Display summary
         print("\n" + "=" * 60)
@@ -300,7 +298,7 @@ class ClickUpTaskExtractor:
         if selected_tasks:
             print("The following tasks will be exported:")
             for task in selected_tasks:
-                print(f"- {task.Task}")
+                print(f"  • {task.Task}")
         else:
             print("No tasks selected for export.")
         print(f"\nTotal: {len(selected_tasks)} task(s) selected out of {len(tasks)}")
