@@ -15,7 +15,10 @@ import sys
 
 # Ensure we're using the virtual environment
 script_dir = os.path.dirname(os.path.abspath(__file__))
-venv_python = os.path.join(script_dir, '.venv', 'Scripts', 'python.exe')
+if os.name == 'nt':
+    venv_python = os.path.join(script_dir, '.venv', 'Scripts', 'python.exe')
+else:
+    venv_python = os.path.join(script_dir, '.venv', 'bin', 'python')
 
 # If we're not running from the venv and the venv exists, restart with the venv Python
 if not sys.executable.startswith(os.path.join(script_dir, '.venv')) and os.path.exists(venv_python):
