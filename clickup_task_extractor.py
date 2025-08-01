@@ -30,6 +30,10 @@ from typing import List, Dict, Any, Optional
 from dataclasses import dataclass, asdict, field
 from datetime import datetime, timedelta
 
+# Date/time formatting constant
+TIMESTAMP_FORMAT = '%-d-%-m-%Y_%-I-%-M%p'
+DISPLAY_FORMAT = '%-d/%-m/%Y at %-I:%-M %p'
+
 # 1Password SDK imports
 try:
     from onepassword.client import Client as OnePasswordClient
@@ -42,7 +46,7 @@ class ClickUpConfig:
     api_key: str
     workspace_name: str = 'KMS'
     space_name: str = 'Kikkoman'
-    output_path: str = field(default_factory=lambda: f"output/WeeklyTaskList_{datetime.now().strftime('%d-%m-%Y_%I-%M%p')}.csv")
+    output_path: str = field(default_factory=lambda: f"output/WeeklyTaskList_{datetime.now().strftime(TIMESTAMP_FORMAT)}.csv")
     include_completed: bool = False
     date_filter: str = 'AllOpen'  # 'ThisWeek', 'LastWeek', 'AllOpen'
     enable_ai_summary: bool = False
@@ -412,7 +416,7 @@ class ClickUpTaskExtractor:
     def render_html(self, tasks: List[TaskRecord]) -> str:
         # Simple HTML table, styled
         head = '''<!DOCTYPE html><html><head><meta charset="utf-8"><title>Weekly Task List</title><style>body{font-family:Arial,sans-serif;margin:20px;}table{border-collapse:collapse;width:100%;margin-top:20px;}th,td{border:1px solid #ddd;padding:12px;text-align:left;vertical-align:top;}th{background-color:#f2f2f2;font-weight:bold;}tr:nth-child(even){background-color:#f9f9f9;}.task-name{font-weight:bold;color:#2c5aa0;}.priority-high{color:#d73502;font-weight:bold;}.priority-normal{color:#0c7b93;}.priority-low{color:#6aa84f;}.notes{max-width:400px;white-space:pre-wrap;line-height:1.4;font-size:0.9em;}.status{padding:4px 8px;border-radius:4px;font-size:0.8em;font-weight:bold;}.status-open{background-color:#e8f4fd;color:#1f4e79;}.status-in-progress{background-color:#fff2cc;color:#7f6000;}.status-review{background-color:#f4cccc;color:#660000;}h1{color:#2c5aa0;}.summary{margin-bottom:20px;padding:15px;background-color:#f0f8ff;border-left:4px solid #2c5aa0;}</style></head><body>'''
-        summary = f'<h1>Weekly Task List</h1><div class="summary"><strong>Generated:</strong> {datetime.now().strftime("%d/%m/%Y at %I:%M %p")}<br><strong>Total Tasks:</strong> {len(tasks)}<br><strong>Workspace:</strong> {html.escape(self.config.workspace_name)} / {html.escape(self.config.space_name)}</div>'
+        summary = f'<h1>Weekly Task List</h1><div class="summary"><strong>Generated:</strong> {datetime.now().strftime(DISPLAY_FORMAT)}<br><strong>Total Tasks:</strong> {len(tasks)}<br><strong>Workspace:</strong> {html.escape(self.config.workspace_name)} / {html.escape(self.config.space_name)}</div>'
         table = '<table><thead><tr>' + ''.join(f'<th>{k}</th>' for k in TaskRecord.__annotations__.keys()) + '</tr></thead><tbody>'
         for t in tasks:
             table += '<tr>' + ''.join(f'<td>{html.escape(str(getattr(t, k) or ""))}</td>' for k in TaskRecord.__annotations__.keys()) + '</tr>'
@@ -498,7 +502,6 @@ def main():
             print("\nDefaulting to automatic mode.")
             interactive_mode = False
 
-    TIMESTAMP_FORMAT = '%d-%m-%Y_%I-%M%p'
     config = ClickUpConfig(
         api_key=api_key,
         workspace_name=args.workspace or 'KMS',
