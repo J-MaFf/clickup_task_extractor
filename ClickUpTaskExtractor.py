@@ -327,15 +327,15 @@ def main():
     Supports CLI args for config overrides. Example:
       python ClickUpTaskExtractor.py --api-key ... --workspace ... --space ...
 
-    API key 1Password reference: op://Employee/ClickUp personal API token/credential
+    API key 1Password reference: "op://Home Server/ClickUp personal API token/credential"
     You can use 1Password CLI to inject the secret, e.g.:
-      export CLICKUP_API_KEY="$(op read 'op://Employee/ClickUp personal API token/credential')"
+      export CLICKUP_API_KEY="$(op read 'op://Home Server/ClickUp personal API token/credential')"
     Or pass it directly with --api-key.
     """
     parser = argparse.ArgumentParser(
-        description="Extract and export ClickUp tasks to HTML (preferred) or CSV. Default workspace: KMS.\nAPI key 1Password reference: op://Employee/ClickUp personal API token/credential"
+        description="Extract and export ClickUp tasks to HTML (preferred) or CSV. Default workspace: KMS.\nAPI key 1Password reference: op://Home Server/ClickUp personal API token/credential"
     )
-    parser.add_argument('--api-key', type=str, default=os.environ.get('CLICKUP_API_KEY'), help='ClickUp API Key (or set CLICKUP_API_KEY env, e.g. from 1Password: op://Employee/ClickUp personal API token/credential)')
+    parser.add_argument('--api-key', type=str, default=os.environ.get('CLICKUP_API_KEY'), help='ClickUp API Key (or set CLICKUP_API_KEY env, e.g. from 1Password: "op://Home Server/ClickUp personal API token/credential")')
     parser.add_argument('--workspace', type=str, help='Workspace name (default: KMS)')
     parser.add_argument('--space', type=str, help='Space name (default: Kikkoman)')
     parser.add_argument('--output', type=str, help='Output file path (default: auto-generated)')
@@ -347,14 +347,14 @@ def main():
     parser.add_argument('--interactive', action='store_true', help='Enable interactive exclusion')
     args = parser.parse_args()
 
-    # 1Password reference for API key: op://Employee/ClickUp personal API token/credential
+    # 1Password reference for API key: "op://Home Server/ClickUp personal API token/credential"
     api_key = args.api_key or os.environ.get('CLICKUP_API_KEY')
     if not api_key:
         # Try to read from 1Password CLI
         try:
             import subprocess
             api_key = subprocess.check_output([
-                'op', 'read', 'op://Employee/ClickUp personal API token/credential'
+                'op', 'read', 'op://Home Server/ClickUp personal API token/credential'
             ], encoding='utf-8').strip()
             print("✓ API key loaded from 1Password CLI.")
         except Exception as e:
