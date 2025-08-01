@@ -11,7 +11,7 @@ FEATURES:
 - Export to styled HTML and/or CSV formats
 - Custom field mapping (Branch/Location) to human-readable labels
 - Task status filtering and exclusion
-- Optional AI summary integration (placeholder)
+- Optional AI summary integration (uses Google Gemini API)
 - Image extraction from task descriptions
 - Comprehensive error handling and debugging
 
@@ -25,7 +25,8 @@ AUTHENTICATION PRIORITY:
 1PASSWORD INTEGRATION:
 - SDK: Set OP_SERVICE_ACCOUNT_TOKEN environment variable
 - CLI: Ensure 'op' command is available in PATH
-- Secret reference: "op://Home Server/ClickUp personal API token/credential"
+- ClickUp API secret reference: "op://Home Server/ClickUp personal API token/credential"
+- Gemini API secret reference: "op://Home Server/nftoo3gsi3wpx7z5bdmcsvr7p4/credential"
 
 ARCHITECTURE:
 - ClickUpConfig: Centralized configuration management with dataclass
@@ -52,6 +53,7 @@ EXAMPLES:
   python clickup_task_extractor.py --interactive
   python clickup_task_extractor.py --workspace "MyWorkspace" --output-format Both
   python clickup_task_extractor.py --api-key YOUR_KEY --include-completed
+  python clickup_task_extractor.py --ai-summary --gemini-api-key YOUR_GEMINI_KEY
 """
 
 import os
@@ -68,22 +70,18 @@ from datetime import datetime, timedelta
 TIMESTAMP_FORMAT = '%d-%m-%Y_%I-%M%p'  # For filenames (with leading zeros for compatibility)
 DISPLAY_FORMAT = '%d/%m/%Y at %I:%M %p'  # For HTML display (with leading zeros for compatibility)
 
-def format_timestamp_no_leading_zeros(dt: datetime) -> str:
-    """Format datetime for filenames, removing leading zeros from day, month, and hour."""
-    s = dt.strftime(TIMESTAMP_FORMAT)
-    # Remove leading zeros from day and month
-    s = s.replace(dt.strftime('%d'), str(dt.day), 1)
-    s = s.replace(dt.strftime('%m'), str(dt.month), 1)
-    # Handle hour formatting for 12-hour format
-    hour_12 = dt.hour % 12
-    if hour_12 == 0:
-        hour_12 = 12
-    s = s.replace(dt.strftime('%I'), str(hour_12), 1)
-    return s
+def format_datetime(dt: datetime, format_string: str) -> str:
+    """
+    Format datetime removing leading zeros from day, month, and hour.
 
-def format_display_no_leading_zeros(dt: datetime) -> str:
-    """Format datetime for display, removing leading zeros from day, month, and hour."""
-    s = dt.strftime(DISPLAY_FORMAT)
+    Args:
+        dt: DateTime object to format
+        format_string: strftime format string to use
+
+    Returns:
+        Formatted datetime string without leading zeros
+    """
+    s = dt.strftime(format_string)
     # Remove leading zeros from day and month
     s = s.replace(dt.strftime('%d'), str(dt.day), 1)
     s = s.replace(dt.strftime('%m'), str(dt.month), 1)
@@ -96,7 +94,7 @@ def format_display_no_leading_zeros(dt: datetime) -> str:
 
 def default_output_path() -> str:
     """Generate default output path with timestamp without leading zeros."""
-    return f"output/WeeklyTaskList_{format_timestamp_no_leading_zeros(datetime.now())}.csv"
+    return f"output/WeeklyTaskList_{format_datetime(datetime.now(), TIMESTAMP_FORMAT)}.csv"
 # 1Password SDK imports
 try:
     from onepassword.client import Client as OnePasswordClient
@@ -113,7 +111,7 @@ class ClickUpConfig:
     include_completed: bool = False
     date_filter: str = 'AllOpen'  # 'ThisWeek', 'LastWeek', 'AllOpen'
     enable_ai_summary: bool = False
-    github_token: Optional[str] = None
+    gemini_api_key: Optional[str] = None
     output_format: str = 'HTML'  # 'CSV', 'HTML', 'Both'
     interactive_selection: bool = False
     # Exclude tasks with these statuses
@@ -156,6 +154,24 @@ class ClickUpAPIClient:
         return resp.json()
 
 # --- Utility Functions (SRP) ---
+def get_yes_no_input(prompt: str, default_on_interrupt: bool = False) -> bool:
+    """
+    Generic function to get yes/no input from user with consistent behavior.
+
+    Args:
+        prompt: The prompt message to display to the user
+        default_on_interrupt: What to return if user interrupts (Ctrl+C, EOF)
+
+    Returns:
+        True if user answered yes, False if no or interrupted
+    """
+    try:
+        response = input(prompt).strip().lower()
+        return response in ['y', 'yes']
+    except (EOFError, KeyboardInterrupt):
+        print(f"\n{'Defaulting to yes.' if default_on_interrupt else 'Defaulting to no.'}")
+        return default_on_interrupt
+
 def get_date_range(filter_name: str):
     today = datetime.now()
     if filter_name == 'ThisWeek':
@@ -184,20 +200,173 @@ def extract_images(text: str) -> str:
     return '; '.join(images)
 
 # --- AI Summary (SRP) ---
-def get_ai_summary(task_name: str, notes: str, github_token: str) -> str:
-    # Placeholder: Implement actual call if needed
-    return notes
+def get_ai_summary(task_name: str, subject: str, description: str, resolution: str, gemini_api_key: str) -> str:
+    """
+    Generate a concise 1-2 sentence summary about the current status of the task using Google Gemini AI.
+
+    Args:
+        task_name: Name of the task
+        subject: Subject field content
+        description: Description field content
+        resolution: Resolution field content
+        gemini_api_key: Google Gemini API key for authentication
+
+    Returns:
+        AI-generated summary or original content if AI fails
+    """
+    if not gemini_api_key:
+        return f"Subject: {subject}\nDescription: {description}\nResolution: {resolution}".strip()
+
+    try:
+        import json
+
+        # Prepare the content for AI analysis
+        content_parts = []
+        if subject:
+            content_parts.append(f"Subject: {subject}")
+        if description:
+            content_parts.append(f"Description: {description}")
+        if resolution:
+            content_parts.append(f"Resolution: {resolution}")
+
+        if not content_parts:
+            return "No content available for summary."
+
+        full_content = "\n".join(content_parts)
+
+        # Create the prompt for AI summary
+        prompt = f"""Please provide a concise 1-2 sentence summary of the current status of this task:
+
+Task: {task_name}
+
+{full_content}
+
+Focus on the current state and what has been done or needs to be done. Be specific and actionable."""
+
+        # Google Gemini API call
+        headers = {
+            'Content-Type': 'application/json'
+        }
+
+        payload = {
+            "contents": [
+                {
+                    "parts": [
+                        {
+                            "text": f"You are a helpful assistant that summarizes task status in 1-2 clear, concise sentences. Focus on current state and next actions.\n\n{prompt}"
+                        }
+                    ]
+                }
+            ],
+            "generationConfig": {
+                "temperature": 0.3,
+                "topK": 40,
+                "topP": 0.95,
+                "maxOutputTokens": 150,
+                "stopSequences": []
+            },
+            "safetySettings": [
+                {
+                    "category": "HARM_CATEGORY_HARASSMENT",
+                    "threshold": "BLOCK_MEDIUM_AND_ABOVE"
+                },
+                {
+                    "category": "HARM_CATEGORY_HATE_SPEECH",
+                    "threshold": "BLOCK_MEDIUM_AND_ABOVE"
+                },
+                {
+                    "category": "HARM_CATEGORY_SEXUALLY_EXPLICIT",
+                    "threshold": "BLOCK_MEDIUM_AND_ABOVE"
+                },
+                {
+                    "category": "HARM_CATEGORY_DANGEROUS_CONTENT",
+                    "threshold": "BLOCK_MEDIUM_AND_ABOVE"
+                }
+            ]
+        }
+
+        # Use Gemini 1.5 Flash for cost-effectiveness
+        api_url = f'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={gemini_api_key}'
+
+        response = requests.post(
+            api_url,
+            headers=headers,
+            json=payload,
+            timeout=30
+        )
+
+        if response.status_code == 200:
+            result = response.json()
+
+            # Extract the generated text from Gemini response
+            if 'candidates' in result and len(result['candidates']) > 0:
+                candidate = result['candidates'][0]
+                if 'content' in candidate and 'parts' in candidate['content']:
+                    summary = candidate['content']['parts'][0]['text'].strip()
+
+                    # Clean up the summary
+                    summary = summary.replace('\n', ' ').strip()
+                    if summary.endswith('.'):
+                        return summary
+                    else:
+                        return summary + '.'
+
+            print(f"Unexpected Gemini API response structure: {result}")
+            return full_content
+        else:
+            print(f"Gemini AI Summary API failed ({response.status_code}): {response.text}")
+            return full_content
+
+    except Exception as e:
+        print(f"AI Summary error: {e}")
+        # Fallback to original content
+        return f"Subject: {subject}\nDescription: {description}\nResolution: {resolution}".strip()
 
 # --- 1Password SDK Integration (SRP) ---
-def get_api_key_from_1password(secret_reference: str) -> Optional[str]:
+def _load_secret_with_fallback(secret_reference: str, secret_name: str) -> Optional[str]:
     """
-    Retrieve ClickUp API key from 1Password using the SDK.
+    Generic function to load a secret from 1Password using SDK with CLI fallback.
+
+    Args:
+        secret_reference: The 1Password secret reference
+        secret_name: Human-readable name for the secret (for error messages)
+
+    Returns:
+        The secret string if successful, None if failed
+    """
+    # Try 1Password SDK first
+    try:
+        secret = get_secret_from_1password(secret_reference, secret_name)
+        print(f"✓ {secret_name} loaded from 1Password SDK.")
+        return secret
+    except ImportError as e:
+        print(f"1Password SDK not available for {secret_name}: {e}")
+        print(f"Falling back to 1Password CLI for {secret_name}...")
+        # Fallback to 1Password CLI
+        try:
+            import subprocess
+            secret = subprocess.check_output([
+                'op', 'read', secret_reference
+            ], encoding='utf-8').strip()
+            print(f"✓ {secret_name} loaded from 1Password CLI.")
+            return secret
+        except Exception as cli_error:
+            print(f"Could not read {secret_name} from 1Password CLI: {cli_error}")
+            return None
+    except Exception as e:
+        print(f"Could not read {secret_name} from 1Password SDK: {e}")
+        return None
+
+def get_secret_from_1password(secret_reference: str, secret_type: str = "API key") -> Optional[str]:
+    """
+    Retrieve a secret from 1Password using the SDK.
 
     Args:
         secret_reference: The 1Password secret reference (e.g., "op://Home Server/ClickUp personal API token/credential")
+        secret_type: Description of the secret type for error messages (default: "API key")
 
     Returns:
-        The API key string if successful, None if failed
+        The secret string if successful, None if failed
 
     Raises:
         Various exceptions for different failure modes (network, auth, not found, etc.)
@@ -213,7 +382,7 @@ def get_api_key_from_1password(secret_reference: str) -> Optional[str]:
     try:
         import asyncio
 
-        async def _get_api_key():
+        async def _get_secret():
             # Ensure OnePasswordClient is not None before using it
             if OnePasswordClient is None:
                 raise ImportError("1Password SDK not available. Install with: pip install onepassword-sdk")
@@ -224,21 +393,51 @@ def get_api_key_from_1password(secret_reference: str) -> Optional[str]:
                 integration_version="1.0.0"
             )
 
-            # Resolve the secret reference to get the API key
-            api_key = await client.secrets.resolve(secret_reference)
+            # Resolve the secret reference to get the secret
+            secret = await client.secrets.resolve(secret_reference)
 
-            if not api_key:
+            if not secret:
                 raise ValueError(f"Secret reference '{secret_reference}' resolved to empty value")
 
-            return api_key.strip()
+            return secret.strip()
 
         # Run the async function
-        return asyncio.run(_get_api_key())
+        return asyncio.run(_get_secret())
 
     except Exception as e:
         # Re-raise with more context
-        error_msg = f"Failed to retrieve API key from 1Password: {type(e).__name__}: {e}"
+        error_msg = f"Failed to retrieve {secret_type} from 1Password: {type(e).__name__}: {e}"
         raise RuntimeError(error_msg) from e
+
+def get_api_key_from_1password(secret_reference: str) -> Optional[str]:
+    """
+    Retrieve ClickUp API key from 1Password using the SDK.
+
+    Args:
+        secret_reference: The 1Password secret reference (e.g., "op://Home Server/ClickUp personal API token/credential")
+
+    Returns:
+        The API key string if successful, None if failed
+
+    Raises:
+        Various exceptions for different failure modes (network, auth, not found, etc.)
+    """
+    return get_secret_from_1password(secret_reference, "ClickUp API key")
+
+def get_gemini_api_key_from_1password(secret_reference: str) -> Optional[str]:
+    """
+    Retrieve Gemini API key from 1Password using the SDK.
+
+    Args:
+        secret_reference: The 1Password secret reference (e.g., "op://Home Server/nftoo3gsi3wpx7z5bdmcsvr7p4/credential")
+
+    Returns:
+        The Gemini API key string if successful, None if failed
+
+    Raises:
+        Various exceptions for different failure modes (network, auth, not found, etc.)
+    """
+    return get_secret_from_1password(secret_reference, "Gemini API key")
 
 # --- Location Mapper (SRP, OCP) ---
 class LocationMapper:
@@ -266,9 +465,10 @@ class LocationMapper:
 
 # --- Main Extractor (SRP, DIP) ---
 class ClickUpTaskExtractor:
-    def __init__(self, config: ClickUpConfig, api_client: ClickUpAPIClient):
+    def __init__(self, config: ClickUpConfig, api_client: ClickUpAPIClient, load_gemini_key_func=None):
         self.config = config
         self.api = api_client
+        self.load_gemini_key_func = load_gemini_key_func
 
     def run(self):
         import traceback
@@ -356,15 +556,37 @@ class ClickUpTaskExtractor:
                         branch_name = LocationMapper.map_location(val, type_, options)
                     # Notes
                     notes_parts = []
+                    subject_content = ''
+                    description_content = ''
+                    resolution_content = ''
+
                     for fname in ['Subject', 'Description', 'Resolution']:
                         f = cf.get(fname)
                         if f and f.get('value'):
+                            if fname == 'Subject':
+                                subject_content = f['value']
+                            elif fname == 'Description':
+                                description_content = f['value']
+                            elif fname == 'Resolution':
+                                resolution_content = f['value']
                             notes_parts.append(f"{fname}: {f['value']}")
+
                     if not cf.get('Description') and task_detail.get('description'):
-                        notes_parts.append(f"Task Description: {task_detail['description']}")
-                    notes = '\n'.join(notes_parts)
-                    if self.config.enable_ai_summary and self.config.github_token:
-                        notes = get_ai_summary(task_detail.get('name', ''), notes, self.config.github_token)
+                        task_desc = task_detail['description']
+                        description_content = task_desc
+                        notes_parts.append(f"Task Description: {task_desc}")
+
+                    # Generate AI summary or use original notes
+                    if self.config.enable_ai_summary and self.config.gemini_api_key:
+                        notes = get_ai_summary(
+                            task_detail.get('name', ''),
+                            subject_content,
+                            description_content,
+                            resolution_content,
+                            self.config.gemini_api_key
+                        )
+                    else:
+                        notes = '\n'.join(notes_parts)
                     # Images
                     desc_img = extract_images(cf.get('Description', {}).get('value', ''))
                     res_img = extract_images(cf.get('Resolution', {}).get('value', ''))
@@ -392,6 +614,26 @@ class ClickUpTaskExtractor:
             if self.config.interactive_selection and all_tasks:
                 print(f"\nInteractive mode enabled - prompting for task selection...")
                 all_tasks = self.interactive_include(all_tasks)
+
+                # After task selection in interactive mode, ask about AI summary if not already set
+                if all_tasks and not self.config.enable_ai_summary:
+                    print(f"\nYou have selected {len(all_tasks)} task(s) for export.")
+                    print("AI summary can generate concise 1-2 sentence summaries of task status using Google Gemini.")
+                    if get_yes_no_input('Would you like to enable AI summaries for the selected tasks? (y/n): '):
+                        if self.load_gemini_key_func and self.load_gemini_key_func():
+                            self.config.enable_ai_summary = True
+                            print("✓ AI summary enabled for selected tasks.")
+                        else:
+                            gemini_key = input('Enter Gemini API Key (or press Enter to skip AI summary): ')
+                            if gemini_key:
+                                self.config.gemini_api_key = gemini_key.strip()
+                                self.config.enable_ai_summary = True
+                                print("✓ AI summary enabled with manual API key.")
+                            else:
+                                print("✓ Proceeding without AI summary.")
+                    else:
+                        print("✓ Proceeding without AI summary.")
+
             elif self.config.interactive_selection and not all_tasks:
                 print("Interactive mode enabled but no tasks found to select from.")
             # Export
@@ -421,22 +663,12 @@ class ClickUpTaskExtractor:
                 print(f"  Notes: {notes_preview}")
 
             # Prompt for user input with validation
-            while True:
-                try:
-                    sys.stdout.flush()  # Ensure output is flushed before input
-                    response = input(f"Would you like to export task '{task.Task}'? (y/n): ").strip().lower()
-                    if response in ['y', 'yes']:
-                        selected_tasks.append(task)
-                        print("  ✓ Added to export list")
-                        break
-                    elif response in ['n', 'no']:
-                        print("  ✗ Skipped")
-                        break
-                    else:
-                        print("  Please enter 'y' for yes or 'n' for no.")
-                except (EOFError, KeyboardInterrupt):
-                    print("\n\nOperation cancelled by user.")
-                    return []
+            sys.stdout.flush()  # Ensure output is flushed before input
+            if get_yes_no_input(f"Would you like to export task '{task.Task}'? (y/n): ", default_on_interrupt=False):
+                selected_tasks.append(task)
+                print("  ✓ Added to export list")
+            else:
+                print("  ✗ Skipped")
 
         # Display summary
         print("\n" + "=" * 60)
@@ -479,7 +711,7 @@ class ClickUpTaskExtractor:
     def render_html(self, tasks: List[TaskRecord]) -> str:
         # Simple HTML table, styled
         head = '''<!DOCTYPE html><html><head><meta charset="utf-8"><title>Weekly Task List</title><style>body{font-family:Arial,sans-serif;margin:20px;}table{border-collapse:collapse;width:100%;margin-top:20px;}th,td{border:1px solid #ddd;padding:12px;text-align:left;vertical-align:top;}th{background-color:#f2f2f2;font-weight:bold;}tr:nth-child(even){background-color:#f9f9f9;}.task-name{font-weight:bold;color:#2c5aa0;}.priority-high{color:#d73502;font-weight:bold;}.priority-normal{color:#0c7b93;}.priority-low{color:#6aa84f;}.notes{max-width:400px;white-space:pre-wrap;line-height:1.4;font-size:0.9em;}.status{padding:4px 8px;border-radius:4px;font-size:0.8em;font-weight:bold;}.status-open{background-color:#e8f4fd;color:#1f4e79;}.status-in-progress{background-color:#fff2cc;color:#7f6000;}.status-review{background-color:#f4cccc;color:#660000;}h1{color:#2c5aa0;}.summary{margin-bottom:20px;padding:15px;background-color:#f0f8ff;border-left:4px solid #2c5aa0;}</style></head><body>'''
-        summary = f'<h1>Weekly Task List</h1><div class="summary"><strong>Generated:</strong> {format_display_no_leading_zeros(datetime.now())}<br><strong>Total Tasks:</strong> {len(tasks)}<br><strong>Workspace:</strong> {html.escape(self.config.workspace_name)} / {html.escape(self.config.space_name)}</div>'
+        summary = f'<h1>Weekly Task List</h1><div class="summary"><strong>Generated:</strong> {format_datetime(datetime.now(), DISPLAY_FORMAT)}<br><strong>Total Tasks:</strong> {len(tasks)}<br><strong>Workspace:</strong> {html.escape(self.config.workspace_name)} / {html.escape(self.config.space_name)}</div>'
         table = '<table><thead><tr>' + ''.join(f'<th>{k}</th>' for k in TaskRecord.__annotations__.keys()) + '</tr></thead><tbody>'
         for t in tasks:
             table += '<tr>' + ''.join(f'<td>{html.escape(str(getattr(t, k) or ""))}</td>' for k in TaskRecord.__annotations__.keys()) + '</tr>'
@@ -512,8 +744,8 @@ def main():
     parser.add_argument('--output', type=str, help='Output file path (default: auto-generated)')
     parser.add_argument('--include-completed', action='store_true', help='Include completed/archived tasks')
     parser.add_argument('--date-filter', type=str, choices=['AllOpen', 'ThisWeek', 'LastWeek'], help='Date filter')
-    parser.add_argument('--ai-summary', action='store_true', help='Enable AI summary (requires github token)')
-    parser.add_argument('--github-token', type=str, help='GitHub token for AI summary')
+    parser.add_argument('--ai-summary', action='store_true', help='Enable AI summary (requires Gemini API key - will auto-load from 1Password if available)')
+    parser.add_argument('--gemini-api-key', type=str, help='Google Gemini API key for AI summary generation (or auto-load from 1Password: "op://Home Server/nftoo3gsi3wpx7z5bdmcsvr7p4/credential")')
     parser.add_argument('--output-format', type=str, choices=['CSV', 'HTML', 'Both'], help='Output format (default: HTML)')
     parser.add_argument('--interactive', action='store_true', help='Enable interactive task selection')
     args = parser.parse_args()
@@ -522,63 +754,85 @@ def main():
     api_key = args.api_key or os.environ.get('CLICKUP_API_KEY')
 
     if not api_key:
-        # Try to get API key from 1Password SDK
-        try:
-            secret_reference = 'op://Home Server/ClickUp personal API token/credential'
-            api_key = get_api_key_from_1password(secret_reference)
-            print("✓ API key loaded from 1Password SDK.")
-        except ImportError as e:
-            print(f"1Password SDK not available: {e}")
-            print("Falling back to 1Password CLI...")
-            # Fallback to 1Password CLI
-            try:
-                import subprocess
-                api_key = subprocess.check_output([
-                    'op', 'read', 'op://Home Server/ClickUp personal API token/credential'
-                ], encoding='utf-8').strip()
-                print("✓ API key loaded from 1Password CLI.")
-            except Exception as cli_error:
-                print(f"Could not read API key from 1Password CLI: {cli_error}")
-                api_key = None
-        except Exception as e:
-            print(f"Could not read API key from 1Password SDK: {e}")
+        # Try to get API key from 1Password with fallback
+        secret_reference = 'op://Home Server/ClickUp personal API token/credential'
+        api_key = _load_secret_with_fallback(secret_reference, "ClickUp API key")
+        if not api_key:
             print("Please provide via --api-key or CLICKUP_API_KEY.")
-            api_key = None
 
     # If still no API key, prompt for manual input
     if not api_key:
         api_key = input('Enter ClickUp API Key: ')
 
+    # Load Gemini API key if AI summary is enabled and no key provided via CLI
+    gemini_api_key = args.gemini_api_key
+
+    # Function to load Gemini API key when needed
+    def load_gemini_api_key():
+        nonlocal gemini_api_key
+        if gemini_api_key:
+            return True  # Already have the key
+
+        # Try to get Gemini API key from 1Password with fallback
+        gemini_secret_reference = 'op://Home Server/nftoo3gsi3wpx7z5bdmcsvr7p4/credential'
+        gemini_api_key = _load_secret_with_fallback(gemini_secret_reference, "Gemini API key")
+        if gemini_api_key:
+            return True
+        else:
+            print("Please provide via --gemini-api-key.")
+            return False
+
+    # If AI summary flag was explicitly used, load the key now
+    if args.ai_summary and not gemini_api_key:
+        if not load_gemini_api_key():
+            # If still no Gemini API key and AI summary is enabled, prompt for manual input
+            gemini_api_key = input('Enter Gemini API Key (or press Enter to disable AI summary): ')
+            if not gemini_api_key:
+                print("No Gemini API key provided. AI summary will be disabled.")
+                args.ai_summary = False
+
     # Check if interactive mode should be enabled when not explicitly set
     interactive_mode = args.interactive
     if not interactive_mode:
-        try:
-            print("\nInteractive mode allows you to review and select which tasks to export.")
-            print("Without interactive mode, all tasks will be automatically exported.")
-            response = input('Would you like to run in interactive mode? (y/n): ').strip().lower()
-            interactive_mode = response in ['y', 'yes']
-            if interactive_mode:
-                print("✓ Interactive mode enabled - you'll be able to review each task before export.")
+        print("\nInteractive mode allows you to review and select which tasks to export.")
+        print("Without interactive mode, all tasks will be automatically exported.")
+        interactive_mode = get_yes_no_input('Would you like to run in interactive mode? (y/n): ')
+        if interactive_mode:
+            print("✓ Interactive mode enabled - you'll be able to review each task before export.")
+        else:
+            print("✓ Running in automatic mode - all tasks will be exported.")
+
+    # If not in interactive mode and AI summary wasn't explicitly set, ask now
+    if not interactive_mode and not args.ai_summary:
+        print("\nAI summary can generate concise 1-2 sentence summaries of task status using Google Gemini.")
+        if get_yes_no_input('Would you like to enable AI summaries for tasks? (y/n): '):
+            args.ai_summary = True
+            if not load_gemini_api_key():
+                gemini_api_key = input('Enter Gemini API Key (or press Enter to disable AI summary): ')
+                if not gemini_api_key:
+                    print("No Gemini API key provided. AI summary will be disabled.")
+                    args.ai_summary = False
+                else:
+                    print("✓ AI summary enabled with manual API key.")
             else:
-                print("✓ Running in automatic mode - all tasks will be exported.")
-        except (EOFError, KeyboardInterrupt):
-            print("\nDefaulting to automatic mode.")
-            interactive_mode = False
+                print("✓ AI summary enabled.")
+        else:
+            print("✓ AI summary disabled.")
 
     config = ClickUpConfig(
         api_key=api_key,
         workspace_name=args.workspace or 'KMS',
         space_name=args.space or 'Kikkoman',
-        output_path=args.output or f"output/WeeklyTaskList_{format_timestamp_no_leading_zeros(datetime.now())}.csv",
+        output_path=args.output or f"output/WeeklyTaskList_{format_datetime(datetime.now(), TIMESTAMP_FORMAT)}.csv",
         include_completed=args.include_completed,
         date_filter=args.date_filter or 'AllOpen',
         enable_ai_summary=args.ai_summary,
-        github_token=args.github_token,
+        gemini_api_key=gemini_api_key,
         output_format=args.output_format or 'HTML',
         interactive_selection=interactive_mode
     )
     client = ClickUpAPIClient(api_key)
-    extractor = ClickUpTaskExtractor(config, client)
+    extractor = ClickUpTaskExtractor(config, client, load_gemini_api_key)
     extractor.run()
 
 if __name__ == '__main__':
