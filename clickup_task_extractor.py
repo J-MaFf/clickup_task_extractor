@@ -33,7 +33,19 @@ from datetime import datetime, timedelta
 # Date/time formatting constant
 TIMESTAMP_FORMAT = '%-d-%-m-%Y_%-I-%-M%p'
 DISPLAY_FORMAT = '%-d/%-m/%Y at %-I:%-M %p'
+TIMESTAMP_FORMAT = '%d-%m-%Y_%I-%M%p'  # Use cross-platform codes
+DISPLAY_FORMAT = '%d/%m/%Y at %I:%M %p'  # Use cross-platform codes
 
+def format_datetime_noleadingzero(dt: datetime, fmt: str) -> str:
+    """
+    Format datetime cross-platform, removing leading zeros from day and month.
+    """
+    s = dt.strftime(fmt)
+    # Remove leading zeros from day and month
+    # Replace only the first occurrence for day and month
+    s = s.replace(dt.strftime('%d'), str(dt.day), 1)
+    s = s.replace(dt.strftime('%m'), str(dt.month), 1)
+    return s
 # 1Password SDK imports
 try:
     from onepassword.client import Client as OnePasswordClient
