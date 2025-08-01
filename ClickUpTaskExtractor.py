@@ -199,7 +199,7 @@ class ClickUpTaskExtractor:
                         print(f"    ERROR: Could not get status from task_detail")
                         continue
 
-                    if status_val in ['Dormant', 'On Hold', 'Document']:
+                    if status_val in self.config.exclude_statuses:
 
                         continue
                     # Custom fields
