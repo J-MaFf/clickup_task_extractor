@@ -161,6 +161,7 @@ class TaskRecord:
     ETA: str = ''
     Notes: str = ''
     Extra: str = ''
+    _metadata: dict = field(default_factory=dict, init=False, repr=False)
 
 # --- API Client (SRP) ---
 class ClickUpAPIClient:
@@ -282,7 +283,7 @@ Task: {task_name}
 
 Focus on the current state and what has been done or needs to be done. Be specific and actionable."""
 
-        # Use the official Google GenAI SDK
+        # Use the official Google GenAI SDK with proper configuration
         if genai_types:
             config = genai_types.GenerateContentConfig(
                 temperature=0.3,
@@ -293,12 +294,12 @@ Focus on the current state and what has been done or needs to be done. Be specif
             config = None
 
         response = client.models.generate_content(
-            model='gemini-2.5-flash-lite',
+            model='gemini-2.5-flash',  # Use recommended model from official docs
             contents=prompt,
             config=config
         )
 
-        if response and response.text:
+        if response and hasattr(response, 'text') and response.text:
             summary = response.text.strip()
 
             # Clean up the summary
@@ -308,6 +309,7 @@ Focus on the current state and what has been done or needs to be done. Be specif
 
             return summary
         else:
+            print(f"Warning: No text response from Gemini API for task: {task_name}")
             return f"Subject: {subject}\nDescription: {description}\nResolution: {resolution}".strip()
 
     except Exception as e:
@@ -578,11 +580,13 @@ class ClickUpTaskExtractor:
                         )
                     else:
                         notes = '\n'.join(notes_parts)
+
                     # Images
                     desc_img = extract_images(cf.get('Description', {}).get('value', ''))
                     res_img = extract_images(cf.get('Resolution', {}).get('value', ''))
                     task_img = extract_images(task_detail.get('description', ''))
                     extra = ' | '.join([i for i in [desc_img, res_img, task_img] if i])
+
                     # Build record
                     # Handle priority possibly being None
                     priority_obj = task_detail.get('priority')
@@ -599,6 +603,14 @@ class ClickUpTaskExtractor:
                         Notes=notes,
                         Extra=extra
                     )
+
+                    # Store original field data for potential AI summary regeneration
+                    rec._metadata = {
+                        'task_name': task_detail.get('name', ''),
+                        'subject': subject_content,
+                        'description': description_content,
+                        'resolution': resolution_content
+                    }
                     all_tasks.append(rec)
             print(f"Total tasks fetched: {len(all_tasks)}")
             # Interactive selection
@@ -611,17 +623,39 @@ class ClickUpTaskExtractor:
                     print(f"\nYou have selected {len(all_tasks)} task(s) for export.")
                     print("AI summary can generate concise 1-2 sentence summaries of task status using Google Gemini.")
                     if get_yes_no_input('Would you like to enable AI summaries for the selected tasks? (y/n): '):
-                        if self.load_gemini_key_func and self.load_gemini_key_func():
-                            self.config.enable_ai_summary = True
-                            print("✓ AI summary enabled for selected tasks.")
-                        else:
-                            gemini_key = input('Enter Gemini API Key (or press Enter to skip AI summary): ')
+                        # Try to load Gemini API key
+                        gemini_key_loaded = False
+                        if self.load_gemini_key_func:
+                            if self.load_gemini_key_func():
+                                gemini_key_loaded = True
+                                print("✓ Gemini API key loaded from 1Password.")
+
+                        if not gemini_key_loaded:
+                            gemini_key = input('Enter Gemini API Key (or press Enter to skip AI summary): ').strip()
                             if gemini_key:
-                                self.config.gemini_api_key = gemini_key.strip()
-                                self.config.enable_ai_summary = True
-                                print("✓ AI summary enabled with manual API key.")
+                                self.config.gemini_api_key = gemini_key
+                                gemini_key_loaded = True
+                                print("✓ Manual Gemini API key entered.")
                             else:
                                 print("✓ Proceeding without AI summary.")
+
+                        if gemini_key_loaded and self.config.gemini_api_key:
+                            self.config.enable_ai_summary = True
+                            # Regenerate notes with AI for selected tasks
+                            print("Generating AI summaries for selected tasks...")
+                            for i, task in enumerate(all_tasks, 1):
+                                print(f"  Processing task {i}/{len(all_tasks)}: {task.Task}")
+                                if hasattr(task, '_metadata') and task._metadata:
+                                    metadata = task._metadata
+                                    ai_notes = get_ai_summary(
+                                        metadata['task_name'],
+                                        metadata['subject'],
+                                        metadata['description'],
+                                        metadata['resolution'],
+                                        self.config.gemini_api_key
+                                    )
+                                    task.Notes = ai_notes
+                            print("✓ AI summaries generated for selected tasks.")
                     else:
                         print("✓ Proceeding without AI summary.")
 
@@ -822,8 +856,17 @@ def main():
         output_format=args.output_format or 'HTML',
         interactive_selection=interactive_mode
     )
+
+    # Create a wrapper that updates the config when called
+    def load_gemini_key_and_update_config():
+        nonlocal gemini_api_key
+        if load_gemini_api_key():
+            config.gemini_api_key = gemini_api_key
+            return True
+        return False
+
     client = ClickUpAPIClient(api_key)
-    extractor = ClickUpTaskExtractor(config, client, load_gemini_api_key)
+    extractor = ClickUpTaskExtractor(config, client, load_gemini_key_and_update_config)
     extractor.run()
 
 if __name__ == '__main__':
