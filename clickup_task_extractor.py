@@ -1,3 +1,5 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
 """
 ClickUp Task Extractor (Python)
 
@@ -48,16 +50,33 @@ DATE FORMATTING:
 
 USAGE:
   python clickup_task_extractor.py [options]
+  .\run_extractor.bat [options]        # Windows batch file (auto-switches to venv)
+  .\run_extractor.ps1 [options]        # PowerShell script (auto-switches to venv)
+
+Note: The script automatically detects and switches to its virtual environment when run directly.
 
 EXAMPLES:
   python clickup_task_extractor.py --interactive
   python clickup_task_extractor.py --workspace "MyWorkspace" --output-format Both
   python clickup_task_extractor.py --api-key YOUR_KEY --include-completed
   python clickup_task_extractor.py --ai-summary --gemini-api-key YOUR_GEMINI_KEY
+  .\run_extractor.bat --interactive
 """
 
 import os
 import sys
+
+# Ensure we're using the virtual environment
+script_dir = os.path.dirname(os.path.abspath(__file__))
+venv_python = os.path.join(script_dir, '.venv', 'Scripts', 'python.exe')
+
+# If we're not running from the venv and the venv exists, restart with the venv Python
+if not sys.executable.startswith(os.path.join(script_dir, '.venv')) and os.path.exists(venv_python):
+    import subprocess
+    print(f"Switching from {sys.executable} to virtual environment: {venv_python}")
+    # Re-execute the script with the virtual environment Python
+    sys.exit(subprocess.call([venv_python] + sys.argv))
+
 import csv
 import html
 import requests
@@ -65,6 +84,20 @@ import argparse
 from typing import List, Dict, Any, Optional
 from dataclasses import dataclass, asdict, field
 from datetime import datetime, timedelta
+import html
+import requests
+import argparse
+from typing import List, Dict, Any, Optional
+from dataclasses import dataclass, asdict, field
+from datetime import datetime, timedelta
+
+# Google GenAI SDK imports
+try:
+    from google import genai
+    from google.genai import types as genai_types
+except ImportError:
+    genai = None
+    genai_types = None
 
 # Date/time formatting constants - cross-platform compatible
 TIMESTAMP_FORMAT = '%d-%m-%Y_%I-%M%p'  # For filenames (with leading zeros for compatibility)
@@ -217,8 +250,14 @@ def get_ai_summary(task_name: str, subject: str, description: str, resolution: s
     if not gemini_api_key:
         return f"Subject: {subject}\nDescription: {description}\nResolution: {resolution}".strip()
 
+    # Check if Google GenAI SDK is available
+    if genai is None:
+        print("Warning: Google GenAI SDK not available - install with: pip install google-genai")
+        return f"Subject: {subject}\nDescription: {description}\nResolution: {resolution}".strip()
+
     try:
-        import json
+        # Initialize the Google GenAI client
+        client = genai.Client(api_key=gemini_api_key)
 
         # Prepare the content for AI analysis
         content_parts = []
@@ -235,7 +274,7 @@ def get_ai_summary(task_name: str, subject: str, description: str, resolution: s
         full_content = "\n".join(content_parts)
 
         # Create the prompt for AI summary
-        prompt = f"""Please provide a concise 1-2 sentence summary of the current status of this task:
+        prompt = f"""Please provide a concise 1-2 sentence summary of the current status of this task using the Subject, Description, and Resolution fields:
 
 Task: {task_name}
 
@@ -243,86 +282,38 @@ Task: {task_name}
 
 Focus on the current state and what has been done or needs to be done. Be specific and actionable."""
 
-        # Google Gemini API call
-        headers = {
-            'Content-Type': 'application/json'
-        }
+        # Use the official Google GenAI SDK
+        if genai_types:
+            config = genai_types.GenerateContentConfig(
+                temperature=0.3,
+                max_output_tokens=150,
+                response_mime_type="text/plain"
+            )
+        else:
+            config = None
 
-        payload = {
-            "contents": [
-                {
-                    "parts": [
-                        {
-                            "text": f"You are a helpful assistant that summarizes task status in 1-2 clear, concise sentences. Focus on current state and next actions.\n\n{prompt}"
-                        }
-                    ]
-                }
-            ],
-            "generationConfig": {
-                "temperature": 0.3,
-                "topK": 40,
-                "topP": 0.95,
-                "maxOutputTokens": 150,
-                "stopSequences": []
-            },
-            "safetySettings": [
-                {
-                    "category": "HARM_CATEGORY_HARASSMENT",
-                    "threshold": "BLOCK_MEDIUM_AND_ABOVE"
-                },
-                {
-                    "category": "HARM_CATEGORY_HATE_SPEECH",
-                    "threshold": "BLOCK_MEDIUM_AND_ABOVE"
-                },
-                {
-                    "category": "HARM_CATEGORY_SEXUALLY_EXPLICIT",
-                    "threshold": "BLOCK_MEDIUM_AND_ABOVE"
-                },
-                {
-                    "category": "HARM_CATEGORY_DANGEROUS_CONTENT",
-                    "threshold": "BLOCK_MEDIUM_AND_ABOVE"
-                }
-            ]
-        }
-
-        # Use Gemini 1.5 Flash for cost-effectiveness
-        api_url = f'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={gemini_api_key}'
-
-        response = requests.post(
-            api_url,
-            headers=headers,
-            json=payload,
-            timeout=30
+        response = client.models.generate_content(
+            model='gemini-2.5-flash-lite',
+            contents=prompt,
+            config=config
         )
 
-        if response.status_code == 200:
-            result = response.json()
+        if response and response.text:
+            summary = response.text.strip()
 
-            # Extract the generated text from Gemini response
-            if 'candidates' in result and len(result['candidates']) > 0:
-                candidate = result['candidates'][0]
-                if 'content' in candidate and 'parts' in candidate['content']:
-                    summary = candidate['content']['parts'][0]['text'].strip()
+            # Clean up the summary
+            summary = summary.replace('\n', ' ').strip()
+            if not summary.endswith('.'):
+                summary += '.'
 
-                    # Clean up the summary
-                    summary = summary.replace('\n', ' ').strip()
-                    if summary.endswith('.'):
-                        return summary
-                    else:
-                        return summary + '.'
-
-            print(f"Unexpected Gemini API response structure: {result}")
-            return full_content
+            return summary
         else:
-            print(f"Gemini AI Summary API failed ({response.status_code}): {response.text}")
-            return full_content
+            return f"Subject: {subject}\nDescription: {description}\nResolution: {resolution}".strip()
 
     except Exception as e:
         print(f"AI Summary error: {e}")
         # Fallback to original content
-        return f"Subject: {subject}\nDescription: {description}\nResolution: {resolution}".strip()
-
-# --- 1Password SDK Integration (SRP) ---
+        return f"Subject: {subject}\nDescription: {description}\nResolution: {resolution}".strip()# --- 1Password SDK Integration (SRP) ---
 def _load_secret_with_fallback(secret_reference: str, secret_name: str) -> Optional[str]:
     """
     Generic function to load a secret from 1Password using SDK with CLI fallback.
