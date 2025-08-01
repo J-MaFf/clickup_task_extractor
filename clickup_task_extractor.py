@@ -1,27 +1,61 @@
 """
 ClickUp Task Extractor (Python)
-- Authenticates with ClickUp API using multiple methods:
-  1. Command line argument (--api-key)
-  2. Environment variable (CLICKUP_API_KEY)
-  3. 1Password SDK (requires OP_SERVICE_ACCOUNT_TOKEN)
-  4. 1Password CLI fallback (requires 'op' command)
-  5. Manual input prompt
-- Retrieves tasks for a workspace/space
-- Maps Branch (Location) field to human-readable label
-- Exports to CSV and HTML
-- Supports AI summary (optional), image extraction, and interactive exclusion
-- Matches PowerShell output/columns/features
-- SOLID principles applied
 
-1Password Integration:
+A cross-platform Python script for extracting, processing, and exporting tasks from the ClickUp API.
+Designed to match the output and features of a PowerShell-based workflow with improved maintainability.
+
+FEATURES:
+- Multiple API key authentication methods with 1Password integration
+- Cross-platform date formatting without leading zeros
+- Interactive task selection and filtering
+- Export to styled HTML and/or CSV formats
+- Custom field mapping (Branch/Location) to human-readable labels
+- Task status filtering and exclusion
+- Optional AI summary integration (placeholder)
+- Image extraction from task descriptions
+- Comprehensive error handling and debugging
+
+AUTHENTICATION PRIORITY:
+1. Command line argument (--api-key)
+2. Environment variable (CLICKUP_API_KEY)
+3. 1Password SDK (requires OP_SERVICE_ACCOUNT_TOKEN)
+4. 1Password CLI fallback (requires 'op' command)
+5. Manual input prompt
+
+1PASSWORD INTEGRATION:
 - SDK: Set OP_SERVICE_ACCOUNT_TOKEN environment variable
 - CLI: Ensure 'op' command is available in PATH
 - Secret reference: "op://Home Server/ClickUp personal API token/credential"
+
+ARCHITECTURE:
+- ClickUpConfig: Centralized configuration management with dataclass
+- ClickUpAPIClient: HTTP API client following Single Responsibility Principle
+- TaskRecord: Dataclass for task export structure
+- LocationMapper: Custom field value mapping to human-readable labels
+- ClickUpTaskExtractor: Main orchestrator class
+- Cross-platform datetime formatting functions
+
+OUTPUT FORMATS:
+- HTML: Styled table with summary (default)
+- CSV: Standard comma-separated values
+- Both: Generate both formats simultaneously
+
+DATE FORMATTING:
+- Filenames: Remove leading zeros for cleaner names (e.g., "1-8-2025_3-45PM")
+- Display: Remove leading zeros for better readability (e.g., "1/8/2025 at 3:45 PM")
+- Cross-platform compatible using standard strftime with post-processing
+
+USAGE:
+  python clickup_task_extractor.py [options]
+
+EXAMPLES:
+  python clickup_task_extractor.py --interactive
+  python clickup_task_extractor.py --workspace "MyWorkspace" --output-format Both
+  python clickup_task_extractor.py --api-key YOUR_KEY --include-completed
 """
 
 import os
 import sys
-import json
 import csv
 import html
 import requests
@@ -30,6 +64,39 @@ from typing import List, Dict, Any, Optional
 from dataclasses import dataclass, asdict, field
 from datetime import datetime, timedelta
 
+# Date/time formatting constants - cross-platform compatible
+TIMESTAMP_FORMAT = '%d-%m-%Y_%I-%M%p'  # For filenames (with leading zeros for compatibility)
+DISPLAY_FORMAT = '%d/%m/%Y at %I:%M %p'  # For HTML display (with leading zeros for compatibility)
+
+def format_timestamp_no_leading_zeros(dt: datetime) -> str:
+    """Format datetime for filenames, removing leading zeros from day, month, and hour."""
+    s = dt.strftime(TIMESTAMP_FORMAT)
+    # Remove leading zeros from day and month
+    s = s.replace(dt.strftime('%d'), str(dt.day), 1)
+    s = s.replace(dt.strftime('%m'), str(dt.month), 1)
+    # Handle hour formatting for 12-hour format
+    hour_12 = dt.hour % 12
+    if hour_12 == 0:
+        hour_12 = 12
+    s = s.replace(dt.strftime('%I'), str(hour_12), 1)
+    return s
+
+def format_display_no_leading_zeros(dt: datetime) -> str:
+    """Format datetime for display, removing leading zeros from day, month, and hour."""
+    s = dt.strftime(DISPLAY_FORMAT)
+    # Remove leading zeros from day and month
+    s = s.replace(dt.strftime('%d'), str(dt.day), 1)
+    s = s.replace(dt.strftime('%m'), str(dt.month), 1)
+    # Handle hour formatting for 12-hour format
+    hour_12 = dt.hour % 12
+    if hour_12 == 0:
+        hour_12 = 12
+    s = s.replace(dt.strftime('%I'), str(hour_12), 1)
+    return s
+
+def default_output_path() -> str:
+    """Generate default output path with timestamp without leading zeros."""
+    return f"output/WeeklyTaskList_{format_timestamp_no_leading_zeros(datetime.now())}.csv"
 # 1Password SDK imports
 try:
     from onepassword.client import Client as OnePasswordClient
@@ -42,7 +109,7 @@ class ClickUpConfig:
     api_key: str
     workspace_name: str = 'KMS'
     space_name: str = 'Kikkoman'
-    output_path: str = field(default_factory=lambda: f"output/WeeklyTaskList_{datetime.now().strftime('%d-%m-%Y_%I-%M%p')}.csv")
+    output_path: str = field(default_factory=default_output_path)
     include_completed: bool = False
     date_filter: str = 'AllOpen'  # 'ThisWeek', 'LastWeek', 'AllOpen'
     enable_ai_summary: bool = False
@@ -412,7 +479,7 @@ class ClickUpTaskExtractor:
     def render_html(self, tasks: List[TaskRecord]) -> str:
         # Simple HTML table, styled
         head = '''<!DOCTYPE html><html><head><meta charset="utf-8"><title>Weekly Task List</title><style>body{font-family:Arial,sans-serif;margin:20px;}table{border-collapse:collapse;width:100%;margin-top:20px;}th,td{border:1px solid #ddd;padding:12px;text-align:left;vertical-align:top;}th{background-color:#f2f2f2;font-weight:bold;}tr:nth-child(even){background-color:#f9f9f9;}.task-name{font-weight:bold;color:#2c5aa0;}.priority-high{color:#d73502;font-weight:bold;}.priority-normal{color:#0c7b93;}.priority-low{color:#6aa84f;}.notes{max-width:400px;white-space:pre-wrap;line-height:1.4;font-size:0.9em;}.status{padding:4px 8px;border-radius:4px;font-size:0.8em;font-weight:bold;}.status-open{background-color:#e8f4fd;color:#1f4e79;}.status-in-progress{background-color:#fff2cc;color:#7f6000;}.status-review{background-color:#f4cccc;color:#660000;}h1{color:#2c5aa0;}.summary{margin-bottom:20px;padding:15px;background-color:#f0f8ff;border-left:4px solid #2c5aa0;}</style></head><body>'''
-        summary = f'<h1>Weekly Task List</h1><div class="summary"><strong>Generated:</strong> {datetime.now().strftime("%d/%m/%Y at %I:%M %p")}<br><strong>Total Tasks:</strong> {len(tasks)}<br><strong>Workspace:</strong> {html.escape(self.config.workspace_name)} / {html.escape(self.config.space_name)}</div>'
+        summary = f'<h1>Weekly Task List</h1><div class="summary"><strong>Generated:</strong> {format_display_no_leading_zeros(datetime.now())}<br><strong>Total Tasks:</strong> {len(tasks)}<br><strong>Workspace:</strong> {html.escape(self.config.workspace_name)} / {html.escape(self.config.space_name)}</div>'
         table = '<table><thead><tr>' + ''.join(f'<th>{k}</th>' for k in TaskRecord.__annotations__.keys()) + '</tr></thead><tbody>'
         for t in tasks:
             table += '<tr>' + ''.join(f'<td>{html.escape(str(getattr(t, k) or ""))}</td>' for k in TaskRecord.__annotations__.keys()) + '</tr>'
@@ -498,12 +565,11 @@ def main():
             print("\nDefaulting to automatic mode.")
             interactive_mode = False
 
-    TIMESTAMP_FORMAT = '%d-%m-%Y_%I-%M%p'
     config = ClickUpConfig(
         api_key=api_key,
         workspace_name=args.workspace or 'KMS',
         space_name=args.space or 'Kikkoman',
-        output_path=args.output or f"output/WeeklyTaskList_{datetime.now().strftime(TIMESTAMP_FORMAT)}.csv",
+        output_path=args.output or f"output/WeeklyTaskList_{format_timestamp_no_leading_zeros(datetime.now())}.csv",
         include_completed=args.include_completed,
         date_filter=args.date_filter or 'AllOpen',
         enable_ai_summary=args.ai_summary,
