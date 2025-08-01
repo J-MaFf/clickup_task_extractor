@@ -35,7 +35,16 @@ TIMESTAMP_FORMAT = '%-d-%-m-%Y_%-I-%-M%p'
 DISPLAY_FORMAT = '%-d/%-m/%Y at %-I:%-M %p'
 TIMESTAMP_FORMAT = '%d-%m-%Y_%I-%M%p'  # Use cross-platform codes
 DISPLAY_FORMAT = '%d/%m/%Y at %I:%M %p'  # Use cross-platform codes
+TIMESTAMP_FORMAT = '%d-%m-%Y_%I-%M%p'  # Use cross-platform format (with leading zeros)
+DISPLAY_FORMAT = '%d/%m/%Y at %I:%M %p'  # Use cross-platform format (with leading zeros)
 
+def format_display_datetime(dt: datetime) -> str:
+    """Format datetime in a cross-platform way, removing leading zeros from day, month, and hour."""
+    # Use dt.day, dt.month, dt.year, dt.hour, dt.minute, dt.strftime('%p')
+    hour = dt.hour % 12
+    if hour == 0:
+        hour = 12
+    return f"{dt.day}/{dt.month}/{dt.year} at {hour}:{dt.minute:02d} {dt.strftime('%p')}"
 def format_datetime_noleadingzero(dt: datetime, fmt: str) -> str:
     """
     Format datetime cross-platform, removing leading zeros from day and month.
