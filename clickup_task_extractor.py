@@ -77,16 +77,15 @@ if not sys.executable.startswith(os.path.join(script_dir, '.venv')) and os.path.
     # Re-execute the script with the virtual environment Python
     sys.exit(subprocess.call([venv_python] + sys.argv))
 
+import asyncio
 import csv
 import html
+import re
 import requests
 import argparse
-from typing import List, Dict, Any, Optional
-from dataclasses import dataclass, asdict, field
-from datetime import datetime, timedelta
-import html
-import requests
-import argparse
+import subprocess
+import time
+import traceback
 from typing import List, Dict, Any, Optional
 from dataclasses import dataclass, asdict, field
 from datetime import datetime, timedelta
@@ -219,7 +218,6 @@ def get_date_range(filter_name: str):
     return None, None
 
 def extract_images(text: str) -> str:
-    import re
     if not text:
         return ''
     patterns = [
@@ -237,6 +235,7 @@ def extract_images(text: str) -> str:
 def get_ai_summary(task_name: str, subject: str, description: str, resolution: str, gemini_api_key: str) -> str:
     """
     Generate a concise 1-2 sentence summary about the current status of the task using Google Gemini AI.
+    Automatically handles rate limiting with intelligent retry logic.
 
     Args:
         task_name: Name of the task
@@ -256,26 +255,30 @@ def get_ai_summary(task_name: str, subject: str, description: str, resolution: s
         print("Warning: Google GenAI SDK not available - install with: pip install google-genai")
         return f"Subject: {subject}\nDescription: {description}\nResolution: {resolution}".strip()
 
-    try:
-        # Initialize the Google GenAI client
-        client = genai.Client(api_key=gemini_api_key)
+    max_retries = 3
+    base_delay = 30  # Increased base delay to 30 seconds for rate limiting
 
-        # Prepare the content for AI analysis
-        content_parts = []
-        if subject:
-            content_parts.append(f"Subject: {subject}")
-        if description:
-            content_parts.append(f"Description: {description}")
-        if resolution:
-            content_parts.append(f"Resolution: {resolution}")
+    for attempt in range(max_retries + 1):
+        try:
+            # Initialize the Google GenAI client
+            client = genai.Client(api_key=gemini_api_key)
 
-        if not content_parts:
-            return "No content available for summary."
+            # Prepare the content for AI analysis
+            content_parts = []
+            if subject:
+                content_parts.append(f"Subject: {subject}")
+            if description:
+                content_parts.append(f"Description: {description}")
+            if resolution:
+                content_parts.append(f"Resolution: {resolution}")
 
-        full_content = "\n".join(content_parts)
+            if not content_parts:
+                return "No content available for summary."
 
-        # Create the prompt for AI summary
-        prompt = f"""Please provide a concise 1-2 sentence summary of the current status of this task using the Subject, Description, and Resolution fields:
+            full_content = "\n".join(content_parts)
+
+            # Create the prompt for AI summary
+            prompt = f"""Please provide a concise 1-2 sentence summary of the current status of this task using the Subject, Description, and Resolution fields:
 
 Task: {task_name}
 
@@ -283,39 +286,101 @@ Task: {task_name}
 
 Focus on the current state and what has been done or needs to be done. Be specific and actionable."""
 
-        # Use the official Google GenAI SDK with proper configuration
-        if genai_types:
-            config = genai_types.GenerateContentConfig(
-                temperature=0.3,
-                max_output_tokens=150,
-                response_mime_type="text/plain"
+            # Use the official Google GenAI SDK with proper configuration
+            if genai_types:
+                config = genai_types.GenerateContentConfig(
+                    temperature=0.3,
+                    max_output_tokens=150,
+                    response_mime_type="text/plain"
+                )
+            else:
+                config = None
+
+            response = client.models.generate_content(
+                model='gemini-2.5-flash-lite',
+                contents=prompt,
+                config=config
             )
-        else:
-            config = None
 
-        response = client.models.generate_content(
-            model='gemini-2.5-flash',  # Use recommended model from official docs
-            contents=prompt,
-            config=config
-        )
+            if response and hasattr(response, 'text') and response.text:
+                summary = response.text.strip()
 
-        if response and hasattr(response, 'text') and response.text:
-            summary = response.text.strip()
+                # Clean up the summary
+                summary = summary.replace('\n', ' ').strip()
+                if not summary.endswith('.'):
+                    summary += '.'
 
-            # Clean up the summary
-            summary = summary.replace('\n', ' ').strip()
-            if not summary.endswith('.'):
-                summary += '.'
+                return summary
+            else:
+                print(f"Warning: No text response from Gemini API for task: {task_name}")
+                return f"Subject: {subject}\nDescription: {description}\nResolution: {resolution}".strip()
 
-            return summary
-        else:
-            print(f"Warning: No text response from Gemini API for task: {task_name}")
+        except Exception as e:
+            error_str = str(e)
+
+            # Check if this is a rate limit error
+            if "429" in error_str and "RESOURCE_EXHAUSTED" in error_str:
+                # Extract retry delay from error message if available
+                retry_delay = base_delay
+                try:
+                    # Try to parse the retry delay from the error message
+                    if "retryDelay" in error_str:
+                        # Look for patterns like '"retryDelay": "20s"'
+                        delay_match = re.search(r'"retryDelay":\s*"(\d+)s"', error_str)
+                        if delay_match:
+                            retry_delay = int(delay_match.group(1))
+                        else:
+                            # Fallback: extract quota value and calculate delay
+                            quota_match = re.search(r'"quotaValue":\s*"(\d+)"', error_str)
+                            if quota_match:
+                                quota_value = int(quota_match.group(1))
+                                # Calculate delay based on quota (60 seconds / quota = delay per request)
+                                retry_delay = max(60 // quota_value, base_delay)
+                except:
+                    # If parsing fails, use exponential backoff
+                    retry_delay = base_delay * (2 ** attempt)
+
+                if attempt < max_retries:
+                    print(f"⏳ Rate limit hit for task '{task_name}'. Waiting {retry_delay} seconds before retry (attempt {attempt + 1}/{max_retries})...")
+
+                    # Progress bar for wait time
+                    def show_progress_bar(total_seconds):
+                        """Display a progress bar showing remaining wait time."""
+                        bar_length = 50
+                        for i in range(total_seconds):
+                            remaining = total_seconds - i
+                            elapsed = i
+                            progress = elapsed / total_seconds
+                            filled_length = int(bar_length * progress)
+
+                            # Create progress bar
+                            bar = '█' * filled_length + '░' * (bar_length - filled_length)
+
+                            # Format time display
+                            mins, secs = divmod(remaining, 60)
+                            time_str = f"{mins:02d}:{secs:02d}" if mins > 0 else f"{secs:02d}s"
+
+                            # Print progress (carriage return to overwrite)
+                            print(f"\r  ⏱️  [{bar}] {elapsed}/{total_seconds}s - {time_str} remaining", end='', flush=True)
+                            time.sleep(1)
+
+                        # Clear the progress line and show completion
+                        print(f"\r  ✅  Wait complete - retrying API call...{' ' * 20}")
+
+                    show_progress_bar(retry_delay)
+                    continue
+                else:
+                    print(f"❌ Rate limit retry failed for task '{task_name}' after {max_retries} attempts.")
+
+            else:
+                # Non-rate-limit error
+                print(f"AI Summary error for task '{task_name}': {e}")
+
+            # Final attempt failed or non-retryable error - return fallback
             return f"Subject: {subject}\nDescription: {description}\nResolution: {resolution}".strip()
 
-    except Exception as e:
-        print(f"AI Summary error: {e}")
-        # Fallback to original content
-        return f"Subject: {subject}\nDescription: {description}\nResolution: {resolution}".strip()# --- 1Password SDK Integration (SRP) ---
+    # Should never reach here, but just in case
+    return f"Subject: {subject}\nDescription: {description}\nResolution: {resolution}".strip()# --- 1Password SDK Integration (SRP) ---
 def _load_secret_with_fallback(secret_reference: str, secret_name: str) -> Optional[str]:
     """
     Generic function to load a secret from 1Password using SDK with CLI fallback.
@@ -337,7 +402,6 @@ def _load_secret_with_fallback(secret_reference: str, secret_name: str) -> Optio
         print(f"Falling back to 1Password CLI for {secret_name}...")
         # Fallback to 1Password CLI
         try:
-            import subprocess
             secret = subprocess.check_output([
                 'op', 'read', secret_reference
             ], encoding='utf-8').strip()
@@ -373,8 +437,6 @@ def get_secret_from_1password(secret_reference: str, secret_type: str = "API key
         raise ValueError("OP_SERVICE_ACCOUNT_TOKEN environment variable not set. Required for 1Password SDK authentication.")
 
     try:
-        import asyncio
-
         async def _get_secret():
             # Ensure OnePasswordClient is not None before using it
             if OnePasswordClient is None:
@@ -464,7 +526,6 @@ class ClickUpTaskExtractor:
         self.load_gemini_key_func = load_gemini_key_func
 
     def run(self):
-        import traceback
         try:
             print("Fetching workspaces...")
             teams = self.api.get('/team')['teams']
