@@ -1,12 +1,22 @@
 """
 ClickUp Task Extractor (Python)
-- Authenticates with ClickUp API
+- Authenticates with ClickUp API using multiple methods:
+  1. Command line argument (--api-key)
+  2. Environment variable (CLICKUP_API_KEY)
+  3. 1Password SDK (requires OP_SERVICE_ACCOUNT_TOKEN)
+  4. 1Password CLI fallback (requires 'op' command)
+  5. Manual input prompt
 - Retrieves tasks for a workspace/space
 - Maps Branch (Location) field to human-readable label
 - Exports to CSV and HTML
 - Supports AI summary (optional), image extraction, and interactive exclusion
 - Matches PowerShell output/columns/features
 - SOLID principles applied
+
+1Password Integration:
+- SDK: Set OP_SERVICE_ACCOUNT_TOKEN environment variable
+- CLI: Ensure 'op' command is available in PATH
+- Secret reference: "op://Home Server/ClickUp personal API token/credential"
 """
 
 import os
@@ -19,6 +29,12 @@ import argparse
 from typing import List, Dict, Any, Optional
 from dataclasses import dataclass, asdict, field
 from datetime import datetime, timedelta
+
+# 1Password SDK imports
+try:
+    from onepassword.client import Client as OnePasswordClient
+except ImportError:
+    OnePasswordClient = None
 
 # --- Config DataClass ---
 @dataclass
@@ -61,6 +77,14 @@ class ClickUpAPIClient:
     def get(self, endpoint: str) -> Any:
         url = f"{self.BASE_URL}{endpoint}"
         resp = requests.get(url, headers=self.headers)
+
+        # Add debugging information for failed requests
+        if not resp.ok:
+            print(f"API Request failed:")
+            print(f"  URL: {url}")
+            print(f"  Status: {resp.status_code}")
+            print(f"  Response: {resp.text}")
+
         resp.raise_for_status()
         return resp.json()
 
@@ -96,6 +120,58 @@ def extract_images(text: str) -> str:
 def get_ai_summary(task_name: str, notes: str, github_token: str) -> str:
     # Placeholder: Implement actual call if needed
     return notes
+
+# --- 1Password SDK Integration (SRP) ---
+def get_api_key_from_1password(secret_reference: str) -> Optional[str]:
+    """
+    Retrieve ClickUp API key from 1Password using the SDK.
+
+    Args:
+        secret_reference: The 1Password secret reference (e.g., "op://Home Server/ClickUp personal API token/credential")
+
+    Returns:
+        The API key string if successful, None if failed
+
+    Raises:
+        Various exceptions for different failure modes (network, auth, not found, etc.)
+    """
+    if OnePasswordClient is None:
+        raise ImportError("1Password SDK not available. Install with: pip install onepassword-sdk")
+
+    # Get service account token from environment
+    service_token = os.environ.get('OP_SERVICE_ACCOUNT_TOKEN')
+    if not service_token:
+        raise ValueError("OP_SERVICE_ACCOUNT_TOKEN environment variable not set. Required for 1Password SDK authentication.")
+
+    try:
+        import asyncio
+
+        async def _get_api_key():
+            # Ensure OnePasswordClient is not None before using it
+            if OnePasswordClient is None:
+                raise ImportError("1Password SDK not available. Install with: pip install onepassword-sdk")
+            # Authenticate with 1Password using service account token
+            client = await OnePasswordClient.authenticate(
+                auth=service_token,
+                integration_name="ClickUp Task Extractor",
+                integration_version="1.0.0"
+            )
+
+            # Resolve the secret reference to get the API key
+            api_key = await client.secrets.resolve(secret_reference)
+
+            if not api_key:
+                raise ValueError(f"Secret reference '{secret_reference}' resolved to empty value")
+
+            return api_key.strip()
+
+        # Run the async function
+        return asyncio.run(_get_api_key())
+
+    except Exception as e:
+        # Re-raise with more context
+        error_msg = f"Failed to retrieve API key from 1Password: {type(e).__name__}: {e}"
+        raise RuntimeError(error_msg) from e
 
 # --- Location Mapper (SRP, OCP) ---
 class LocationMapper:
@@ -352,14 +428,18 @@ def main():
       python ClickUpTaskExtractor.py --api-key ... --workspace ... --space ...
 
     API key 1Password reference: "op://Home Server/ClickUp personal API token/credential"
-    You can use 1Password CLI to inject the secret, e.g.:
-      export CLICKUP_API_KEY="$(op read 'op://Home Server/ClickUp personal API token/credential')"
-    Or pass it directly with --api-key.
+
+    Authentication priority:
+    1. --api-key command line argument
+    2. CLICKUP_API_KEY environment variable
+    3. 1Password SDK (requires OP_SERVICE_ACCOUNT_TOKEN env var)
+    4. 1Password CLI fallback (requires 'op' command available)
+    5. Manual input prompt
     """
     parser = argparse.ArgumentParser(
-        description="Extract and export ClickUp tasks to HTML (preferred) or CSV. Default workspace: KMS.\nAPI key 1Password reference: op://Home Server/ClickUp personal API token/credential"
+        description="Extract and export ClickUp tasks to HTML (preferred) or CSV. Default workspace: KMS.\nAPI key 1Password reference: op://Home Server/ClickUp personal API token/credential\nRequires OP_SERVICE_ACCOUNT_TOKEN for 1Password SDK authentication."
     )
-    parser.add_argument('--api-key', type=str, default=os.environ.get('CLICKUP_API_KEY'), help='ClickUp API Key (or set CLICKUP_API_KEY env, e.g. from 1Password: "op://Home Server/ClickUp personal API token/credential")')
+    parser.add_argument('--api-key', type=str, default=os.environ.get('CLICKUP_API_KEY'), help='ClickUp API Key (or set CLICKUP_API_KEY env, or use 1Password SDK with OP_SERVICE_ACCOUNT_TOKEN, e.g. from 1Password: "op://Home Server/ClickUp personal API token/credential")')
     parser.add_argument('--workspace', type=str, help='Workspace name (default: KMS)')
     parser.add_argument('--space', type=str, help='Space name (default: Kikkoman)')
     parser.add_argument('--output', type=str, help='Output file path (default: auto-generated)')
@@ -373,17 +453,34 @@ def main():
 
     # 1Password reference for API key: "op://Home Server/ClickUp personal API token/credential"
     api_key = args.api_key or os.environ.get('CLICKUP_API_KEY')
+
     if not api_key:
-        # Try to read from 1Password CLI
+        # Try to get API key from 1Password SDK
         try:
-            import subprocess
-            api_key = subprocess.check_output([
-                'op', 'read', 'op://Home Server/ClickUp personal API token/credential'
-            ], encoding='utf-8').strip()
-            print("✓ API key loaded from 1Password CLI.")
+            secret_reference = 'op://Home Server/ClickUp personal API token/credential'
+            api_key = get_api_key_from_1password(secret_reference)
+            print("✓ API key loaded from 1Password SDK.")
+        except ImportError as e:
+            print(f"1Password SDK not available: {e}")
+            print("Falling back to 1Password CLI...")
+            # Fallback to 1Password CLI
+            try:
+                import subprocess
+                api_key = subprocess.check_output([
+                    'op', 'read', 'op://Home Server/ClickUp personal API token/credential'
+                ], encoding='utf-8').strip()
+                print("✓ API key loaded from 1Password CLI.")
+            except Exception as cli_error:
+                print(f"Could not read API key from 1Password CLI: {cli_error}")
+                api_key = None
         except Exception as e:
-            print("Could not read API key from 1Password CLI. Please provide via --api-key or CLICKUP_API_KEY.")
-            api_key = input('Enter ClickUp API Key: ')
+            print(f"Could not read API key from 1Password SDK: {e}")
+            print("Please provide via --api-key or CLICKUP_API_KEY.")
+            api_key = None
+
+    # If still no API key, prompt for manual input
+    if not api_key:
+        api_key = input('Enter ClickUp API Key: ')
 
     # Check if interactive mode should be enabled when not explicitly set
     interactive_mode = args.interactive
