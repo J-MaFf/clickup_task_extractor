@@ -77,7 +77,6 @@ if not sys.executable.startswith(os.path.join(script_dir, '.venv')) and os.path.
     # Re-execute the script with the virtual environment Python
     sys.exit(subprocess.call([venv_python] + sys.argv))
 
-import asyncio
 import csv
 import html
 import re
@@ -98,69 +97,12 @@ except ImportError:
     genai = None
     genai_types = None
 
-# Date/time formatting constants - cross-platform compatible
-TIMESTAMP_FORMAT = '%d-%m-%Y_%I-%M%p'  # For filenames (with leading zeros for compatibility)
-DISPLAY_FORMAT = '%d/%m/%Y at %I:%M %p'  # For HTML display (with leading zeros for compatibility)
+# Import configuration and data models
+from config import ClickUpConfig, TaskRecord, TIMESTAMP_FORMAT, DISPLAY_FORMAT, format_datetime, default_output_path
+# Import authentication functions
+from auth import _load_secret_with_fallback, get_secret_from_1password, get_api_key_from_1password, get_gemini_api_key_from_1password
 
-def format_datetime(dt: datetime, format_string: str) -> str:
-    """
-    Format datetime removing leading zeros from day, month, and hour.
 
-    Args:
-        dt: DateTime object to format
-        format_string: strftime format string to use
-
-    Returns:
-        Formatted datetime string without leading zeros
-    """
-    s = dt.strftime(format_string)
-    # Remove leading zeros from day and month
-    s = s.replace(dt.strftime('%d'), str(dt.day), 1)
-    s = s.replace(dt.strftime('%m'), str(dt.month), 1)
-    # Handle hour formatting for 12-hour format
-    hour_12 = dt.hour % 12
-    if hour_12 == 0:
-        hour_12 = 12
-    s = s.replace(dt.strftime('%I'), str(hour_12), 1)
-    return s
-
-def default_output_path() -> str:
-    """Generate default output path with timestamp without leading zeros."""
-    return f"output/WeeklyTaskList_{format_datetime(datetime.now(), TIMESTAMP_FORMAT)}.csv"
-# 1Password SDK imports
-try:
-    from onepassword.client import Client as OnePasswordClient
-except ImportError:
-    OnePasswordClient = None
-
-# --- Config DataClass ---
-@dataclass
-class ClickUpConfig:
-    api_key: str
-    workspace_name: str = 'KMS'
-    space_name: str = 'Kikkoman'
-    output_path: str = field(default_factory=default_output_path)
-    include_completed: bool = False
-    date_filter: str = 'AllOpen'  # 'ThisWeek', 'LastWeek', 'AllOpen'
-    enable_ai_summary: bool = False
-    gemini_api_key: Optional[str] = None
-    output_format: str = 'HTML'  # 'CSV', 'HTML', 'Both'
-    interactive_selection: bool = False
-    # Exclude tasks with these statuses
-    exclude_statuses: list = field(default_factory=lambda: ['Dormant', 'On Hold', 'Document'])
-
-# --- Task DataClass ---
-@dataclass
-class TaskRecord:
-    Task: str
-    Company: str
-    Branch: str
-    Priority: str
-    Status: str
-    ETA: str = ''
-    Notes: str = ''
-    Extra: str = ''
-    _metadata: dict = field(default_factory=dict, init=False, repr=False)
 
 # --- API Client (SRP) ---
 class ClickUpAPIClient:
@@ -381,118 +323,7 @@ Focus on the current state and what has been done or needs to be done. Be specif
 
     # Should never reach here, but just in case
     return f"Subject: {subject}\nDescription: {description}\nResolution: {resolution}".strip()# --- 1Password SDK Integration (SRP) ---
-def _load_secret_with_fallback(secret_reference: str, secret_name: str) -> Optional[str]:
-    """
-    Generic function to load a secret from 1Password using SDK with CLI fallback.
 
-    Args:
-        secret_reference: The 1Password secret reference
-        secret_name: Human-readable name for the secret (for error messages)
-
-    Returns:
-        The secret string if successful, None if failed
-    """
-    # Try 1Password SDK first
-    try:
-        secret = get_secret_from_1password(secret_reference, secret_name)
-        print(f"✓ {secret_name} loaded from 1Password SDK.")
-        return secret
-    except ImportError as e:
-        print(f"1Password SDK not available for {secret_name}: {e}")
-        print(f"Falling back to 1Password CLI for {secret_name}...")
-        # Fallback to 1Password CLI
-        try:
-            secret = subprocess.check_output([
-                'op', 'read', secret_reference
-            ], encoding='utf-8').strip()
-            print(f"✓ {secret_name} loaded from 1Password CLI.")
-            return secret
-        except Exception as cli_error:
-            print(f"Could not read {secret_name} from 1Password CLI: {cli_error}")
-            return None
-    except Exception as e:
-        print(f"Could not read {secret_name} from 1Password SDK: {e}")
-        return None
-
-def get_secret_from_1password(secret_reference: str, secret_type: str = "API key") -> Optional[str]:
-    """
-    Retrieve a secret from 1Password using the SDK.
-
-    Args:
-        secret_reference: The 1Password secret reference (e.g., "op://Home Server/ClickUp personal API token/credential")
-        secret_type: Description of the secret type for error messages (default: "API key")
-
-    Returns:
-        The secret string if successful, None if failed
-
-    Raises:
-        Various exceptions for different failure modes (network, auth, not found, etc.)
-    """
-    if OnePasswordClient is None:
-        raise ImportError("1Password SDK not available. Install with: pip install onepassword-sdk")
-
-    # Get service account token from environment
-    service_token = os.environ.get('OP_SERVICE_ACCOUNT_TOKEN')
-    if not service_token:
-        raise ValueError("OP_SERVICE_ACCOUNT_TOKEN environment variable not set. Required for 1Password SDK authentication.")
-
-    try:
-        async def _get_secret():
-            # Ensure OnePasswordClient is not None before using it
-            if OnePasswordClient is None:
-                raise ImportError("1Password SDK not available. Install with: pip install onepassword-sdk")
-            # Authenticate with 1Password using service account token
-            client = await OnePasswordClient.authenticate(
-                auth=service_token,
-                integration_name="ClickUp Task Extractor",
-                integration_version="1.0.0"
-            )
-
-            # Resolve the secret reference to get the secret
-            secret = await client.secrets.resolve(secret_reference)
-
-            if not secret:
-                raise ValueError(f"Secret reference '{secret_reference}' resolved to empty value")
-
-            return secret.strip()
-
-        # Run the async function
-        return asyncio.run(_get_secret())
-
-    except Exception as e:
-        # Re-raise with more context
-        error_msg = f"Failed to retrieve {secret_type} from 1Password: {type(e).__name__}: {e}"
-        raise RuntimeError(error_msg) from e
-
-def get_api_key_from_1password(secret_reference: str) -> Optional[str]:
-    """
-    Retrieve ClickUp API key from 1Password using the SDK.
-
-    Args:
-        secret_reference: The 1Password secret reference (e.g., "op://Home Server/ClickUp personal API token/credential")
-
-    Returns:
-        The API key string if successful, None if failed
-
-    Raises:
-        Various exceptions for different failure modes (network, auth, not found, etc.)
-    """
-    return get_secret_from_1password(secret_reference, "ClickUp API key")
-
-def get_gemini_api_key_from_1password(secret_reference: str) -> Optional[str]:
-    """
-    Retrieve Gemini API key from 1Password using the SDK.
-
-    Args:
-        secret_reference: The 1Password secret reference (e.g., "op://Home Server/nftoo3gsi3wpx7z5bdmcsvr7p4/credential")
-
-    Returns:
-        The Gemini API key string if successful, None if failed
-
-    Raises:
-        Various exceptions for different failure modes (network, auth, not found, etc.)
-    """
-    return get_secret_from_1password(secret_reference, "Gemini API key")
 
 # --- Location Mapper (SRP, OCP) ---
 class LocationMapper:
