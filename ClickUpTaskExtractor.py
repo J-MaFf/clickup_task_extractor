@@ -1,12 +1,22 @@
 """
 ClickUp Task Extractor (Python)
-- Authenticates with ClickUp API
+- Authenticates with ClickUp API using multiple methods:
+  1. Command line argument (--api-key)
+  2. Environment variable (CLICKUP_API_KEY)
+  3. 1Password SDK (requires OP_SERVICE_ACCOUNT_TOKEN)
+  4. 1Password CLI fallback (requires 'op' command)
+  5. Manual input prompt
 - Retrieves tasks for a workspace/space
 - Maps Branch (Location) field to human-readable label
 - Exports to CSV and HTML
 - Supports AI summary (optional), image extraction, and interactive exclusion
 - Matches PowerShell output/columns/features
 - SOLID principles applied
+
+1Password Integration:
+- SDK: Set OP_SERVICE_ACCOUNT_TOKEN environment variable
+- CLI: Ensure 'op' command is available in PATH
+- Secret reference: "op://Home Server/ClickUp personal API token/credential"
 """
 
 import os
