@@ -26,7 +26,7 @@ class ClickUpConfig:
     api_key: str
     workspace_name: str = 'KMS'
     space_name: str = 'Kikkoman'
-    output_path: str = f"output/WeeklyTaskList_{datetime.now().strftime('%d-%m-%Y_%I-%M%p')}.csv"
+    output_path: str = field(default_factory=lambda: f"output/WeeklyTaskList_{datetime.now().strftime('%d-%m-%Y_%I-%M%p')}.csv")
     include_completed: bool = False
     date_filter: str = 'AllOpen'  # 'ThisWeek', 'LastWeek', 'AllOpen'
     enable_ai_summary: bool = False
