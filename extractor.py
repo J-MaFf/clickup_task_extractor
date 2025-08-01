@@ -169,7 +169,6 @@ class ClickUpTaskExtractor:
             traceback.print_exc()
             sys.exit(1)
 
-    from typing import Optional
 
     def _process_task(self, task, list_custom_fields, list_item) -> Optional[TaskRecord]:
         """
