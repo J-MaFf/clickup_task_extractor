@@ -146,7 +146,6 @@ class ClickUpTaskExtractor:
                                 print(f"  Processing task {i}/{len(all_tasks)}: {task.Task}")
                                 if hasattr(task, '_metadata') and task._metadata:
                                     metadata = task._metadata
-                                    from ai_summary import get_ai_summary
                                     ai_notes = get_ai_summary(
                                         metadata['task_name'],
                                         metadata['subject'],
