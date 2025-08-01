@@ -366,7 +366,7 @@ def main():
     parser.add_argument('--ai-summary', action='store_true', help='Enable AI summary (requires github token)')
     parser.add_argument('--github-token', type=str, help='GitHub token for AI summary')
     parser.add_argument('--output-format', type=str, choices=['CSV', 'HTML', 'Both'], help='Output format (default: HTML)')
-    parser.add_argument('--interactive', action='store_true', help='Enable interactive exclusion')
+    parser.add_argument('--interactive', action='store_true', help='Enable interactive task selection')
     args = parser.parse_args()
 
     # 1Password reference for API key: op://Employee/ClickUp personal API token/credential
