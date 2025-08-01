@@ -24,13 +24,23 @@ from ai_summary import get_ai_summary
 from mappers import get_yes_no_input, get_date_range, extract_images, LocationMapper
 
 
+def get_export_fields() -> List[str]:
+    """
+    Get the list of fields to export, excluding internal fields like _metadata.
+
+    Returns:
+        List of field names for export (CSV headers and HTML columns)
+    """
+    return [field for field in TaskRecord.__annotations__.keys() if not field.startswith('_')]
+
+
 class ClickUpTaskExtractor:
     """Main orchestrator class for extracting and processing ClickUp tasks."""
-    
+
     def __init__(self, config: ClickUpConfig, api_client: ClickUpAPIClient, load_gemini_key_func=None):
         """
         Initialize the task extractor.
-        
+
         Args:
             config: Configuration settings
             api_client: ClickUp API client instance
@@ -96,12 +106,12 @@ class ClickUpTaskExtractor:
                     if task_record:
                         all_tasks.append(task_record)
             print(f"Total tasks found: {len(all_tasks)}")
-            
+
             # Handle AI summary if enabled
             if self.config.enable_ai_summary and not self.config.gemini_api_key and self.load_gemini_key_func:
                 # Load Gemini API key if not already set
                 self.config.gemini_api_key = self.load_gemini_key_func()
-                
+
             # Interactive selection
             if self.config.interactive_selection and all_tasks:
                 print(f"\nInteractive mode enabled - prompting for task selection...")
@@ -159,15 +169,17 @@ class ClickUpTaskExtractor:
             traceback.print_exc()
             sys.exit(1)
 
-    def _process_task(self, task, list_custom_fields, list_item) -> TaskRecord:
+    from typing import Optional
+
+    def _process_task(self, task, list_custom_fields, list_item) -> Optional[TaskRecord]:
         """
         Process a single task into a TaskRecord.
-        
+
         Args:
             task: Raw task data from ClickUp API
             list_custom_fields: Custom fields definition for the list
             list_item: The list object containing name and other metadata
-            
+
         Returns:
             TaskRecord instance or None if task should be skipped
         """
@@ -181,9 +193,9 @@ class ClickUpTaskExtractor:
             except Exception as e:
                 print(f"    Error fetching task {task}: {e}")
                 return None
-            
+
             task_name = task_detail.get('name', 'Unnamed Task')
-            
+
             # Handle task priority (from detailed task data)
             priority_obj = task_detail.get('priority')
             if isinstance(priority_obj, dict):
@@ -195,10 +207,10 @@ class ClickUpTaskExtractor:
                     priority = str(priority_val) if priority_val else 'Normal'
             else:
                 priority = 'Normal'
-            
+
             # Get task status
             status = task_detail.get('status', {}).get('status', 'Unknown')
-            
+
             # Get due date
             due_date = task_detail.get('due_date')
             eta = ''
@@ -208,20 +220,20 @@ class ClickUpTaskExtractor:
                     eta = format_datetime(due_dt, DISPLAY_FORMAT)
                 except (ValueError, OSError):
                     eta = 'Invalid Date'
-            
+
             # Company is the list name (like original code)
             company = list_item.get('name', '')
-            
+
             # Initialize other custom field values
             branch = ''
             subject = ''
             description = task_detail.get('description', '')
             resolution = ''
-            
+
             # Process custom fields from detailed task data
             task_custom_fields = task_detail.get('custom_fields', [])
             cf = {f['name']: f for f in task_custom_fields}
-            
+
             # Handle Branch field (like original)
             branch_field = cf.get('Branch')
             if branch_field:
@@ -229,7 +241,7 @@ class ClickUpTaskExtractor:
                 type_config = branch_field.get('type_config', {})
                 options = type_config.get('options', [])
                 branch = LocationMapper.map_location(val, type_config, options)
-            
+
             # Build notes from custom fields (like original)
             notes_parts = []
             for fname in ['Subject', 'Description', 'Resolution']:
@@ -261,13 +273,13 @@ class ClickUpTaskExtractor:
                 )
             else:
                 notes = '\n'.join(notes_parts)
-            
+
             # Extract images (like original)
             desc_img = extract_images(cf.get('Description', {}).get('value', ''))
             res_img = extract_images(cf.get('Resolution', {}).get('value', ''))
             task_img = extract_images(task_detail.get('description', ''))
             extra = ' | '.join([i for i in [desc_img, res_img, task_img] if i])
-            
+
             # Create task record (matching original structure)
             task_record = TaskRecord(
                 Task=task_name,
@@ -279,7 +291,7 @@ class ClickUpTaskExtractor:
                 Notes=notes,
                 Extra=extra
             )
-            
+
             # Store metadata for potential AI processing
             task_record._metadata = {
                 'task_name': task_name,
@@ -287,9 +299,9 @@ class ClickUpTaskExtractor:
                 'description': description,
                 'resolution': resolution
             }
-            
+
             return task_record
-            
+
         except Exception as e:
             print(f"Error processing task '{task.get('name', 'Unknown')}': {e}")
             import traceback
@@ -299,10 +311,10 @@ class ClickUpTaskExtractor:
     def interactive_include(self, tasks: List[TaskRecord]) -> List[TaskRecord]:
         """
         Allow user to interactively select which tasks to export.
-        
+
         Args:
             tasks: List of TaskRecord objects
-            
+
         Returns:
             List of selected TaskRecord objects
         """
@@ -350,7 +362,7 @@ class ClickUpTaskExtractor:
     def export(self, tasks: List[TaskRecord]):
         """
         Export tasks to CSV and/or HTML format.
-        
+
         Args:
             tasks: List of TaskRecord objects to export
         """
@@ -363,11 +375,14 @@ class ClickUpTaskExtractor:
             os.makedirs(outdir)
         # CSV
         if self.config.output_format in ('CSV', 'Both'):
+            export_fields = get_export_fields()
             with open(self.config.output_path, 'w', newline='', encoding='utf-8') as f:
-                writer = csv.DictWriter(f, fieldnames=TaskRecord.__annotations__.keys())
+                writer = csv.DictWriter(f, fieldnames=export_fields)
                 writer.writeheader()
                 for t in tasks:
-                    writer.writerow(asdict(t))
+                    # Get only the export fields, excluding internal fields like _metadata
+                    row_data = {field: getattr(t, field, '') for field in export_fields}
+                    writer.writerow(row_data)
             print(f"✓ CSV exported: {self.config.output_path}")
         # HTML
         if self.config.output_format in ('HTML', 'Both'):
@@ -379,18 +394,21 @@ class ClickUpTaskExtractor:
     def render_html(self, tasks: List[TaskRecord]) -> str:
         """
         Render tasks as styled HTML table.
-        
+
         Args:
             tasks: List of TaskRecord objects
-            
+
         Returns:
             Complete HTML document as string
         """
         # Simple HTML table, styled
         head = '''<!DOCTYPE html><html><head><meta charset="utf-8"><title>Weekly Task List</title><style>body{font-family:Arial,sans-serif;margin:20px;}table{border-collapse:collapse;width:100%;margin-top:20px;}th,td{border:1px solid #ddd;padding:12px;text-align:left;vertical-align:top;}th{background-color:#f2f2f2;font-weight:bold;}tr:nth-child(even){background-color:#f9f9f9;}.task-name{font-weight:bold;color:#2c5aa0;}.priority-high{color:#d73502;font-weight:bold;}.priority-normal{color:#0c7b93;}.priority-low{color:#6aa84f;}.notes{max-width:400px;white-space:pre-wrap;line-height:1.4;font-size:0.9em;}.status{padding:4px 8px;border-radius:4px;font-size:0.8em;font-weight:bold;}.status-open{background-color:#e8f4fd;color:#1f4e79;}.status-in-progress{background-color:#fff2cc;color:#7f6000;}.status-review{background-color:#f4cccc;color:#660000;}h1{color:#2c5aa0;}.summary{margin-bottom:20px;padding:15px;background-color:#f0f8ff;border-left:4px solid #2c5aa0;}</style></head><body>'''
         summary = f'<h1>Weekly Task List</h1><div class="summary"><strong>Generated:</strong> {format_datetime(datetime.now(), DISPLAY_FORMAT)}<br><strong>Total Tasks:</strong> {len(tasks)}<br><strong>Workspace:</strong> {html.escape(self.config.workspace_name)} / {html.escape(self.config.space_name)}</div>'
-        table = '<table><thead><tr>' + ''.join(f'<th>{k}</th>' for k in TaskRecord.__annotations__.keys()) + '</tr></thead><tbody>'
+
+        # Get export fields (excluding internal fields like _metadata)
+        export_fields = get_export_fields()
+        table = '<table><thead><tr>' + ''.join(f'<th>{k}</th>' for k in export_fields) + '</tr></thead><tbody>'
         for t in tasks:
-            table += '<tr>' + ''.join(f'<td>{html.escape(str(getattr(t, k) or ""))}</td>' for k in TaskRecord.__annotations__.keys()) + '</tr>'
+            table += '<tr>' + ''.join(f'<td>{html.escape(str(getattr(t, k) or ""))}</td>' for k in export_fields) + '</tr>'
         table += '</tbody></table></body></html>'
         return head + summary + table
