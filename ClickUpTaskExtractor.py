@@ -262,9 +262,9 @@ class ClickUpTaskExtractor:
         print("\nINTERACTIVE TASK SELECTION")
         print("Please select which tasks you would like to export:")
         print("-" * 60)
-        
+
         selected_tasks = []
-        
+
         for i, task in enumerate(tasks, 1):
             # Display task details
             print(f"\nTask {i}/{len(tasks)}:")
@@ -276,7 +276,7 @@ class ClickUpTaskExtractor:
                 # Show first 100 characters of notes
                 notes_preview = task.Notes[:100] + "..." if len(task.Notes) > 100 else task.Notes
                 print(f"  Notes: {notes_preview}")
-            
+
             # Prompt for user input with validation
             while True:
                 try:
@@ -294,7 +294,7 @@ class ClickUpTaskExtractor:
                 except (EOFError, KeyboardInterrupt):
                     print("\n\nOperation cancelled by user.")
                     return []
-        
+
         # Display summary
         print("\n" + "=" * 60)
         print("SELECTION SUMMARY")
@@ -307,7 +307,7 @@ class ClickUpTaskExtractor:
             print("No tasks selected for export.")
         print(f"\nTotal: {len(selected_tasks)} task(s) selected out of {len(tasks)}")
         print("=" * 60)
-        
+
         return selected_tasks
 
     def export(self, tasks: List[TaskRecord]):
@@ -385,6 +385,22 @@ def main():
             print("Could not read API key from 1Password CLI. Please provide via --api-key or CLICKUP_API_KEY.")
             api_key = input('Enter ClickUp API Key: ')
 
+    # Check if interactive mode should be enabled when not explicitly set
+    interactive_mode = args.interactive
+    if not interactive_mode:
+        try:
+            print("\nInteractive mode allows you to review and select which tasks to export.")
+            print("Without interactive mode, all tasks will be automatically exported.")
+            response = input('Would you like to run in interactive mode? (y/n): ').strip().lower()
+            interactive_mode = response in ['y', 'yes']
+            if interactive_mode:
+                print("✓ Interactive mode enabled - you'll be able to review each task before export.")
+            else:
+                print("✓ Running in automatic mode - all tasks will be exported.")
+        except (EOFError, KeyboardInterrupt):
+            print("\nDefaulting to automatic mode.")
+            interactive_mode = False
+
     config = ClickUpConfig(
         api_key=api_key,
         workspace_name=args.workspace or 'KMS',
@@ -395,7 +411,7 @@ def main():
         enable_ai_summary=args.ai_summary,
         github_token=args.github_token,
         output_format=args.output_format or 'HTML',
-        interactive_selection=args.interactive
+        interactive_selection=interactive_mode
     )
     client = ClickUpAPIClient(api_key)
     extractor = ClickUpTaskExtractor(config, client)
