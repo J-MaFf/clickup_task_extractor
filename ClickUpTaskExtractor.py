@@ -405,7 +405,7 @@ def main():
         api_key=api_key,
         workspace_name=args.workspace or 'KMS',
         space_name=args.space or 'Kikkoman',
-        output_path=args.output or f"output/WeeklyTaskList_{datetime.now().strftime('%d-%m-%Y_%I-%M%p')}.csv",
+        output_path=args.output or f"output/WeeklyTaskList_{datetime.now().strftime(TIMESTAMP_FORMAT)}.csv",
         include_completed=args.include_completed,
         date_filter=args.date_filter or 'AllOpen',
         enable_ai_summary=args.ai_summary,
