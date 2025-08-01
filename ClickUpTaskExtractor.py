@@ -254,9 +254,9 @@ class ClickUpTaskExtractor:
                     )
                     all_tasks.append(rec)
             print(f"Total tasks fetched: {len(all_tasks)}")
-            # Interactive exclusion
+            # Interactive selection
             if self.config.interactive_selection and all_tasks:
-                all_tasks = self.interactive_exclude(all_tasks)
+                all_tasks = self.interactive_include(all_tasks)
             # Export
             self.export(all_tasks)
         except Exception as e:
@@ -264,24 +264,49 @@ class ClickUpTaskExtractor:
             traceback.print_exc()
             sys.exit(1)
 
-    def interactive_exclude(self, tasks: List[TaskRecord]) -> List[TaskRecord]:
-        print("\nINTERACTIVE TASK EXCLUSION")
-        for idx, t in enumerate(tasks, 1):
-            print(f"[{idx}] {t.Task} [{t.Company}] [Branch: {t.Branch}] [{t.Status}]\n    {t.Notes[:100]}{'...' if len(t.Notes) > 100 else ''}")
-        sel = input("Enter task numbers to EXCLUDE (comma/range, or 'none', 'all'): ").strip().lower()
-        if sel in ('none', ''):
-            return tasks
-        if sel == 'all':
-            return []
-        indices = set()
-        for part in sel.split(','):
-            part = part.strip()
-            if '-' in part:
-                a, b = map(int, part.split('-'))
-                indices.update(range(a, b+1))
-            elif part.isdigit():
-                indices.add(int(part))
-        return [t for i, t in enumerate(tasks, 1) if i not in indices]
+    def interactive_include(self, tasks: List[TaskRecord]) -> List[TaskRecord]:
+        print("\nINTERACTIVE TASK SELECTION")
+        print("Please select which tasks you would like to export:")
+        print("-" * 60)
+        
+        selected_tasks = []
+        
+        for task in tasks:
+            # Display task details
+            print(f"\nTask: {task.Task}")
+            print(f"Company: {task.Company}")
+            print(f"Branch: {task.Branch}")
+            print(f"Status: {task.Status}")
+            if task.Notes:
+                # Show first 100 characters of notes
+                notes_preview = task.Notes[:100] + "..." if len(task.Notes) > 100 else task.Notes
+                print(f"Notes: {notes_preview}")
+            
+            # Prompt for user input with validation
+            while True:
+                response = input(f"Would you like to export task '{task.Task}'? (y/n): ").strip().lower()
+                if response in ['y', 'yes']:
+                    selected_tasks.append(task)
+                    break
+                elif response in ['n', 'no']:
+                    break
+                else:
+                    print("Please enter 'y' for yes or 'n' for no.")
+        
+        # Display summary
+        print("\n" + "=" * 60)
+        print("SELECTION SUMMARY")
+        print("=" * 60)
+        if selected_tasks:
+            print("The following tasks will be exported:")
+            for task in selected_tasks:
+                print(f"- {task.Task}")
+        else:
+            print("No tasks selected for export.")
+        print(f"\nTotal: {len(selected_tasks)} task(s) selected out of {len(tasks)}")
+        print("=" * 60)
+        
+        return selected_tasks
 
     def export(self, tasks: List[TaskRecord]):
         if not tasks:
