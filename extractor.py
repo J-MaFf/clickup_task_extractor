@@ -92,25 +92,51 @@ class ClickUpTaskExtractor:
                     custom_fields_cache[list_item['id']] = list_custom_fields
                 list_custom_fields = custom_fields_cache[list_item['id']]
                 for task in tasks:
-                    task_record = self._process_task(task, list_custom_fields)
+                    task_record = self._process_task(task, list_custom_fields, list_item)
                     if task_record:
                         all_tasks.append(task_record)
             print(f"Total tasks found: {len(all_tasks)}")
             
             # Handle AI summary if enabled
-            if self.config.enable_ai_summary:
+            if self.config.enable_ai_summary and not self.config.gemini_api_key and self.load_gemini_key_func:
                 # Load Gemini API key if not already set
-                if not self.config.gemini_api_key and self.load_gemini_key_func:
-                    self.config.gemini_api_key = self.load_gemini_key_func()
+                self.config.gemini_api_key = self.load_gemini_key_func()
                 
-                if self.config.gemini_api_key:
-                    if self.config.interactive_selection and all_tasks:
-                        if get_yes_no_input("Would you like to generate AI summaries for the selected tasks? This may take time and use API quota (y/n): ", default_on_interrupt=False):
+            # Interactive selection
+            if self.config.interactive_selection and all_tasks:
+                print(f"\nInteractive mode enabled - prompting for task selection...")
+                all_tasks = self.interactive_include(all_tasks)
+
+                # After task selection in interactive mode, ask about AI summary if not already set
+                if all_tasks and not self.config.enable_ai_summary:
+                    print(f"\nYou have selected {len(all_tasks)} task(s) for export.")
+                    print("AI summary can generate concise 1-2 sentence summaries of task status using Google Gemini.")
+                    if get_yes_no_input('Would you like to enable AI summaries for the selected tasks? (y/n): ', default_on_interrupt=False):
+                        # Try to load Gemini API key
+                        gemini_key_loaded = False
+                        if self.load_gemini_key_func:
+                            if self.load_gemini_key_func():
+                                gemini_key_loaded = True
+                                print("✓ Gemini API key loaded from 1Password.")
+
+                        if not gemini_key_loaded:
+                            gemini_key = input('Enter Gemini API Key (or press Enter to skip AI summary): ').strip()
+                            if gemini_key:
+                                self.config.gemini_api_key = gemini_key
+                                gemini_key_loaded = True
+                                print("✓ Manual Gemini API key entered.")
+                            else:
+                                print("✓ Proceeding without AI summary.")
+
+                        if gemini_key_loaded and self.config.gemini_api_key:
+                            self.config.enable_ai_summary = True
+                            # Regenerate notes with AI for selected tasks
                             print("Generating AI summaries for selected tasks...")
                             for i, task in enumerate(all_tasks, 1):
                                 print(f"  Processing task {i}/{len(all_tasks)}: {task.Task}")
                                 if hasattr(task, '_metadata') and task._metadata:
                                     metadata = task._metadata
+                                    from ai_summary import get_ai_summary
                                     ai_notes = get_ai_summary(
                                         metadata['task_name'],
                                         metadata['subject'],
@@ -133,29 +159,48 @@ class ClickUpTaskExtractor:
             traceback.print_exc()
             sys.exit(1)
 
-    def _process_task(self, task, list_custom_fields) -> TaskRecord:
+    def _process_task(self, task, list_custom_fields, list_item) -> TaskRecord:
         """
         Process a single task into a TaskRecord.
         
         Args:
             task: Raw task data from ClickUp API
             list_custom_fields: Custom fields definition for the list
+            list_item: The list object containing name and other metadata
             
         Returns:
             TaskRecord instance or None if task should be skipped
         """
         try:
-            task_name = task.get('name', 'Unnamed Task')
+            # Fetch detailed task information (like original code)
+            try:
+                task_detail = self.api.get(f"/task/{task['id']}")
+                if not task_detail or not isinstance(task_detail, dict):
+                    print(f"    Unexpected task detail for task {task.get('id')}: {task_detail}")
+                    return None
+            except Exception as e:
+                print(f"    Error fetching task {task}: {e}")
+                return None
             
-            # Handle task priority
-            priority_map = {1: 'Low', 2: 'Normal', 3: 'High', 4: 'Urgent'}
-            priority = priority_map.get(task.get('priority', {}).get('priority'), 'Normal') if task.get('priority') else 'Normal'
+            task_name = task_detail.get('name', 'Unnamed Task')
+            
+            # Handle task priority (from detailed task data)
+            priority_obj = task_detail.get('priority')
+            if isinstance(priority_obj, dict):
+                priority_val = priority_obj.get('priority')
+                if isinstance(priority_val, int):
+                    priority_map = {1: 'Low', 2: 'Normal', 3: 'High', 4: 'Urgent'}
+                    priority = priority_map.get(priority_val, 'Normal')
+                else:
+                    priority = str(priority_val) if priority_val else 'Normal'
+            else:
+                priority = 'Normal'
             
             # Get task status
-            status = task.get('status', {}).get('status', 'Unknown')
+            status = task_detail.get('status', {}).get('status', 'Unknown')
             
             # Get due date
-            due_date = task.get('due_date')
+            due_date = task_detail.get('due_date')
             eta = ''
             if due_date:
                 try:
@@ -164,44 +209,66 @@ class ClickUpTaskExtractor:
                 except (ValueError, OSError):
                     eta = 'Invalid Date'
             
-            # Initialize custom field values
-            company = ''
+            # Company is the list name (like original code)
+            company = list_item.get('name', '')
+            
+            # Initialize other custom field values
             branch = ''
             subject = ''
-            description = task.get('description', '')
+            description = task_detail.get('description', '')
             resolution = ''
             
-            # Process custom fields
-            task_custom_fields = task.get('custom_fields', [])
+            # Process custom fields from detailed task data
+            task_custom_fields = task_detail.get('custom_fields', [])
+            cf = {f['name']: f for f in task_custom_fields}
             
-            for tcf in task_custom_fields:
-                field_id = tcf.get('id')
-                field_value = tcf.get('value')
-                
-                # Find the field definition
-                field_def = next((f for f in list_custom_fields if f.get('id') == field_id), None)
-                if not field_def:
-                    continue
-                
-                field_name = field_def.get('name', '').lower()
-                field_type = field_def.get('type_config', {})
-                field_options = field_type.get('options', [])
-                
-                # Map field values based on field name
-                if 'company' in field_name:
-                    company = str(field_value) if field_value else ''
-                elif 'branch' in field_name or 'location' in field_name:
-                    branch = LocationMapper.map_location(field_value, field_type, field_options) if field_value else ''
-                elif 'subject' in field_name:
-                    subject = str(field_value) if field_value else ''
-                elif 'resolution' in field_name:
-                    resolution = str(field_value) if field_value else ''
+            # Handle Branch field (like original)
+            branch_field = cf.get('Branch')
+            if branch_field:
+                val = branch_field.get('value')
+                type_config = branch_field.get('type_config', {})
+                options = type_config.get('options', [])
+                branch = LocationMapper.map_location(val, type_config, options)
             
-            # Extract images from description
-            images = extract_images(description)
-            extra_content = f"Images: {images}" if images else ""
+            # Build notes from custom fields (like original)
+            notes_parts = []
+            for fname in ['Subject', 'Description', 'Resolution']:
+                f = cf.get(fname)
+                if f and f.get('value'):
+                    if fname == 'Subject':
+                        subject = f['value']
+                    elif fname == 'Description':
+                        description = f['value']
+                    elif fname == 'Resolution':
+                        resolution = f['value']
+                    notes_parts.append(f"{fname}: {f['value']}")
+
+            # Add task description if no custom Description field
+            if not cf.get('Description') and task_detail.get('description'):
+                task_desc = task_detail['description']
+                description = task_desc
+                notes_parts.append(f"Task Description: {task_desc}")
+
+            # Generate AI summary or use original notes
+            if self.config.enable_ai_summary and self.config.gemini_api_key:
+                from ai_summary import get_ai_summary
+                notes = get_ai_summary(
+                    task_detail.get('name', ''),
+                    subject,
+                    description,
+                    resolution,
+                    self.config.gemini_api_key
+                )
+            else:
+                notes = '\n'.join(notes_parts)
             
-            # Create task record
+            # Extract images (like original)
+            desc_img = extract_images(cf.get('Description', {}).get('value', ''))
+            res_img = extract_images(cf.get('Resolution', {}).get('value', ''))
+            task_img = extract_images(task_detail.get('description', ''))
+            extra = ' | '.join([i for i in [desc_img, res_img, task_img] if i])
+            
+            # Create task record (matching original structure)
             task_record = TaskRecord(
                 Task=task_name,
                 Company=company,
@@ -209,8 +276,8 @@ class ClickUpTaskExtractor:
                 Priority=priority,
                 Status=status,
                 ETA=eta,
-                Notes='',  # Will be filled by AI summary if enabled
-                Extra=extra_content
+                Notes=notes,
+                Extra=extra
             )
             
             # Store metadata for potential AI processing
@@ -225,6 +292,8 @@ class ClickUpTaskExtractor:
             
         except Exception as e:
             print(f"Error processing task '{task.get('name', 'Unknown')}': {e}")
+            import traceback
+            traceback.print_exc()
             return None
 
     def interactive_include(self, tasks: List[TaskRecord]) -> List[TaskRecord]:
