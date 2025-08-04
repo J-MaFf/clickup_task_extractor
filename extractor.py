@@ -90,7 +90,9 @@ class ClickUpTaskExtractor:
                 if not self.config.include_completed:
                     tasks = [t for t in tasks if not t.get('archived') and t.get('status', {}).get('status', '') != 'closed']
                 if self.config.exclude_statuses:
-                    tasks = [t for t in tasks if t.get('status', {}).get('status', '') not in self.config.exclude_statuses]
+                    # Create lowercase versions of exclude_statuses for case-insensitive comparison
+                    exclude_statuses_lower = [status.lower() for status in self.config.exclude_statuses]
+                    tasks = [t for t in tasks if t.get('status', {}).get('status', '').lower() not in exclude_statuses_lower]
                 start_date, end_date = get_date_range(self.config.date_filter)
                 if start_date and end_date:
                     tasks = [t for t in tasks if start_date <= datetime.fromtimestamp(int(t['date_created']) / 1000) <= end_date]

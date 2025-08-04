@@ -79,7 +79,7 @@ The project now follows a clean modular architecture with single responsibility 
 - **Interactive selection**: Use the `interactive_include` method for user-driven task filtering before export
 - **Output formats**: Controlled by `output_format` in config (`CSV`, `HTML`, or `Both`)
 - **Date formatting**: Cross-platform compatible without leading zeros using post-processing of strftime output
-- **Status filtering**: Use `exclude_statuses` list in config to filter out unwanted task statuses (default: ['Dormant', 'On Hold', 'Document'])
+- **Status filtering**: Use `exclude_statuses` list in config to filter out unwanted task statuses (default: ['Blocked', 'Dormant', 'On Hold', 'Document'])
 - **Error handling**: Comprehensive error handling with debugging information for API failures
 - **1Password integration**: Secure credential management with SDK preference and CLI fallback
 
@@ -115,7 +115,7 @@ The project now follows a clean modular architecture with single responsibility 
 - `output_format`: Export format - 'CSV', 'HTML', or 'Both' (default: 'HTML')
 - `include_completed`: Include completed/archived tasks (default: False)
 - `interactive_selection`: Enable task review and selection (default: False, prompted if not set)
-- `exclude_statuses`: List of task statuses to exclude (default: ['Dormant', 'On Hold', 'Document'])
+- `exclude_statuses`: List of task statuses to exclude (default: ['Blocked', 'Dormant', 'On Hold', 'Document'])
 - `date_filter`: Date filtering - 'AllOpen', 'ThisWeek', 'LastWeek' (default: 'AllOpen')
 - `enable_ai_summary`: Enable AI summarization (requires github_token)
 
@@ -129,7 +129,7 @@ The project now follows a clean modular architecture with single responsibility 
 
 ## Key Files
 - **`main.py`**: Primary entry point with CLI parsing and orchestration
-- **`clickup_task_extractor.py`**: Legacy entry point for backward compatibility  
+- **`clickup_task_extractor.py`**: Legacy entry point for backward compatibility
 - **`config.py`**: Configuration dataclasses and constants
 - **`auth.py`**: Authentication and 1Password integration
 - **`api_client.py`**: ClickUp API HTTP client
