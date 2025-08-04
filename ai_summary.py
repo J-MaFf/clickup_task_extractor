@@ -115,20 +115,13 @@ Focus on the current state and what has been done or needs to be done. Be specif
             else:
                 config = None
 
-            # Make API call with Rich status indicator
-            if RICH_AVAILABLE and _console and Status:
-                with _console.status(f"[bold green]🤖 Generating AI summary for '{task_name}'...", spinner="dots"):
-                    response = client.models.generate_content(
-                        model='gemini-2.5-flash-lite',
-                        contents=prompt,
-                        config=config
-                    )
-            else:
-                response = client.models.generate_content(
-                    model='gemini-2.5-flash-lite',
-                    contents=prompt,
-                    config=config
-                )
+            # Make API call without status indicator to avoid progress bar conflicts
+            # The main progress bar will handle the visual feedback
+            response = client.models.generate_content(
+                model='gemini-2.5-flash-lite',
+                contents=prompt,
+                config=config
+            )
 
             if response and hasattr(response, 'text') and response.text:
                 summary = response.text.strip()
