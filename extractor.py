@@ -47,7 +47,7 @@ except ImportError:
     from rich import print as rprint
 
 # Import project modules
-from config import ClickUpConfig, TaskRecord, DISPLAY_FORMAT, format_datetime
+from config import ClickUpConfig, TaskRecord, DISPLAY_FORMAT, format_datetime, OutputFormat
 from api_client import APIClient, ClickUpAPIClient, APIError, AuthenticationError
 from ai_summary import get_ai_summary
 from mappers import get_yes_no_input, get_date_range, extract_images, LocationMapper
@@ -612,7 +612,7 @@ class ClickUpTaskExtractor:
         ) as progress:
 
             # CSV Export
-            if self.config.output_format in ('CSV', 'Both'):
+            if self.config.output_format in (OutputFormat.CSV, OutputFormat.BOTH):
                 csv_task = progress.add_task("💾 Generating CSV...", total=None)
                 export_fields = get_export_fields()
 
@@ -628,7 +628,7 @@ class ClickUpTaskExtractor:
                 console.print(f"✅ [green]CSV exported:[/green] [bold]{self.config.output_path}[/bold]")
 
             # HTML Export
-            if self.config.output_format in ('HTML', 'Both'):
+            if self.config.output_format in (OutputFormat.HTML, OutputFormat.BOTH):
                 html_task = progress.add_task("🌐 Generating HTML...", total=None)
                 html_path = self.config.output_path.replace('.csv', '.html')
 
@@ -642,7 +642,7 @@ class ClickUpTaskExtractor:
         console.print(Panel(
             f"[bold green]🎉 Export completed successfully![/bold green]\n"
             f"📊 Exported [bold cyan]{len(tasks)}[/bold cyan] tasks\n"
-            f"📁 Format: [yellow]{self.config.output_format}[/yellow]",
+            f"📁 Format: [yellow]{self.config.output_format.value}[/yellow]",
             title="Export Complete",
             style="green"
         ))

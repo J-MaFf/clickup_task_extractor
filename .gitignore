@@ -5,3 +5,6 @@ output/
 __pycache__/
 *.pyc
 *.pyo
+
+# Ignore symlinked prompt file (system-specific path)
+.github/Python.prompt.md

@@ -129,7 +129,7 @@ Focus on the current state and what has been done or needs to be done. Be specif
                                 quota_value = int(quota_match.group(1))
                                 # Calculate delay based on quota (60 seconds / quota = delay per request)
                                 retry_delay = max(60 // quota_value, base_delay)
-                except:
+                except (ValueError, AttributeError, TypeError) as e:
                     # If parsing fails, use exponential backoff
                     retry_delay = base_delay * (2 ** attempt)
 

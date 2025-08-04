@@ -102,10 +102,10 @@ class ClickUpConfig:
         space_name: Name of the ClickUp space within the workspace
         output_path: File path for exported task data
         include_completed: Whether to include completed/archived tasks
-        date_filter: Date range filter ('AllOpen', 'ThisWeek', 'LastWeek')
+        date_filter: Date range filter (DateFilter enum: ALL_OPEN, THIS_WEEK, LAST_WEEK)
         enable_ai_summary: Whether to generate AI summaries using Gemini
         gemini_api_key: Google Gemini API key for AI functionality
-        output_format: Export format ('CSV', 'HTML', 'Both')
+        output_format: Export format (OutputFormat enum: CSV, HTML, BOTH)
         interactive_selection: Whether to enable interactive task selection
         exclude_statuses: List of task statuses to exclude from export
 
@@ -121,13 +121,13 @@ class ClickUpConfig:
     space_name: str = 'Kikkoman'
     output_path: str = field(default_factory=default_output_path)
     include_completed: bool = False
-    date_filter: str = 'AllOpen'  # 'ThisWeek', 'LastWeek', 'AllOpen'
+    date_filter: DateFilter = DateFilter.ALL_OPEN
     enable_ai_summary: bool = False
     gemini_api_key: str | None = None
-    output_format: str = 'HTML'  # 'CSV', 'HTML', 'Both'
+    output_format: OutputFormat = OutputFormat.HTML
     interactive_selection: bool = False
     # Exclude tasks with these statuses
-    exclude_statuses: list = field(default_factory=lambda: ['Blocked', 'Dormant', 'On Hold', 'Document'])
+    exclude_statuses: list[str] = field(default_factory=lambda: ['Blocked', 'Dormant', 'On Hold', 'Document'])
 
 
 @dataclass
@@ -167,4 +167,4 @@ class TaskRecord:
     ETA: str = ''
     Notes: str = ''
     Extra: str = ''
-    _metadata: dict = field(default_factory=dict, init=False, repr=False)
+    _metadata: dict[str, str] = field(default_factory=dict, init=False, repr=False)

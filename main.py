@@ -50,7 +50,7 @@ except ImportError:
     from rich import print as rprint
 
 # Import project modules
-from config import ClickUpConfig, TIMESTAMP_FORMAT, format_datetime
+from config import ClickUpConfig, TIMESTAMP_FORMAT, format_datetime, DateFilter, OutputFormat
 from auth import _load_secret_with_fallback
 from api_client import ClickUpAPIClient
 from extractor import ClickUpTaskExtractor
@@ -184,16 +184,43 @@ def main():
         else:
             print("✓ AI summary disabled.")
 
+    # Convert string values to enums with fallback
+    date_filter = DateFilter.ALL_OPEN
+    if args.date_filter:
+        try:
+            date_filter = DateFilter(args.date_filter)
+        except ValueError:
+            # Fallback for old string values
+            date_filter_map = {
+                'AllOpen': DateFilter.ALL_OPEN,
+                'ThisWeek': DateFilter.THIS_WEEK,
+                'LastWeek': DateFilter.LAST_WEEK
+            }
+            date_filter = date_filter_map.get(args.date_filter, DateFilter.ALL_OPEN)
+
+    output_format = OutputFormat.HTML
+    if args.output_format:
+        try:
+            output_format = OutputFormat(args.output_format)
+        except ValueError:
+            # Fallback for old string values
+            output_format_map = {
+                'CSV': OutputFormat.CSV,
+                'HTML': OutputFormat.HTML,
+                'Both': OutputFormat.BOTH
+            }
+            output_format = output_format_map.get(args.output_format, OutputFormat.HTML)
+
     config = ClickUpConfig(
         api_key=api_key,
         workspace_name=args.workspace or 'KMS',
         space_name=args.space or 'Kikkoman',
         output_path=args.output or f"output/WeeklyTaskList_{format_datetime(datetime.now(), TIMESTAMP_FORMAT)}.csv",
         include_completed=args.include_completed,
-        date_filter=args.date_filter or 'AllOpen',
+        date_filter=date_filter,
         enable_ai_summary=args.ai_summary,
         gemini_api_key=gemini_api_key,
-        output_format=args.output_format or 'HTML',
+        output_format=output_format,
         interactive_selection=interactive_mode
     )
 
@@ -204,8 +231,8 @@ def main():
 
     config_table.add_row("Workspace", config.workspace_name)
     config_table.add_row("Space", config.space_name)
-    config_table.add_row("Output Format", config.output_format)
-    config_table.add_row("Date Filter", config.date_filter)
+    config_table.add_row("Output Format", config.output_format.value)
+    config_table.add_row("Date Filter", config.date_filter.value)
     config_table.add_row("Include Completed", "✅ Yes" if config.include_completed else "❌ No")
     config_table.add_row("Interactive Mode", "✅ Yes" if config.interactive_selection else "❌ No")
     config_table.add_row("AI Summary", "✅ Yes" if config.enable_ai_summary else "❌ No")

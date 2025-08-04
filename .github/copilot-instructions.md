@@ -1,5 +1,18 @@
 # Copilot Instructions for ClickUp Task Extractor
 
+## Core Development Guidelines
+
+**IMPORTANT**: Follow the comprehensive Python development guidelines specified in `.github/Python.prompt.md`. This includes:
+- SOLID principles and modular architecture
+- Modern type hints and type safety
+- Proper error handling with specific exceptions
+- Context managers for resource management
+- Protocol-based design over inheritance
+- Pathlib for cross-platform file operations
+- Comprehensive docstrings and code documentation
+
+The guidelines in `.github/Python.prompt.md` provide the foundation for all Python code in this project. The instructions below specify project-specific patterns and conventions that build upon those universal principles.
+
 ## Project Overview
 This project is a Python script for extracting, processing, and exporting tasks from the ClickUp API. It is designed to match the output and features of a PowerShell-based workflow, with a focus on clarity, maintainability, and adherence to SOLID principles. The script features cross-platform compatibility, 1Password integration for secure API key management, and interactive task selection.
 
@@ -71,24 +84,49 @@ The project now follows a clean modular architecture with single responsibility 
 - **Dependencies**: Only `requests` is required for basic functionality. Optional: `onepassword-sdk` for 1Password integration, `google-genai` for AI summaries.
 - **No test suite**: There are currently no automated tests.
 
+## Development Setup
+
+### Python Guidelines Symlink
+This project references centralized Python development guidelines via a symlink to `.github/Python.prompt.md`. To set up the symlink on Windows:
+
+```powershell
+# From the project root directory
+New-Item -ItemType SymbolicLink -Path ".github\Python.prompt.md" -Target "C:\Users\[USERNAME]\AppData\Roaming\Code\User\profiles\[PROFILE]\prompts\Python.prompt.md"
+```
+
+This ensures the project always uses the most up-to-date Python development standards while keeping them centrally managed.
+
 ## Project-Specific Patterns & Conventions
+
+**Note**: These patterns implement the SOLID principles and modern Python practices from `.github/Python.prompt.md` in ClickUp-specific ways:
+
 - **Modular architecture**: Each module has a single, well-defined responsibility following SOLID principles
 - **Clean imports**: No circular dependencies; each module imports only what it needs
+- **Type safety**: Uses modern type hints (`list[str]`, `str | None`) and type aliases (`TaskList`, `DateRange`, `SecretValue`)
+- **Protocol-based design**: `APIClient` protocol enables dependency inversion and easier testing
+- **Comprehensive error handling**: Specific exceptions (`APIError`, `AuthenticationError`) with proper chaining
+- **Context managers**: `export_file()` context manager for safe file operations with automatic cleanup
+- **Pathlib usage**: All file operations use `pathlib.Path` for cross-platform compatibility
 - **Backward compatibility**: Original `clickup_task_extractor.py` interface preserved for existing users
 - **Custom field handling**: Always use the `LocationMapper` for mapping custom fields to user-friendly labels with multiple fallback strategies (id → orderindex → name)
 - **Interactive selection**: Use the `interactive_include` method for user-driven task filtering before export
 - **Output formats**: Controlled by `output_format` in config (`CSV`, `HTML`, or `Both`)
 - **Date formatting**: Cross-platform compatible without leading zeros using post-processing of strftime output
 - **Status filtering**: Use `exclude_statuses` list in config to filter out unwanted task statuses (default: ['Blocked', 'Dormant', 'On Hold', 'Document'])
-- **Error handling**: Comprehensive error handling with debugging information for API failures
 - **1Password integration**: Secure credential management with SDK preference and CLI fallback
 
 ## Development Guidelines
-- **Adding new features**: Identify the appropriate module based on single responsibility principle
-- **New export fields**: Update the `TaskRecord` dataclass in `config.py` and adjust export logic in `extractor.py`
-- **New output formats**: Extend the `export` method in `extractor.py` and add config options
-- **New custom field mappings**: Extend the `LocationMapper` class in `mappers.py`
-- **New authentication methods**: Extend the authentication chain in `auth.py` and update `main.py`
+
+**Following .github/Python.prompt.md principles in this project:**
+
+- **Adding new features**: Identify the appropriate module based on single responsibility principle from SOLID guidelines
+- **New export fields**: Update the `TaskRecord` dataclass in `config.py` and adjust export logic in `extractor.py` (following dataclass best practices)
+- **New output formats**: Extend the `export` method in `extractor.py` and add config options (Open/Closed principle)
+- **New custom field mappings**: Extend the `LocationMapper` class in `mappers.py` with additional mapping logic
+- **New authentication methods**: Extend the authentication chain in `auth.py` and update `main.py` (Strategy pattern)
+- **Error handling**: Use specific exception types and proper error chaining as defined in Python guidelines
+- **Type hints**: Always use modern syntax (`list[str]`, `str | None`) and create type aliases for clarity
+- **File operations**: Use pathlib and context managers for all file I/O operations
 - **Date formatting changes**: Update functions in `config.py` for consistency across the application
 
 ## Integration Points

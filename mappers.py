@@ -12,6 +12,8 @@ import re
 from datetime import datetime, timedelta
 from typing import TypeAlias
 
+from config import DateFilter
+
 
 # Type aliases for clarity
 DateRange: TypeAlias = tuple[datetime | None, datetime | None]
@@ -36,22 +38,28 @@ def get_yes_no_input(prompt: str, default_on_interrupt: bool = False) -> bool:
         return default_on_interrupt
 
 
-def get_date_range(filter_name: str) -> DateRange:
+def get_date_range(filter_name: DateFilter | str) -> DateRange:
     """
     Get date range for filtering based on filter name.
 
     Args:
-        filter_name: Name of the date filter ('ThisWeek', 'LastWeek', etc.)
+        filter_name: DateFilter enum or string name of the date filter
 
     Returns:
         Tuple of (start_date, end_date) or (None, None) if no filter
     """
+    # Handle both enum and string inputs for backward compatibility
+    if isinstance(filter_name, DateFilter):
+        filter_str = filter_name.value
+    else:
+        filter_str = filter_name
+
     today = datetime.now()
-    if filter_name == 'ThisWeek':
+    if filter_str == 'ThisWeek':
         start = today - timedelta(days=today.weekday())
         end = start + timedelta(days=6)
         return start, end
-    elif filter_name == 'LastWeek':
+    elif filter_str == 'LastWeek':
         start = today - timedelta(days=today.weekday() + 7)
         end = start + timedelta(days=6)
         return start, end
