@@ -12,7 +12,10 @@ Contains:
 import os
 import asyncio
 import subprocess
-from typing import Optional
+from typing import TypeAlias
+
+# Type aliases for clarity
+SecretValue: TypeAlias = str | None
 
 # 1Password SDK imports
 try:
@@ -21,7 +24,7 @@ except ImportError:
     OnePasswordClient = None
 
 
-def _load_secret_with_fallback(secret_reference: str, secret_name: str) -> Optional[str]:
+def _load_secret_with_fallback(secret_reference: str, secret_name: str) -> SecretValue:
     """
     Generic function to load a secret from 1Password using SDK with CLI fallback.
 
@@ -55,7 +58,7 @@ def _load_secret_with_fallback(secret_reference: str, secret_name: str) -> Optio
         return None
 
 
-def get_secret_from_1password(secret_reference: str, secret_type: str = "API key") -> Optional[str]:
+def get_secret_from_1password(secret_reference: str, secret_type: str = "API key") -> SecretValue:
     """
     Retrieve a secret from 1Password using the SDK.
 
@@ -106,7 +109,7 @@ def get_secret_from_1password(secret_reference: str, secret_type: str = "API key
         raise RuntimeError(error_msg) from e
 
 
-def get_api_key_from_1password(secret_reference: str) -> Optional[str]:
+def get_api_key_from_1password(secret_reference: str) -> SecretValue:
     """
     Retrieve ClickUp API key from 1Password using the SDK.
 
@@ -122,7 +125,7 @@ def get_api_key_from_1password(secret_reference: str) -> Optional[str]:
     return get_secret_from_1password(secret_reference, "ClickUp API key")
 
 
-def get_gemini_api_key_from_1password(secret_reference: str) -> Optional[str]:
+def get_gemini_api_key_from_1password(secret_reference: str) -> SecretValue:
     """
     Retrieve Gemini API key from 1Password using the SDK.
 
