@@ -22,7 +22,7 @@ try:
     RICH_AVAILABLE = True
 
     # Install rich tracebacks for beautiful error displays
-    install(show_locals=True, suppress=[logging])
+    install(show_locals=True, suppress=["logging"])
 except ImportError:
     RICH_AVAILABLE = False
     RichHandler = None
