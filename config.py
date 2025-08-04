@@ -61,7 +61,7 @@ class ClickUpConfig:
     output_format: str = 'HTML'  # 'CSV', 'HTML', 'Both'
     interactive_selection: bool = False
     # Exclude tasks with these statuses
-    exclude_statuses: list = field(default_factory=lambda: ['Dormant', 'On Hold', 'Document'])
+    exclude_statuses: list = field(default_factory=lambda: ['Blocked', 'Dormant', 'On Hold', 'Document'])
 
 
 @dataclass
