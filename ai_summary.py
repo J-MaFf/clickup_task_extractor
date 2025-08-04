@@ -174,7 +174,7 @@ Focus on the current state and what has been done or needs to be done. Be specif
                             transient=True  # Progress bar disappears when done
                         ) as progress:
                             task = progress.add_task("Waiting...", total=retry_delay)
-                            for i in range(retry_delay):
+                            for _ in range(retry_delay):
                                 time.sleep(1)
                                 progress.update(task, advance=1)
 
@@ -185,11 +185,10 @@ Focus on the current state and what has been done or needs to be done. Be specif
                         time.sleep(retry_delay)
                         print("Wait complete - retrying API call...")
                     continue
+                if RICH_AVAILABLE and _console:
+                    _console.print(f"❌ [red]Rate limit retry failed for task '{task_name}' after {max_retries} attempts.[/red]")
                 else:
-                    if RICH_AVAILABLE and _console:
-                        _console.print(f"❌ [red]Rate limit retry failed for task '{task_name}' after {max_retries} attempts.[/red]")
-                    else:
-                        print(f"Rate limit retry failed for task '{task_name}' after {max_retries} attempts.")
+                    print(f"Rate limit retry failed for task '{task_name}' after {max_retries} attempts.")
 
             else:
                 # Non-rate-limit error
