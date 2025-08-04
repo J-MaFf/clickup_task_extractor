@@ -10,4 +10,4 @@ __pycache__/
 .github/Python.prompt.md
 
 # Ignore VS code workspace file
-.vscode\clickup_task_extractor.code-workspace
+.vscode/clickup_task_extractor.code-workspace
