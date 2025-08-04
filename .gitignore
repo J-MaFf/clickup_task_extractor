@@ -8,3 +8,6 @@ __pycache__/
 
 # Ignore symlinked prompt file (system-specific path)
 .github/Python.prompt.md
+
+# Ignore VS code workspace file
+.vscode\clickup_task_extractor.code-workspace
