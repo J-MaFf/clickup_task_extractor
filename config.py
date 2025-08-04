@@ -11,7 +11,8 @@ Contains:
 
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Optional
+from typing import TypeAlias
+from enum import Enum
 
 
 # Date/time formatting constants - cross-platform compatible
@@ -19,9 +20,35 @@ TIMESTAMP_FORMAT = '%d-%m-%Y_%I-%M%p'  # For filenames (with leading zeros for c
 DISPLAY_FORMAT = '%d/%m/%Y at %I:%M %p'  # For HTML display (with leading zeros for compatibility)
 
 
+class TaskPriority(Enum):
+    """Enumeration of task priority levels."""
+    LOW = "Low"
+    NORMAL = "Normal"
+    HIGH = "High"
+    URGENT = "Urgent"
+
+
+class OutputFormat(Enum):
+    """Enumeration of supported output formats."""
+    CSV = "CSV"
+    HTML = "HTML"
+    BOTH = "Both"
+
+
+class DateFilter(Enum):
+    """Enumeration of supported date filter options."""
+    ALL_OPEN = "AllOpen"
+    THIS_WEEK = "ThisWeek"
+    LAST_WEEK = "LastWeek"
+
+
 def format_datetime(dt: datetime, format_string: str) -> str:
     """
     Format datetime removing leading zeros from day, month, and hour.
+
+    This function provides cross-platform compatible datetime formatting
+    by removing leading zeros from day (%d), month (%m), and hour (%I)
+    components for cleaner, more natural display.
 
     Args:
         dt: DateTime object to format
@@ -29,6 +56,11 @@ def format_datetime(dt: datetime, format_string: str) -> str:
 
     Returns:
         Formatted datetime string without leading zeros
+
+    Example:
+        >>> dt = datetime(2025, 1, 8, 9, 30, 0)
+        >>> format_datetime(dt, '%d/%m/%Y at %I:%M %p')
+        '8/1/2025 at 9:30 AM'
     """
     s = dt.strftime(format_string)
     # Remove leading zeros from day and month
@@ -43,13 +75,47 @@ def format_datetime(dt: datetime, format_string: str) -> str:
 
 
 def default_output_path() -> str:
-    """Generate default output path with timestamp without leading zeros."""
+    """
+    Generate default output path with timestamp without leading zeros.
+
+    Returns:
+        Default file path for task export using current timestamp
+
+    Example:
+        'output/WeeklyTaskList_8-1-2025_3-45PM.csv'
+    """
     return f"output/WeeklyTaskList_{format_datetime(datetime.now(), TIMESTAMP_FORMAT)}.csv"
 
 
 @dataclass
 class ClickUpConfig:
-    """Configuration settings for ClickUp Task Extractor."""
+    """
+    Configuration settings for ClickUp Task Extractor.
+
+    This dataclass centralizes all configuration options for the task extractor,
+    including API authentication, workspace/space selection, output formatting,
+    and filtering options.
+
+    Attributes:
+        api_key: ClickUp API key for authentication
+        workspace_name: Name of the ClickUp workspace to extract from
+        space_name: Name of the ClickUp space within the workspace
+        output_path: File path for exported task data
+        include_completed: Whether to include completed/archived tasks
+        date_filter: Date range filter ('AllOpen', 'ThisWeek', 'LastWeek')
+        enable_ai_summary: Whether to generate AI summaries using Gemini
+        gemini_api_key: Google Gemini API key for AI functionality
+        output_format: Export format ('CSV', 'HTML', 'Both')
+        interactive_selection: Whether to enable interactive task selection
+        exclude_statuses: List of task statuses to exclude from export
+
+    Example:
+        >>> config = ClickUpConfig(
+        ...     api_key="pk_123456789",
+        ...     workspace_name="My Workspace",
+        ...     space_name="Development"
+        ... )
+    """
     api_key: str
     workspace_name: str = 'KMS'
     space_name: str = 'Kikkoman'
@@ -57,7 +123,7 @@ class ClickUpConfig:
     include_completed: bool = False
     date_filter: str = 'AllOpen'  # 'ThisWeek', 'LastWeek', 'AllOpen'
     enable_ai_summary: bool = False
-    gemini_api_key: Optional[str] = None
+    gemini_api_key: str | None = None
     output_format: str = 'HTML'  # 'CSV', 'HTML', 'Both'
     interactive_selection: bool = False
     # Exclude tasks with these statuses
@@ -66,11 +132,37 @@ class ClickUpConfig:
 
 @dataclass
 class TaskRecord:
-    """Data structure for task export records."""
+    """
+    Data structure for task export records.
+
+    This dataclass represents a task record with all the fields that will be
+    exported to CSV/HTML format. It matches the structure expected by the
+    export functionality and provides a clean interface for task data.
+
+    Attributes:
+        Task: Task name/title
+        Company: Company/List name where the task belongs
+        Branch: Branch/Location information from custom fields
+        Priority: Task priority level (Low, Normal, High, Urgent)
+        Status: Current task status
+        ETA: Estimated completion date/time
+        Notes: Task notes, description, or AI-generated summary
+        Extra: Additional information like image attachments
+        _metadata: Internal metadata for AI processing (not exported)
+
+    Example:
+        >>> task = TaskRecord(
+        ...     Task="Fix login bug",
+        ...     Company="Development",
+        ...     Branch="Web App",
+        ...     Priority="High",
+        ...     Status="In Progress"
+        ... )
+    """
     Task: str
     Company: str
     Branch: str
-    Priority: str
+    Priority: str  # Keep as string for CSV export compatibility
     Status: str
     ETA: str = ''
     Notes: str = ''

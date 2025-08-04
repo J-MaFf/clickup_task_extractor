@@ -11,7 +11,10 @@ Contains:
 
 import re
 import time
-from typing import Optional
+from typing import TypeAlias
+
+# Type aliases for clarity
+SummaryResult: TypeAlias = str
 
 # Google GenAI SDK imports
 try:
@@ -22,7 +25,7 @@ except ImportError:
     genai_types = None
 
 
-def get_ai_summary(task_name: str, subject: str, description: str, resolution: str, gemini_api_key: str) -> str:
+def get_ai_summary(task_name: str, subject: str, description: str, resolution: str, gemini_api_key: str) -> SummaryResult:
     """
     Generate a concise 1-2 sentence summary about the current status of the task using Google Gemini AI.
     Automatically handles rate limiting with intelligent retry logic.

@@ -15,7 +15,17 @@ import csv
 import html
 from datetime import datetime
 from dataclasses import asdict
-from typing import List, Optional
+from typing import TypeAlias
+from contextlib import contextmanager
+from pathlib import Path
+
+import os
+import sys
+import csv
+import html
+from datetime import datetime
+from dataclasses import asdict
+from typing import TypeAlias
 
 # Rich imports for beautiful console output
 try:
@@ -38,15 +48,48 @@ except ImportError:
 
 # Import project modules
 from config import ClickUpConfig, TaskRecord, DISPLAY_FORMAT, format_datetime
-from api_client import ClickUpAPIClient
+from api_client import APIClient, ClickUpAPIClient, APIError, AuthenticationError
 from ai_summary import get_ai_summary
 from mappers import get_yes_no_input, get_date_range, extract_images, LocationMapper
 
 # Initialize Rich console
 console = Console()
 
+# Type aliases for clarity
+TaskList: TypeAlias = list[TaskRecord]
 
-def get_export_fields() -> List[str]:
+
+@contextmanager
+def export_file(file_path: str, mode: str = 'w', encoding: str = 'utf-8'):
+    """
+    Context manager for safe file operations with automatic cleanup.
+
+    Args:
+        file_path: Path to the file to open
+        mode: File open mode (default: 'w')
+        encoding: File encoding (default: 'utf-8')
+
+    Yields:
+        File object for writing
+
+    Example:
+        >>> with export_file('output.csv') as f:
+        ...     writer = csv.writer(f)
+        ...     writer.writerow(['header1', 'header2'])
+    """
+    # Ensure output directory exists using pathlib
+    output_path = Path(file_path)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+
+    try:
+        with output_path.open(mode, newline='', encoding=encoding) as f:
+            yield f
+    except IOError as e:
+        console.print(f"[red]❌ Error writing to {file_path}: {e}[/red]")
+        raise
+
+
+def get_export_fields() -> list[str]:
     """
     Get the list of fields to export, excluding internal fields like _metadata.
 
@@ -59,7 +102,7 @@ def get_export_fields() -> List[str]:
 class ClickUpTaskExtractor:
     """Main orchestrator class for extracting and processing ClickUp tasks."""
 
-    def __init__(self, config: ClickUpConfig, api_client: ClickUpAPIClient, load_gemini_key_func=None):
+    def __init__(self, config: ClickUpConfig, api_client: APIClient, load_gemini_key_func=None) -> None:
         """
         Initialize the task extractor.
 
@@ -72,8 +115,56 @@ class ClickUpTaskExtractor:
         self.api = api_client
         self.load_gemini_key_func = load_gemini_key_func
 
-    def run(self):
-        """Main execution method for the task extraction process."""
+    def run(self) -> None:
+        """
+        Main execution method for the task extraction process.
+
+        This method orchestrates the entire task extraction workflow:
+        1. Fetches workspaces and spaces from ClickUp API
+        2. Retrieves task lists and processes tasks
+        3. Applies filtering and custom field mapping
+        4. Handles interactive selection if enabled
+        5. Exports results to specified format(s)
+
+        Raises:
+            AuthenticationError: If API authentication fails
+            APIError: If API requests fail
+            SystemExit: On critical errors that prevent execution
+        """
+        try:
+            self._fetch_and_process_tasks()
+        except AuthenticationError as e:
+            console.print(Panel(
+                f"[red]🔐 Authentication Failed[/red]\n"
+                f"[bold red]{str(e)}[/bold red]\n\n"
+                f"[dim]Please check your ClickUp API key and try again.[/dim]",
+                title="❌ Authentication Error",
+                style="red"
+            ))
+            sys.exit(1)
+        except APIError as e:
+            console.print(Panel(
+                f"[red]🌐 API Error Occurred[/red]\n"
+                f"[bold red]{str(e)}[/bold red]\n\n"
+                f"[dim]Check your internet connection and API key permissions.[/dim]",
+                title="❌ API Error",
+                style="red"
+            ))
+            sys.exit(1)
+        except Exception as e:
+            console.print(Panel(
+                f"[red]💥 Unexpected error occurred:[/red]\n"
+                f"[bold red]{str(e)}[/bold red]\n\n"
+                f"[dim]Check the traceback below for detailed information.[/dim]",
+                title="❌ Critical Error",
+                style="red"
+            ))
+            import traceback
+            console.print("[dim]" + traceback.format_exc() + "[/dim]")
+            sys.exit(1)
+
+    def _fetch_and_process_tasks(self) -> None:
+        """Internal method to handle the main task processing workflow."""
         try:
             with Progress(
                 SpinnerColumn(),
@@ -151,15 +242,27 @@ class ClickUpTaskExtractor:
                     tasks_resp = self.api.get(f"/list/{list_item['id']}/task?archived={str(self.config.include_completed).lower()}")
                     tasks = tasks_resp.get('tasks', [])
 
+                    # Apply filtering using list comprehensions for better performance
                     if not self.config.include_completed:
-                        tasks = [t for t in tasks if not t.get('archived') and t.get('status', {}).get('status', '') != 'closed']
+                        tasks = [
+                            t for t in tasks
+                            if not t.get('archived') and t.get('status', {}).get('status', '') != 'closed'
+                        ]
+
                     if self.config.exclude_statuses:
                         # Create lowercase versions of exclude_statuses for case-insensitive comparison
                         exclude_statuses_lower = [status.lower() for status in self.config.exclude_statuses]
-                        tasks = [t for t in tasks if t.get('status', {}).get('status', '').lower() not in exclude_statuses_lower]
+                        tasks = [
+                            t for t in tasks
+                            if t.get('status', {}).get('status', '').lower() not in exclude_statuses_lower
+                        ]
+
                     start_date, end_date = get_date_range(self.config.date_filter)
                     if start_date and end_date:
-                        tasks = [t for t in tasks if start_date <= datetime.fromtimestamp(int(t['date_created']) / 1000) <= end_date]
+                        tasks = [
+                            t for t in tasks
+                            if start_date <= datetime.fromtimestamp(int(t['date_created']) / 1000) <= end_date
+                        ]
 
                     console.print(f"  ✅ Found [bold cyan]{len(tasks)}[/bold cyan] tasks in list '[bold]{list_item['name']}[/bold]'")
 
@@ -169,10 +272,13 @@ class ClickUpTaskExtractor:
                         list_custom_fields = list_details.get('custom_fields', [])
                         custom_fields_cache[list_item['id']] = list_custom_fields
                     list_custom_fields = custom_fields_cache[list_item['id']]
-                    for task in tasks:
-                        task_record = self._process_task(task, list_custom_fields, list_item)
-                        if task_record:
-                            all_tasks.append(task_record)
+
+                    # Process tasks using list comprehension and filter out None values
+                    task_records = [
+                        self._process_task(task, list_custom_fields, list_item)
+                        for task in tasks
+                    ]
+                    all_tasks.extend(record for record in task_records if record is not None)
 
                     progress.advance(list_task)
 
@@ -276,10 +382,10 @@ class ClickUpTaskExtractor:
             ))
             import traceback
             console.print("[dim]" + traceback.format_exc() + "[/dim]")
-            sys.exit(1)
+            raise  # Re-raise to be caught by the outer try-catch
 
 
-    def _process_task(self, task, list_custom_fields, list_item) -> Optional[TaskRecord]:
+    def _process_task(self, task, list_custom_fields, list_item) -> TaskRecord | None:
         """
         Process a single task into a TaskRecord.
 
@@ -416,7 +522,7 @@ class ClickUpTaskExtractor:
             traceback.print_exc()
             return None
 
-    def interactive_include(self, tasks: List[TaskRecord]) -> List[TaskRecord]:
+    def interactive_include(self, tasks: TaskList) -> TaskList:
         """
         Allow user to interactively select which tasks to export.
 
@@ -486,7 +592,7 @@ class ClickUpTaskExtractor:
 
         return selected_tasks
 
-    def export(self, tasks: List[TaskRecord]):
+    def export(self, tasks: TaskList) -> None:
         """
         Export tasks to CSV and/or HTML format.
 
@@ -496,11 +602,6 @@ class ClickUpTaskExtractor:
         if not tasks:
             console.print('[yellow]⚠️  No tasks found to export.[/yellow]')
             return
-
-        # Ensure output dir
-        outdir = os.path.dirname(self.config.output_path)
-        if outdir and not os.path.exists(outdir):
-            os.makedirs(outdir)
 
         console.print(f"\n[bold blue]📤 Exporting {len(tasks)} tasks...[/bold blue]")
 
@@ -514,13 +615,15 @@ class ClickUpTaskExtractor:
             if self.config.output_format in ('CSV', 'Both'):
                 csv_task = progress.add_task("💾 Generating CSV...", total=None)
                 export_fields = get_export_fields()
-                with open(self.config.output_path, 'w', newline='', encoding='utf-8') as f:
+
+                with export_file(self.config.output_path, 'w') as f:
                     writer = csv.DictWriter(f, fieldnames=export_fields)
                     writer.writeheader()
                     for t in tasks:
                         # Get only the export fields, excluding internal fields like _metadata
                         row_data = {field: getattr(t, field, '') for field in export_fields}
                         writer.writerow(row_data)
+
                 progress.remove_task(csv_task)
                 console.print(f"✅ [green]CSV exported:[/green] [bold]{self.config.output_path}[/bold]")
 
@@ -528,8 +631,10 @@ class ClickUpTaskExtractor:
             if self.config.output_format in ('HTML', 'Both'):
                 html_task = progress.add_task("🌐 Generating HTML...", total=None)
                 html_path = self.config.output_path.replace('.csv', '.html')
-                with open(html_path, 'w', encoding='utf-8') as f:
+
+                with export_file(html_path, 'w') as f:
                     f.write(self.render_html(tasks))
+
                 progress.remove_task(html_task)
                 console.print(f"✅ [green]HTML exported:[/green] [bold]{html_path}[/bold]")
 
@@ -542,7 +647,7 @@ class ClickUpTaskExtractor:
             style="green"
         ))
 
-    def render_html(self, tasks: List[TaskRecord]) -> str:
+    def render_html(self, tasks: TaskList) -> str:
         """
         Render tasks as styled HTML table.
 

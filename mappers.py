@@ -10,7 +10,11 @@ Contains:
 
 import re
 from datetime import datetime, timedelta
-from typing import Optional, Tuple
+from typing import TypeAlias
+
+
+# Type aliases for clarity
+DateRange: TypeAlias = tuple[datetime | None, datetime | None]
 
 
 def get_yes_no_input(prompt: str, default_on_interrupt: bool = False) -> bool:
@@ -32,13 +36,13 @@ def get_yes_no_input(prompt: str, default_on_interrupt: bool = False) -> bool:
         return default_on_interrupt
 
 
-def get_date_range(filter_name: str) -> Tuple[Optional[datetime], Optional[datetime]]:
+def get_date_range(filter_name: str) -> DateRange:
     """
     Get date range for filtering based on filter name.
-    
+
     Args:
         filter_name: Name of the date filter ('ThisWeek', 'LastWeek', etc.)
-        
+
     Returns:
         Tuple of (start_date, end_date) or (None, None) if no filter
     """
@@ -57,10 +61,10 @@ def get_date_range(filter_name: str) -> Tuple[Optional[datetime], Optional[datet
 def extract_images(text: str) -> str:
     """
     Extract image references from text using various patterns.
-    
+
     Args:
         text: Text content to extract images from
-        
+
     Returns:
         Semicolon-separated string of image references
     """
@@ -80,17 +84,17 @@ def extract_images(text: str) -> str:
 
 class LocationMapper:
     """Mapper for ClickUp custom field values to human-readable labels."""
-    
+
     @staticmethod
     def map_location(val, type_, options) -> str:
         """
         Map ClickUp custom field value to human-readable label.
-        
+
         Args:
             val: The raw value from ClickUp
             type_: The field type
             options: List of available options for the field
-            
+
         Returns:
             Human-readable label for the value
         """
