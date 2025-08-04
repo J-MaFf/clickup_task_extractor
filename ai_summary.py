@@ -11,7 +11,10 @@ Contains:
 
 import re
 import time
-from typing import Optional
+from typing import TypeAlias
+
+# Type aliases for clarity
+SummaryResult: TypeAlias = str
 
 # Google GenAI SDK imports
 try:
@@ -22,7 +25,7 @@ except ImportError:
     genai_types = None
 
 
-def get_ai_summary(task_name: str, subject: str, description: str, resolution: str, gemini_api_key: str) -> str:
+def get_ai_summary(task_name: str, subject: str, description: str, resolution: str, gemini_api_key: str) -> SummaryResult:
     """
     Generate a concise 1-2 sentence summary about the current status of the task using Google Gemini AI.
     Automatically handles rate limiting with intelligent retry logic.
@@ -42,7 +45,7 @@ def get_ai_summary(task_name: str, subject: str, description: str, resolution: s
 
     # Check if Google GenAI SDK is available
     if genai is None:
-        print("Warning: Google GenAI SDK not available - install with: pip install google-genai")
+        print("Warning: Google GenAI SDK not available - install with: pip install google-generativeai")
         return f"Subject: {subject}\nDescription: {description}\nResolution: {resolution}".strip()
 
     max_retries = 3
@@ -126,7 +129,7 @@ Focus on the current state and what has been done or needs to be done. Be specif
                                 quota_value = int(quota_match.group(1))
                                 # Calculate delay based on quota (60 seconds / quota = delay per request)
                                 retry_delay = max(60 // quota_value, base_delay)
-                except:
+                except (ValueError, AttributeError):
                     # If parsing fails, use exponential backoff
                     retry_delay = base_delay * (2 ** attempt)
 

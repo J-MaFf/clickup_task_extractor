@@ -15,6 +15,15 @@ For the main application logic, see the individual modules:
 - extractor.py: Main business logic
 - main.py: Entry point and CLI parsing
 
+REQUIREMENTS:
+    - requests>=2.25.0
+    - onepassword-sdk>=0.3.1
+    - google-generativeai>=0.8.0
+    - rich>=14.0.0
+
+To install dependencies, run:
+    pip install -r requirements.txt
+
 USAGE:
     python clickup_task_extractor.py [options]
 

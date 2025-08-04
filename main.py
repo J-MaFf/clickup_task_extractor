@@ -30,12 +30,29 @@ if not sys.executable.startswith(os.path.join(script_dir, '.venv')) and os.path.
 import argparse
 from datetime import datetime
 
+# Rich imports for beautiful console output
+try:
+    from rich.console import Console
+    from rich.panel import Panel
+    from rich.text import Text
+    from rich.table import Table
+    from rich.prompt import Confirm
+    from rich import print as rprint
+except ImportError:
+    print("Error: The 'rich' library is required but not installed.")
+    print("Please install it using: pip install -r requirements.txt")
+    print("Or install just rich: pip install rich>=10.0.0")
+    sys.exit(1)
+
 # Import project modules
-from config import ClickUpConfig, TIMESTAMP_FORMAT, format_datetime
+from config import ClickUpConfig, TIMESTAMP_FORMAT, format_datetime, DateFilter, OutputFormat
 from auth import _load_secret_with_fallback
 from api_client import ClickUpAPIClient
 from extractor import ClickUpTaskExtractor
 from mappers import get_yes_no_input
+
+# Initialize Rich console
+console = Console()
 
 
 def main():
@@ -53,6 +70,18 @@ def main():
     4. 1Password CLI fallback (requires 'op' command available)
     5. Manual input prompt
     """
+    # Beautiful header
+    header_text = Text()
+    header_text.append("ClickUp Task Extractor", style="bold blue")
+    header_text.append(" 📋", style="emoji")
+
+    console.print(Panel(
+        header_text,
+        subtitle="Extract, process, and export ClickUp tasks with style!",
+        style="blue",
+        border_style="bright_blue"
+    ))
+
     parser = argparse.ArgumentParser(
         description="Extract and export ClickUp tasks to HTML (preferred) or CSV. Default workspace: KMS.\nAPI key 1Password reference: op://Home Server/ClickUp personal API token/credential\nRequires OP_SERVICE_ACCOUNT_TOKEN for 1Password SDK authentication."
     )
@@ -73,14 +102,25 @@ def main():
 
     if not api_key:
         # Try to get API key from 1Password with fallback
+        console.print(Panel(
+            "[yellow]🔐 Attempting to load API key from 1Password...[/yellow]\n"
+            "[dim]Reference: op://Home Server/ClickUp personal API token/credential[/dim]",
+            title="Authentication",
+            style="yellow"
+        ))
         secret_reference = 'op://Home Server/ClickUp personal API token/credential'
         api_key = _load_secret_with_fallback(secret_reference, "ClickUp API key")
         if not api_key:
-            print("Please provide via --api-key or CLICKUP_API_KEY.")
+            console.print(Panel(
+                "[red]❌ Could not load API key from 1Password.[/red]\n"
+                "[dim]Please provide via --api-key or CLICKUP_API_KEY environment variable.[/dim]",
+                title="Authentication Failed",
+                style="red"
+            ))
 
     # If still no API key, prompt for manual input
     if not api_key:
-        api_key = input('Enter ClickUp API Key: ')
+        api_key = console.input('[bold cyan]🔑 Enter ClickUp API Key: [/bold cyan]')
 
     # Load Gemini API key if AI summary is enabled and no key provided via CLI
     gemini_api_key = args.gemini_api_key
@@ -97,45 +137,74 @@ def main():
         if gemini_api_key:
             return True
         else:
-            print("Please provide via --gemini-api-key.")
+            console.print("Please provide via --gemini-api-key.")
             return False
 
     # If AI summary flag was explicitly used, load the key now
     if args.ai_summary and not gemini_api_key:
         if not load_gemini_api_key():
             # If still no Gemini API key and AI summary is enabled, prompt for manual input
-            gemini_api_key = input('Enter Gemini API Key (or press Enter to disable AI summary): ')
+            gemini_api_key = console.input('🤖 [bold cyan]Enter Gemini API Key (or press Enter to disable AI summary): [/bold cyan]')
             if not gemini_api_key:
-                print("No Gemini API key provided. AI summary will be disabled.")
+                console.print("[yellow]⚠️  No Gemini API key provided. AI summary will be disabled.[/yellow]")
                 args.ai_summary = False
 
     # Check if interactive mode should be enabled when not explicitly set
     interactive_mode = args.interactive
     if not interactive_mode:
-        print("\nInteractive mode allows you to review and select which tasks to export.")
-        print("Without interactive mode, all tasks will be automatically exported.")
+        console.print("\n[bold blue]🔍 Interactive Mode[/bold blue]")
+        console.print("Interactive mode allows you to review and select which tasks to export.")
+        console.print("Without interactive mode, all tasks will be automatically exported.")
         interactive_mode = get_yes_no_input('Would you like to run in interactive mode? (y/n): ')
         if interactive_mode:
-            print("✓ Interactive mode enabled - you'll be able to review each task before export.")
+            console.print("✅ [green]Interactive mode enabled[/green] - you'll be able to review each task before export.")
         else:
-            print("✓ Running in automatic mode - all tasks will be exported.")
+            console.print("🚀 [green]Running in automatic mode[/green] - all tasks will be exported.")
 
-    # If not in interactive mode and AI summary wasn't explicitly set, ask now
-    if not interactive_mode and not args.ai_summary:
-        print("\nAI summary can generate concise 1-2 sentence summaries of task status using Google Gemini.")
+    # Ask about AI summary right after interactive mode (regardless of mode chosen)
+    if not args.ai_summary:
+        console.print("\n[bold blue]🤖 AI Summary[/bold blue]")
+        console.print("AI summary can generate concise 1-2 sentence summaries of task status using Google Gemini.")
         if get_yes_no_input('Would you like to enable AI summaries for tasks? (y/n): '):
             args.ai_summary = True
             if not load_gemini_api_key():
-                gemini_api_key = input('Enter Gemini API Key (or press Enter to disable AI summary): ')
+                gemini_api_key = console.input('[bold cyan]🤖 Enter Gemini API Key (or press Enter to disable AI summary): [/bold cyan]')
                 if not gemini_api_key:
-                    print("No Gemini API key provided. AI summary will be disabled.")
+                    console.print("[yellow]⚠️  No Gemini API key provided. AI summary will be disabled.[/yellow]")
                     args.ai_summary = False
                 else:
-                    print("✓ AI summary enabled with manual API key.")
+                    console.print("✅ [green]AI summary enabled with manual API key.[/green]")
             else:
-                print("✓ AI summary enabled.")
+                console.print("✅ [green]AI summary enabled.[/green]")
         else:
-            print("✓ AI summary disabled.")
+            console.print("✅ [green]AI summary disabled.[/green]")
+
+    # Convert string values to enums with fallback
+    date_filter = DateFilter.ALL_OPEN
+    if args.date_filter:
+        try:
+            date_filter = DateFilter(args.date_filter)
+        except ValueError:
+            # Fallback for old string values
+            date_filter_map = {
+                'AllOpen': DateFilter.ALL_OPEN,
+                'ThisWeek': DateFilter.THIS_WEEK,
+                'LastWeek': DateFilter.LAST_WEEK
+            }
+            date_filter = date_filter_map.get(args.date_filter, DateFilter.ALL_OPEN)
+
+    output_format = OutputFormat.HTML
+    if args.output_format:
+        try:
+            output_format = OutputFormat(args.output_format)
+        except ValueError:
+            # Fallback for old string values
+            output_format_map = {
+                'CSV': OutputFormat.CSV,
+                'HTML': OutputFormat.HTML,
+                'Both': OutputFormat.BOTH
+            }
+            output_format = output_format_map.get(args.output_format, OutputFormat.HTML)
 
     config = ClickUpConfig(
         api_key=api_key,
@@ -143,12 +212,27 @@ def main():
         space_name=args.space or 'Kikkoman',
         output_path=args.output or f"output/WeeklyTaskList_{format_datetime(datetime.now(), TIMESTAMP_FORMAT)}.csv",
         include_completed=args.include_completed,
-        date_filter=args.date_filter or 'AllOpen',
+        date_filter=date_filter,
         enable_ai_summary=args.ai_summary,
         gemini_api_key=gemini_api_key,
-        output_format=args.output_format or 'HTML',
+        output_format=output_format,
         interactive_selection=interactive_mode
     )
+
+    # Display beautiful configuration summary
+    config_table = Table(title="⚙️ Configuration Summary", show_header=True, header_style="bold cyan")
+    config_table.add_column("Setting", style="blue", no_wrap=True)
+    config_table.add_column("Value", style="green")
+
+    config_table.add_row("Workspace", config.workspace_name)
+    config_table.add_row("Space", config.space_name)
+    config_table.add_row("Output Format", config.output_format.value)
+    config_table.add_row("Date Filter", config.date_filter.value)
+    config_table.add_row("Include Completed", "✅ Yes" if config.include_completed else "❌ No")
+    config_table.add_row("Interactive Mode", "✅ Yes" if config.interactive_selection else "❌ No")
+    config_table.add_row("AI Summary", "✅ Yes" if config.enable_ai_summary else "❌ No")
+
+    console.print(config_table)
 
     # Function to load Gemini key and update config when needed
     def load_gemini_key_and_update_config():
