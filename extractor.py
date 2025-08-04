@@ -19,7 +19,6 @@ from typing import TypeAlias
 from contextlib import contextmanager
 from pathlib import Path
 
-import os
 import sys
 import csv
 import html
