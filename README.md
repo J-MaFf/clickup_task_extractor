@@ -2,7 +2,8 @@
 
 A powerful, cross-platform Python application for extracting, processing, and exporting tasks from the ClickUp API with beautiful console interfaces and AI-powered summaries.
 
-![Python](https://img.shields.io/badge/python-3.11%2B-blue.svg)
+![Python](https://img.shields.io/badge/python-3.9%2B-blue.svg)
+![Version](https://img.shields.io/badge/version-1.0.0-green.svg)
 ![Rich](https://img.shields.io/badge/rich-14.0%2B-green.svg)
 ![License](https://img.shields.io/badge/license-MIT-blue.svg)
 
