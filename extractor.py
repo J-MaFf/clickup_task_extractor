@@ -17,11 +17,33 @@ from datetime import datetime
 from dataclasses import asdict
 from typing import List, Optional
 
+# Rich imports for beautiful console output
+try:
+    from rich.console import Console
+    from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TaskProgressColumn
+    from rich.table import Table
+    from rich.panel import Panel
+    from rich.text import Text
+    from rich import print as rprint
+except ImportError:
+    print("The 'rich' library is not installed. Attempting to install it now...")
+    import subprocess
+    subprocess.check_call([sys.executable, "-m", "pip", "install", "rich"])
+    from rich.console import Console
+    from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TaskProgressColumn
+    from rich.table import Table
+    from rich.panel import Panel
+    from rich.text import Text
+    from rich import print as rprint
+
 # Import project modules
 from config import ClickUpConfig, TaskRecord, DISPLAY_FORMAT, format_datetime
 from api_client import ClickUpAPIClient
 from ai_summary import get_ai_summary
 from mappers import get_yes_no_input, get_date_range, extract_images, LocationMapper
+
+# Initialize Rich console
+console = Console()
 
 
 def get_export_fields() -> List[str]:
@@ -53,61 +75,122 @@ class ClickUpTaskExtractor:
     def run(self):
         """Main execution method for the task extraction process."""
         try:
-            print("Fetching workspaces...")
-            teams = self.api.get('/team')['teams']
-            team = next((t for t in teams if t['name'] == self.config.workspace_name), None)
-            if not team:
-                print(f"Error: Workspace '{self.config.workspace_name}' not found.")
-                return
-            print(f"Workspace found: {team['name']}")
-            print("Fetching spaces...")
-            spaces = self.api.get(f"/team/{team['id']}/space")['spaces']
-            space = next((s for s in spaces if s['name'] == self.config.space_name), None)
-            if not space:
-                print(f"Error: Space '{self.config.space_name}' not found.")
-                return
-            print(f"Space found: {space['name']}")
-            print("Fetching lists...")
-            lists = []
-            folder_resp = self.api.get(f"/space/{space['id']}/folder")
-            if not folder_resp or not isinstance(folder_resp, dict):
-                print(f"  Unexpected folder API response: {folder_resp}")
-                folders = []
+            with Progress(
+                SpinnerColumn(),
+                TextColumn("[progress.description]{task.description}"),
+                BarColumn(complete_style="green", finished_style="bold green"),
+                TaskProgressColumn(),
+                console=console,
+                transient=True
+            ) as progress:
+
+                # Fetch workspaces
+                task = progress.add_task("🏢 Fetching workspaces...", total=None)
+                teams = self.api.get('/team')['teams']
+                team = next((t for t in teams if t['name'] == self.config.workspace_name), None)
+                if not team:
+                    console.print(Panel(
+                        f"[red]Workspace '{self.config.workspace_name}' not found.[/red]\n"
+                        f"[dim]Available workspaces: {', '.join([t['name'] for t in teams[:3]])}{'...' if len(teams) > 3 else ''}[/dim]",
+                        title="❌ Workspace Error",
+                        style="red"
+                    ))
+                    return
+                console.print(f"✅ [green]Workspace found:[/green] [bold]{team['name']}[/bold]")
+                progress.remove_task(task)
+
+                # Fetch spaces
+                task = progress.add_task("🌌 Fetching spaces...", total=None)
+                spaces = self.api.get(f"/team/{team['id']}/space")['spaces']
+                space = next((s for s in spaces if s['name'] == self.config.space_name), None)
+                if not space:
+                    console.print(Panel(
+                        f"[red]Space '{self.config.space_name}' not found.[/red]\n"
+                        f"[dim]Available spaces: {', '.join([s['name'] for s in spaces[:3]])}{'...' if len(spaces) > 3 else ''}[/dim]",
+                        title="❌ Space Error",
+                        style="red"
+                    ))
+                    return
+                console.print(f"✅ [green]Space found:[/green] [bold]{space['name']}[/bold]")
+                progress.remove_task(task)
+
+                # Fetch lists
+                task = progress.add_task("📋 Fetching lists...", total=None)
+                lists = []
+                folder_resp = self.api.get(f"/space/{space['id']}/folder")
+                if not folder_resp or not isinstance(folder_resp, dict):
+                    console.print(f"[yellow]⚠️  Unexpected folder API response: {folder_resp}[/yellow]")
+                    folders = []
+                else:
+                    folders = folder_resp.get('folders', [])
+
+                for folder in folders:
+                    folder_lists = self.api.get(f"/folder/{folder['id']}/list")['lists']
+                    lists.extend(folder_lists)
+                space_lists = self.api.get(f"/space/{space['id']}/list?archived=false")['lists']
+                lists.extend(space_lists)
+                progress.remove_task(task)
+
+                console.print(Panel(
+                    f"[bold green]📋 Found {len(lists)} lists to process[/bold green]\n"
+                    f"[dim]Workspace: {team['name']} → Space: {space['name']}[/dim]",
+                    title="📊 Discovery Summary",
+                    style="green"
+                ))
+
+                # Process tasks from all lists
+                all_tasks = []
+                custom_fields_cache = {}
+
+                # Create progress bar for lists
+                list_task = progress.add_task("📝 Processing tasks from lists...", total=len(lists))
+
+                for list_item in lists:
+                    progress.update(list_task, description=f"📝 Processing: [bold]{list_item['name']}[/bold]")
+
+                    tasks_resp = self.api.get(f"/list/{list_item['id']}/task?archived={str(self.config.include_completed).lower()}")
+                    tasks = tasks_resp.get('tasks', [])
+
+                    if not self.config.include_completed:
+                        tasks = [t for t in tasks if not t.get('archived') and t.get('status', {}).get('status', '') != 'closed']
+                    if self.config.exclude_statuses:
+                        # Create lowercase versions of exclude_statuses for case-insensitive comparison
+                        exclude_statuses_lower = [status.lower() for status in self.config.exclude_statuses]
+                        tasks = [t for t in tasks if t.get('status', {}).get('status', '').lower() not in exclude_statuses_lower]
+                    start_date, end_date = get_date_range(self.config.date_filter)
+                    if start_date and end_date:
+                        tasks = [t for t in tasks if start_date <= datetime.fromtimestamp(int(t['date_created']) / 1000) <= end_date]
+
+                    console.print(f"  ✅ Found [bold cyan]{len(tasks)}[/bold cyan] tasks in list '[bold]{list_item['name']}[/bold]'")
+
+                    # Custom fields
+                    if list_item['id'] not in custom_fields_cache:
+                        list_details = self.api.get(f"/list/{list_item['id']}")
+                        list_custom_fields = list_details.get('custom_fields', [])
+                        custom_fields_cache[list_item['id']] = list_custom_fields
+                    list_custom_fields = custom_fields_cache[list_item['id']]
+                    for task in tasks:
+                        task_record = self._process_task(task, list_custom_fields, list_item)
+                        if task_record:
+                            all_tasks.append(task_record)
+
+                    progress.advance(list_task)
+
+                progress.remove_task(list_task)
+
+            # Create beautiful summary table
+            stats_table = Table(title="📈 Processing Statistics", show_header=True, header_style="bold blue")
+            stats_table.add_column("Metric", style="cyan", no_wrap=True)
+            stats_table.add_column("Count", justify="right", style="green")
+
+            stats_table.add_row("Lists Processed", str(len(lists)))
+            stats_table.add_row("Total Tasks Found", str(len(all_tasks)))
+            if self.config.include_completed:
+                stats_table.add_row("Filter", "[yellow]Including completed tasks[/yellow]")
             else:
-                folders = folder_resp.get('folders', [])
-            for folder in folders:
-                folder_lists = self.api.get(f"/folder/{folder['id']}/list")['lists']
-                lists.extend(folder_lists)
-            space_lists = self.api.get(f"/space/{space['id']}/list?archived=false")['lists']
-            lists.extend(space_lists)
-            print(f"Found {len(lists)} lists to process.")
-            all_tasks = []
-            custom_fields_cache = {}
-            for list_item in lists:
-                print(f"Fetching tasks from list: {list_item['name']}")
-                tasks_resp = self.api.get(f"/list/{list_item['id']}/task?archived={str(self.config.include_completed).lower()}")
-                tasks = tasks_resp.get('tasks', [])
-                if not self.config.include_completed:
-                    tasks = [t for t in tasks if not t.get('archived') and t.get('status', {}).get('status', '') != 'closed']
-                if self.config.exclude_statuses:
-                    # Create lowercase versions of exclude_statuses for case-insensitive comparison
-                    exclude_statuses_lower = [status.lower() for status in self.config.exclude_statuses]
-                    tasks = [t for t in tasks if t.get('status', {}).get('status', '').lower() not in exclude_statuses_lower]
-                start_date, end_date = get_date_range(self.config.date_filter)
-                if start_date and end_date:
-                    tasks = [t for t in tasks if start_date <= datetime.fromtimestamp(int(t['date_created']) / 1000) <= end_date]
-                print(f"  Found {len(tasks)} tasks in list '{list_item['name']}'")
-                # Custom fields
-                if list_item['id'] not in custom_fields_cache:
-                    list_details = self.api.get(f"/list/{list_item['id']}")
-                    list_custom_fields = list_details.get('custom_fields', [])
-                    custom_fields_cache[list_item['id']] = list_custom_fields
-                list_custom_fields = custom_fields_cache[list_item['id']]
-                for task in tasks:
-                    task_record = self._process_task(task, list_custom_fields, list_item)
-                    if task_record:
-                        all_tasks.append(task_record)
-            print(f"Total tasks found: {len(all_tasks)}")
+                stats_table.add_row("Filter", "[blue]Open tasks only[/blue]")
+
+            console.print(stats_table)
 
             # Handle AI summary if enabled
             if self.config.enable_ai_summary and not self.config.gemini_api_key and self.load_gemini_key_func:
@@ -116,36 +199,51 @@ class ClickUpTaskExtractor:
 
             # Interactive selection
             if self.config.interactive_selection and all_tasks:
-                print(f"\nInteractive mode enabled - prompting for task selection...")
+                console.print(Panel(
+                    f"[bold blue]🔍 Interactive Mode Enabled[/bold blue]\n"
+                    f"You will now review each of the [bold cyan]{len(all_tasks)}[/bold cyan] tasks found.\n"
+                    f"Choose which tasks to include in your export.",
+                    title="Interactive Selection",
+                    style="blue"
+                ))
                 all_tasks = self.interactive_include(all_tasks)
 
                 # After task selection in interactive mode, ask about AI summary if not already set
                 if all_tasks and not self.config.enable_ai_summary:
-                    print(f"\nYou have selected {len(all_tasks)} task(s) for export.")
-                    print("AI summary can generate concise 1-2 sentence summaries of task status using Google Gemini.")
+                    console.print(Panel(
+                        f"[bold blue]🤖 AI Summary Available[/bold blue]\n"
+                        f"You have selected [bold cyan]{len(all_tasks)}[/bold cyan] task(s) for export.\n"
+                        f"AI summary can generate concise 1-2 sentence summaries using Google Gemini.",
+                        title="AI Enhancement",
+                        style="blue"
+                    ))
                     if get_yes_no_input('Would you like to enable AI summaries for the selected tasks? (y/n): ', default_on_interrupt=False):
                         # Try to load Gemini API key
                         gemini_key_loaded = False
                         if self.load_gemini_key_func:
                             if self.load_gemini_key_func():
                                 gemini_key_loaded = True
-                                print("✓ Gemini API key loaded from 1Password.")
+                                console.print("✅ [green]Gemini API key loaded from 1Password.[/green]")
 
                         if not gemini_key_loaded:
-                            gemini_key = input('Enter Gemini API Key (or press Enter to skip AI summary): ').strip()
+                            gemini_key = console.input('[bold cyan]🔑 Enter Gemini API Key (or press Enter to skip): [/bold cyan]').strip()
                             if gemini_key:
                                 self.config.gemini_api_key = gemini_key
                                 gemini_key_loaded = True
-                                print("✓ Manual Gemini API key entered.")
+                                console.print("✅ [green]Manual Gemini API key entered.[/green]")
                             else:
-                                print("✓ Proceeding without AI summary.")
+                                console.print("ℹ️ [yellow]Proceeding without AI summary.[/yellow]")
 
                         if gemini_key_loaded and self.config.gemini_api_key:
                             self.config.enable_ai_summary = True
                             # Regenerate notes with AI for selected tasks
-                            print("Generating AI summaries for selected tasks...")
+                            console.print(Panel(
+                                f"[bold green]🧠 Generating AI summaries for {len(all_tasks)} selected tasks...[/bold green]",
+                                title="AI Processing",
+                                style="green"
+                            ))
                             for i, task in enumerate(all_tasks, 1):
-                                print(f"  Processing task {i}/{len(all_tasks)}: {task.Task}")
+                                console.print(f"  [dim]Processing task {i}/{len(all_tasks)}:[/dim] [bold]{task.Task}[/bold]")
                                 if hasattr(task, '_metadata') and task._metadata:
                                     metadata = task._metadata
                                     ai_notes = get_ai_summary(
@@ -156,18 +254,28 @@ class ClickUpTaskExtractor:
                                         self.config.gemini_api_key
                                     )
                                     task.Notes = ai_notes
-                            print("✓ AI summaries generated for selected tasks.")
+                            console.print("✅ [bold green]AI summaries generated for all selected tasks.[/bold green]")
                     else:
-                        print("✓ Proceeding without AI summary.")
+                        console.print("ℹ️ [yellow]Proceeding without AI summary.[/yellow]")
 
             elif self.config.interactive_selection and not all_tasks:
-                print("Interactive mode enabled but no tasks found to select from.")
+                console.print(Panel(
+                    "[yellow]⚠️ Interactive mode enabled but no tasks found to select from.[/yellow]",
+                    title="No Tasks Found",
+                    style="yellow"
+                ))
             # Export
             self.export(all_tasks)
         except Exception as e:
-            print(f"Fatal error: {e}")
+            console.print(Panel(
+                f"[red]💥 Fatal error occurred:[/red]\n"
+                f"[bold red]{str(e)}[/bold red]\n\n"
+                f"[dim]Check the traceback below for detailed information.[/dim]",
+                title="❌ Critical Error",
+                style="red"
+            ))
             import traceback
-            traceback.print_exc()
+            console.print("[dim]" + traceback.format_exc() + "[/dim]")
             sys.exit(1)
 
 
@@ -188,10 +296,10 @@ class ClickUpTaskExtractor:
             try:
                 task_detail = self.api.get(f"/task/{task['id']}")
                 if not task_detail or not isinstance(task_detail, dict):
-                    print(f"    Unexpected task detail for task {task.get('id')}: {task_detail}")
+                    console.print(f"    [yellow]⚠️ Unexpected task detail for task {task.get('id')}: {task_detail}[/yellow]")
                     return None
             except Exception as e:
-                print(f"    Error fetching task {task}: {e}")
+                console.print(f"    [red]❌ Error fetching task {task}: {e}[/red]")
                 return None
 
             task_name = task_detail.get('name', 'Unnamed Task')
@@ -318,44 +426,63 @@ class ClickUpTaskExtractor:
         Returns:
             List of selected TaskRecord objects
         """
-        print("\nINTERACTIVE TASK SELECTION")
-        print("Please select which tasks you would like to export:")
-        print("-" * 60)
+        console.print(Panel(
+            "[bold blue]INTERACTIVE TASK SELECTION[/bold blue]\n"
+            "Please select which tasks you would like to export:",
+            title="🔍 Task Selection",
+            style="blue"
+        ))
 
         selected_tasks = []
 
         for i, task in enumerate(tasks, 1):
-            # Display task details
-            print(f"\nTask {i}/{len(tasks)}:")
-            print(f"  Name: {task.Task}")
-            print(f"  Company: {task.Company}")
-            print(f"  Branch: {task.Branch}")
-            print(f"  Status: {task.Status}")
+            # Create a rich table for task details
+            task_table = Table(show_header=False, box=None, padding=(0, 1))
+            task_table.add_column("Field", style="bold cyan", width=12)
+            task_table.add_column("Value", style="white")
+
+            task_table.add_row("Name:", f"[bold]{task.Task}[/bold]")
+            task_table.add_row("Company:", task.Company)
+            task_table.add_row("Branch:", task.Branch)
+            task_table.add_row("Status:", f"[yellow]{task.Status}[/yellow]")
+            task_table.add_row("Priority:", task.Priority if task.Priority else "[dim]None[/dim]")
+
             if task.Notes:
-                # Show first 100 characters of notes
-                notes_preview = task.Notes[:100] + "..." if len(task.Notes) > 100 else task.Notes
-                print(f"  Notes: {notes_preview}")
+                # Show first 150 characters of notes
+                notes_preview = task.Notes[:150] + "..." if len(task.Notes) > 150 else task.Notes
+                task_table.add_row("Notes:", f"[dim]{notes_preview}[/dim]")
+            else:
+                task_table.add_row("Notes:", "[dim]None[/dim]")
+
+            # Display task in a panel
+            console.print(Panel(
+                task_table,
+                title=f"Task {i}/{len(tasks)}",
+                style="white"
+            ))
 
             # Prompt for user input with validation
-            sys.stdout.flush()  # Ensure output is flushed before input
             if get_yes_no_input(f"Would you like to export task '{task.Task}'? (y/n): ", default_on_interrupt=False):
                 selected_tasks.append(task)
-                print("  ✓ Added to export list")
+                console.print("  ✅ [green]Added to export list[/green]")
             else:
-                print("  ✗ Skipped")
+                console.print("  ❌ [red]Skipped[/red]")
+
+            console.print()  # Add spacing
 
         # Display summary
-        print("\n" + "=" * 60)
-        print("SELECTION SUMMARY")
-        print("=" * 60)
         if selected_tasks:
-            print("The following tasks will be exported:")
+            summary_table = Table(title="✅ Selected Tasks", show_header=False)
+            summary_table.add_column("Task", style="green")
+
             for task in selected_tasks:
-                print(f"  • {task.Task}")
+                summary_table.add_row(f"• {task.Task}")
+
+            console.print(summary_table)
         else:
-            print("No tasks selected for export.")
-        print(f"\nTotal: {len(selected_tasks)} task(s) selected out of {len(tasks)}")
-        print("=" * 60)
+            console.print("[yellow]⚠️  No tasks selected for export.[/yellow]")
+
+        console.print(f"\n[bold]📊 Summary:[/bold] [green]{len(selected_tasks)}[/green] task(s) selected out of [blue]{len(tasks)}[/blue] total")
 
         return selected_tasks
 
@@ -367,29 +494,53 @@ class ClickUpTaskExtractor:
             tasks: List of TaskRecord objects to export
         """
         if not tasks:
-            print('No tasks found to export.')
+            console.print('[yellow]⚠️  No tasks found to export.[/yellow]')
             return
+
         # Ensure output dir
         outdir = os.path.dirname(self.config.output_path)
         if outdir and not os.path.exists(outdir):
             os.makedirs(outdir)
-        # CSV
-        if self.config.output_format in ('CSV', 'Both'):
-            export_fields = get_export_fields()
-            with open(self.config.output_path, 'w', newline='', encoding='utf-8') as f:
-                writer = csv.DictWriter(f, fieldnames=export_fields)
-                writer.writeheader()
-                for t in tasks:
-                    # Get only the export fields, excluding internal fields like _metadata
-                    row_data = {field: getattr(t, field, '') for field in export_fields}
-                    writer.writerow(row_data)
-            print(f"✓ CSV exported: {self.config.output_path}")
-        # HTML
-        if self.config.output_format in ('HTML', 'Both'):
-            html_path = self.config.output_path.replace('.csv', '.html')
-            with open(html_path, 'w', encoding='utf-8') as f:
-                f.write(self.render_html(tasks))
-            print(f"✓ HTML exported: {html_path}")
+
+        console.print(f"\n[bold blue]📤 Exporting {len(tasks)} tasks...[/bold blue]")
+
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            console=console
+        ) as progress:
+
+            # CSV Export
+            if self.config.output_format in ('CSV', 'Both'):
+                csv_task = progress.add_task("💾 Generating CSV...", total=None)
+                export_fields = get_export_fields()
+                with open(self.config.output_path, 'w', newline='', encoding='utf-8') as f:
+                    writer = csv.DictWriter(f, fieldnames=export_fields)
+                    writer.writeheader()
+                    for t in tasks:
+                        # Get only the export fields, excluding internal fields like _metadata
+                        row_data = {field: getattr(t, field, '') for field in export_fields}
+                        writer.writerow(row_data)
+                progress.remove_task(csv_task)
+                console.print(f"✅ [green]CSV exported:[/green] [bold]{self.config.output_path}[/bold]")
+
+            # HTML Export
+            if self.config.output_format in ('HTML', 'Both'):
+                html_task = progress.add_task("🌐 Generating HTML...", total=None)
+                html_path = self.config.output_path.replace('.csv', '.html')
+                with open(html_path, 'w', encoding='utf-8') as f:
+                    f.write(self.render_html(tasks))
+                progress.remove_task(html_task)
+                console.print(f"✅ [green]HTML exported:[/green] [bold]{html_path}[/bold]")
+
+        # Final success message
+        console.print(Panel(
+            f"[bold green]🎉 Export completed successfully![/bold green]\n"
+            f"📊 Exported [bold cyan]{len(tasks)}[/bold cyan] tasks\n"
+            f"📁 Format: [yellow]{self.config.output_format}[/yellow]",
+            title="Export Complete",
+            style="green"
+        ))
 
     def render_html(self, tasks: List[TaskRecord]) -> str:
         """
