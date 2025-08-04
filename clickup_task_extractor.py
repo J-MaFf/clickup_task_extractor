@@ -7,7 +7,7 @@ A cross-platform Python script for extracting, processing, and exporting tasks f
 This file serves as a backward-compatible entry point that delegates to the new modular architecture.
 
 For the main application logic, see the individual modules:
-- config.py: Configuration and data models  
+- config.py: Configuration and data models
 - auth.py: Authentication and 1Password integration
 - api_client.py: ClickUp API client
 - ai_summary.py: AI integration with Google Gemini
@@ -17,7 +17,7 @@ For the main application logic, see the individual modules:
 
 USAGE:
     python clickup_task_extractor.py [options]
-    
+
 AUTHENTICATION PRIORITY:
 1. Command line argument (--api-key)
 2. Environment variable (CLICKUP_API_KEY)

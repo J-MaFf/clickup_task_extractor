@@ -15,7 +15,7 @@ import csv
 import html
 from datetime import datetime
 from dataclasses import asdict
-from typing import List
+from typing import List, Optional
 
 # Import project modules
 from config import ClickUpConfig, TaskRecord, DISPLAY_FORMAT, format_datetime
