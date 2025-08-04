@@ -39,15 +39,10 @@ try:
     from rich.prompt import Confirm
     from rich import print as rprint
 except ImportError:
-    print("The 'rich' library is not installed. Attempting to install it now...")
-    import subprocess
-    subprocess.check_call([sys.executable, "-m", "pip", "install", "rich"])
-    from rich.console import Console
-    from rich.panel import Panel
-    from rich.text import Text
-    from rich.table import Table
-    from rich.prompt import Confirm
-    from rich import print as rprint
+    print("Error: The 'rich' library is required but not installed.")
+    print("Please install it using: pip install -r requirements.txt")
+    print("Or install just rich: pip install rich>=10.0.0")
+    sys.exit(1)
 
 # Import project modules
 from config import ClickUpConfig, TIMESTAMP_FORMAT, format_datetime, DateFilter, OutputFormat

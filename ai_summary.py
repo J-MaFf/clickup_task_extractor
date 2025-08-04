@@ -45,7 +45,7 @@ def get_ai_summary(task_name: str, subject: str, description: str, resolution: s
 
     # Check if Google GenAI SDK is available
     if genai is None:
-        print("Warning: Google GenAI SDK not available - install with: pip install google-genai")
+        print("Warning: Google GenAI SDK not available - install with: pip install google-generativeai")
         return f"Subject: {subject}\nDescription: {description}\nResolution: {resolution}".strip()
 
     max_retries = 3
