@@ -22,7 +22,6 @@ try:
     # Create a singleton console instance to avoid repeated imports
     _console = Console()
     RICH_AVAILABLE = True
-    Progress = Progress
     TimeRemainingColumn = TimeRemainingColumn
     BarColumn = BarColumn
     TextColumn = TextColumn
