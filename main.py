@@ -46,6 +46,7 @@ except ImportError:
 
 # Import project modules
 from config import ClickUpConfig, TIMESTAMP_FORMAT, format_datetime, DateFilter, OutputFormat
+from version import __version__, __description__
 from auth import load_secret_with_fallback
 from api_client import ClickUpAPIClient
 from extractor import ClickUpTaskExtractor
@@ -78,6 +79,7 @@ def main():
     # Beautiful header
     header_text = Text()
     header_text.append("ClickUp Task Extractor", style="bold blue")
+    header_text.append(f" v{__version__}", style="dim blue")
     header_text.append(" 📋", style="emoji")
 
     console.print(Panel(
@@ -88,8 +90,10 @@ def main():
     ))
 
     parser = argparse.ArgumentParser(
-        description="Extract and export ClickUp tasks to HTML (preferred) or CSV. Default workspace: KMS.\nAPI key 1Password reference: op://Home Server/ClickUp personal API token/credential\nRequires OP_SERVICE_ACCOUNT_TOKEN for 1Password SDK authentication."
+        description=f"ClickUp Task Extractor v{__version__} - {__description__}\n\nExtract and export ClickUp tasks to HTML (preferred) or CSV. Default workspace: KMS.\nAPI key 1Password reference: op://Home Server/ClickUp personal API token/credential\nRequires OP_SERVICE_ACCOUNT_TOKEN for 1Password SDK authentication.",
+        formatter_class=argparse.RawDescriptionHelpFormatter
     )
+    parser.add_argument('--version', action='version', version=f'ClickUp Task Extractor v{__version__}')
     parser.add_argument('--api-key', type=str, default=os.environ.get('CLICKUP_API_KEY'), help='ClickUp API Key (or set CLICKUP_API_KEY env, or use 1Password SDK with OP_SERVICE_ACCOUNT_TOKEN, e.g. from 1Password: "op://Home Server/ClickUp personal API token/credential")')
     parser.add_argument('--workspace', type=str, help='Workspace name (default: KMS)')
     parser.add_argument('--space', type=str, help='Space name (default: Kikkoman)')
