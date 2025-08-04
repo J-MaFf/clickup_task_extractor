@@ -14,17 +14,29 @@ import asyncio
 import subprocess
 from typing import TypeAlias
 
+# Import logging infrastructure
+from logger_config import get_logger
+
+# Initialize logger for this module
+logger = get_logger(__name__)
+
 # Type aliases for clarity
 SecretValue: TypeAlias = str | None
 
-# 1Password SDK imports
+# 1Password SDK imports with PyInstaller compatibility
+OnePasswordClient = None
 try:
-    from onepassword.client import Client as OnePasswordClient
+    # Only import if not running as PyInstaller executable
+    import sys
+    if not getattr(sys, 'frozen', False):
+        from onepassword.client import Client as OnePasswordClient
+    else:
+        logger.info("Running as executable - 1Password SDK disabled, using CLI fallback only")
 except ImportError:
-    OnePasswordClient = None
+    pass  # Will use CLI fallback
 
 
-def _load_secret_with_fallback(secret_reference: str, secret_name: str) -> SecretValue:
+def load_secret_with_fallback(secret_reference: str, secret_name: str) -> SecretValue:
     """
     Generic function to load a secret from 1Password using SDK with CLI fallback.
 
@@ -38,23 +50,23 @@ def _load_secret_with_fallback(secret_reference: str, secret_name: str) -> Secre
     # Try 1Password SDK first
     try:
         secret = get_secret_from_1password(secret_reference, secret_name)
-        print(f"✓ {secret_name} loaded from 1Password SDK.")
+        logger.info(f"✅ {secret_name} loaded from 1Password SDK.")
         return secret
     except ImportError as e:
-        print(f"1Password SDK not available for {secret_name}: {e}")
-        print(f"Falling back to 1Password CLI for {secret_name}...")
+        logger.warning(f"1Password SDK not available for {secret_name}: {e}")
+        logger.info(f"Falling back to 1Password CLI for {secret_name}...")
         # Fallback to 1Password CLI
         try:
             secret = subprocess.check_output([
                 'op', 'read', secret_reference
             ], encoding='utf-8').strip()
-            print(f"✓ {secret_name} loaded from 1Password CLI.")
+            logger.info(f"✅ {secret_name} loaded from 1Password CLI.")
             return secret
         except Exception as cli_error:
-            print(f"Could not read {secret_name} from 1Password CLI: {cli_error}")
+            logger.error(f"Could not read {secret_name} from 1Password CLI: {cli_error}")
             return None
     except Exception as e:
-        print(f"Could not read {secret_name} from 1Password SDK: {e}")
+        logger.error(f"Could not read {secret_name} from 1Password SDK: {e}")
         return None
 
 

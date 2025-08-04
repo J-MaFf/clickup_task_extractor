@@ -262,12 +262,24 @@ class ClickUpTaskExtractor:
                         custom_fields_cache[list_item['id']] = list_custom_fields
                     list_custom_fields = custom_fields_cache[list_item['id']]
 
-                    # Process tasks using list comprehension and filter out None values
-                    task_records = [
-                        self._process_task(task, list_custom_fields, list_item)
-                        for task in tasks
-                    ]
-                    all_tasks.extend(record for record in task_records if record is not None)
+                    # Process tasks with AI feedback
+                    task_records = []
+                    for task in tasks:
+                        name = task.get('name', 'Unknown Task')
+                        task_name = name[:30] + ('...' if len(name) > 30 else '')
+
+                        if self.config.enable_ai_summary and self.config.gemini_api_key:
+                            # Update progress description to show AI processing
+                            progress.update(list_task, description=f"📝 Processing: [bold]{list_item['name']}[/bold] - 🤖 AI: {task_name}")
+                        else:
+                            # Update progress description for regular processing
+                            progress.update(list_task, description=f"📝 Processing: [bold]{list_item['name']}[/bold] - {task_name}")
+
+                        record = self._process_task(task, list_custom_fields, list_item)
+                        if record is not None:
+                            task_records.append(record)
+
+                    all_tasks.extend(task_records)
 
                     progress.advance(list_task)
 

@@ -6,6 +6,11 @@ __pycache__/
 *.pyc
 *.pyo
 
+# Ignore PyInstaller artifacts
+build/
+dist/
+*.spec
+
 # Ignore symlinked prompt file (system-specific path)
 .github/Python.prompt.md
 
