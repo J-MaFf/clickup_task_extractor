@@ -46,7 +46,7 @@ except ImportError:
 
 # Import project modules
 from config import ClickUpConfig, TIMESTAMP_FORMAT, format_datetime, DateFilter, OutputFormat
-from auth import _load_secret_with_fallback
+from auth import load_secret_with_fallback
 from api_client import ClickUpAPIClient
 from extractor import ClickUpTaskExtractor
 from mappers import get_yes_no_input
@@ -114,7 +114,7 @@ def main():
             style="yellow"
         ))
         secret_reference = 'op://Home Server/ClickUp personal API token/credential'
-        api_key = _load_secret_with_fallback(secret_reference, "ClickUp API key")
+        api_key = load_secret_with_fallback(secret_reference, "ClickUp API key")
         if not api_key:
             console.print(Panel(
                 "[red]❌ Could not load API key from 1Password.[/red]\n"
@@ -138,7 +138,7 @@ def main():
 
         # Try to get Gemini API key from 1Password with fallback
         gemini_secret_reference = 'op://Home Server/nftoo3gsi3wpx7z5bdmcsvr7p4/credential'
-        gemini_api_key = _load_secret_with_fallback(gemini_secret_reference, "Gemini API key")
+        gemini_api_key = load_secret_with_fallback(gemini_secret_reference, "Gemini API key")
         if gemini_api_key:
             return True
         else:

@@ -265,10 +265,15 @@ class ClickUpTaskExtractor:
                     # Process tasks with AI feedback
                     task_records = []
                     for task in tasks:
+                        name = task.get('name', 'Unknown Task')
+                        task_name = name[:30] + ('...' if len(name) > 30 else '')
+
                         if self.config.enable_ai_summary and self.config.gemini_api_key:
                             # Update progress description to show AI processing
-                            task_name = task.get('name', 'Unknown Task')[:30] + ('...' if len(task.get('name', '')) > 30 else '')
                             progress.update(list_task, description=f"📝 Processing: [bold]{list_item['name']}[/bold] - 🤖 AI: {task_name}")
+                        else:
+                            # Update progress description for regular processing
+                            progress.update(list_task, description=f"📝 Processing: [bold]{list_item['name']}[/bold] - {task_name}")
 
                         record = self._process_task(task, list_custom_fields, list_item)
                         if record is not None:

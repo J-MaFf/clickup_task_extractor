@@ -36,7 +36,7 @@ except ImportError:
     pass  # Will use CLI fallback
 
 
-def _load_secret_with_fallback(secret_reference: str, secret_name: str) -> SecretValue:
+def load_secret_with_fallback(secret_reference: str, secret_name: str) -> SecretValue:
     """
     Generic function to load a secret from 1Password using SDK with CLI fallback.
 
