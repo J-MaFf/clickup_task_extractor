@@ -54,6 +54,11 @@ from mappers import get_yes_no_input
 # Initialize Rich console
 console = Console()
 
+# Setup enhanced logging with Rich
+from logger_config import setup_logging
+import logging
+logger = setup_logging(logging.INFO, use_rich=True)
+
 
 def main():
     """

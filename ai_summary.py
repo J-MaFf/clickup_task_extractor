@@ -13,6 +13,29 @@ import re
 import time
 from typing import TypeAlias
 
+# Rich console imports - create singleton instance
+try:
+    from rich.console import Console
+    from rich.progress import Progress, TimeRemainingColumn, BarColumn, TextColumn
+    from rich.status import Status
+
+    # Create a singleton console instance to avoid repeated imports
+    _console = Console()
+    RICH_AVAILABLE = True
+    Progress = Progress
+    TimeRemainingColumn = TimeRemainingColumn
+    BarColumn = BarColumn
+    TextColumn = TextColumn
+    Status = Status
+except ImportError:
+    _console = None
+    RICH_AVAILABLE = False
+    Progress = None
+    TimeRemainingColumn = None
+    BarColumn = None
+    TextColumn = None
+    Status = None
+
 # Type aliases for clarity
 SummaryResult: TypeAlias = str
 
@@ -45,7 +68,10 @@ def get_ai_summary(task_name: str, subject: str, description: str, resolution: s
 
     # Check if Google GenAI SDK is available
     if genai is None:
-        print("Warning: Google GenAI SDK not available - install with: pip install google-generativeai")
+        if RICH_AVAILABLE and _console:
+            _console.print("[yellow]Warning: Google GenAI SDK not available - install with: pip install google-generativeai[/yellow]")
+        else:
+            print("Warning: Google GenAI SDK not available - install with: pip install google-generativeai")
         return f"Subject: {subject}\nDescription: {description}\nResolution: {resolution}".strip()
 
     max_retries = 3
@@ -89,11 +115,20 @@ Focus on the current state and what has been done or needs to be done. Be specif
             else:
                 config = None
 
-            response = client.models.generate_content(
-                model='gemini-2.5-flash-lite',
-                contents=prompt,
-                config=config
-            )
+            # Make API call with Rich status indicator
+            if RICH_AVAILABLE and _console and Status:
+                with _console.status(f"[bold green]🤖 Generating AI summary for '{task_name}'...", spinner="dots"):
+                    response = client.models.generate_content(
+                        model='gemini-2.5-flash-lite',
+                        contents=prompt,
+                        config=config
+                    )
+            else:
+                response = client.models.generate_content(
+                    model='gemini-2.5-flash-lite',
+                    contents=prompt,
+                    config=config
+                )
 
             if response and hasattr(response, 'text') and response.text:
                 summary = response.text.strip()
@@ -105,7 +140,10 @@ Focus on the current state and what has been done or needs to be done. Be specif
 
                 return summary
             else:
-                print(f"Warning: No text response from Gemini API for task: {task_name}")
+                if RICH_AVAILABLE and _console:
+                    _console.print(f"⚠️ [yellow]Warning: No text response from Gemini API for task: {task_name}[/yellow]")
+                else:
+                    print(f"Warning: No text response from Gemini API for task: {task_name}")
                 return f"Subject: {subject}\nDescription: {description}\nResolution: {resolution}".strip()
 
         except Exception as e:
@@ -134,40 +172,43 @@ Focus on the current state and what has been done or needs to be done. Be specif
                     retry_delay = base_delay * (2 ** attempt)
 
                 if attempt < max_retries:
-                    print(f"⏳ Rate limit hit for task '{task_name}'. Waiting {retry_delay} seconds before retry (attempt {attempt + 1}/{max_retries})...")
+                    # Use Rich console for better styling
+                    if RICH_AVAILABLE and _console and Progress and TextColumn and BarColumn and TimeRemainingColumn:
+                        _console.print(f"⏳ [yellow]Rate limit hit for task '{task_name}'. Waiting {retry_delay} seconds before retry (attempt {attempt + 1}/{max_retries})...[/yellow]")
 
-                    # Progress bar for wait time
-                    def show_progress_bar(total_seconds):
-                        """Display a progress bar showing remaining wait time."""
-                        bar_length = 50
-                        for i in range(total_seconds):
-                            remaining = total_seconds - i
-                            elapsed = i
-                            progress = elapsed / total_seconds
-                            filled_length = int(bar_length * progress)
+                        # Rich progress bar for wait time
+                        with Progress(
+                            TextColumn("[bold blue]⏱️  Rate limit wait"),
+                            BarColumn(bar_width=40),
+                            TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
+                            TimeRemainingColumn(),
+                            console=_console,
+                            transient=True  # Progress bar disappears when done
+                        ) as progress:
+                            task = progress.add_task("Waiting...", total=retry_delay)
+                            for i in range(retry_delay):
+                                time.sleep(1)
+                                progress.update(task, advance=1)
 
-                            # Create progress bar
-                            bar = '█' * filled_length + '░' * (bar_length - filled_length)
-
-                            # Format time display
-                            mins, secs = divmod(remaining, 60)
-                            time_str = f"{mins:02d}:{secs:02d}" if mins > 0 else f"{secs:02d}s"
-
-                            # Print progress (carriage return to overwrite)
-                            print(f"\r  ⏱️  [{bar}] {elapsed}/{total_seconds}s - {time_str} remaining", end='', flush=True)
-                            time.sleep(1)
-
-                        # Clear the progress line and show completion
-                        print(f"\r  ✅  Wait complete - retrying API call...{' ' * 20}")
-
-                    show_progress_bar(retry_delay)
+                        _console.print("✅ [green]Wait complete - retrying API call...[/green]")
+                    else:
+                        # Fallback to plain print
+                        print(f"Rate limit hit for task '{task_name}'. Waiting {retry_delay} seconds before retry (attempt {attempt + 1}/{max_retries})...")
+                        time.sleep(retry_delay)
+                        print("Wait complete - retrying API call...")
                     continue
                 else:
-                    print(f"❌ Rate limit retry failed for task '{task_name}' after {max_retries} attempts.")
+                    if RICH_AVAILABLE and _console:
+                        _console.print(f"❌ [red]Rate limit retry failed for task '{task_name}' after {max_retries} attempts.[/red]")
+                    else:
+                        print(f"Rate limit retry failed for task '{task_name}' after {max_retries} attempts.")
 
             else:
                 # Non-rate-limit error
-                print(f"AI Summary error for task '{task_name}': {e}")
+                if RICH_AVAILABLE and _console:
+                    _console.print(f"⚠️ [yellow]AI Summary error for task '{task_name}': {e}[/yellow]")
+                else:
+                    print(f"AI Summary error for task '{task_name}': {e}")
 
             # Final attempt failed or non-retryable error - return fallback
             return f"Subject: {subject}\nDescription: {description}\nResolution: {resolution}".strip()

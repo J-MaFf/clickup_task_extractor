@@ -14,6 +14,12 @@ import asyncio
 import subprocess
 from typing import TypeAlias
 
+# Import logging infrastructure
+from logger_config import get_logger
+
+# Initialize logger for this module
+logger = get_logger(__name__)
+
 # Type aliases for clarity
 SecretValue: TypeAlias = str | None
 
@@ -25,7 +31,7 @@ try:
     if not getattr(sys, 'frozen', False):
         from onepassword.client import Client as OnePasswordClient
     else:
-        print("Note: Running as executable - 1Password SDK disabled, using CLI fallback only")
+        logger.info("Running as executable - [yellow]1Password SDK disabled[/yellow], using [cyan]CLI fallback[/cyan] only")
 except ImportError:
     pass  # Will use CLI fallback
 
@@ -44,23 +50,23 @@ def _load_secret_with_fallback(secret_reference: str, secret_name: str) -> Secre
     # Try 1Password SDK first
     try:
         secret = get_secret_from_1password(secret_reference, secret_name)
-        print(f"✓ {secret_name} loaded from 1Password SDK.")
+        logger.info(f"✅ [green]{secret_name} loaded from 1Password SDK.[/green]")
         return secret
     except ImportError as e:
-        print(f"1Password SDK not available for {secret_name}: {e}")
-        print(f"Falling back to 1Password CLI for {secret_name}...")
+        logger.warning(f"[yellow]1Password SDK not available for {secret_name}: {e}[/yellow]")
+        logger.info(f"[cyan]Falling back to 1Password CLI for {secret_name}...[/cyan]")
         # Fallback to 1Password CLI
         try:
             secret = subprocess.check_output([
                 'op', 'read', secret_reference
             ], encoding='utf-8').strip()
-            print(f"✓ {secret_name} loaded from 1Password CLI.")
+            logger.info(f"✅ [green]{secret_name} loaded from 1Password CLI.[/green]")
             return secret
         except Exception as cli_error:
-            print(f"Could not read {secret_name} from 1Password CLI: {cli_error}")
+            logger.error(f"[red]Could not read {secret_name} from 1Password CLI: {cli_error}[/red]")
             return None
     except Exception as e:
-        print(f"Could not read {secret_name} from 1Password SDK: {e}")
+        logger.error(f"[red]Could not read {secret_name} from 1Password SDK: {e}[/red]")
         return None
 
 
