@@ -166,23 +166,23 @@ def main():
         else:
             console.print("🚀 [green]Running in automatic mode[/green] - all tasks will be exported.")
 
-    # If not in interactive mode and AI summary wasn't explicitly set, ask now
-    if not interactive_mode and not args.ai_summary:
+    # Ask about AI summary right after interactive mode (regardless of mode chosen)
+    if not args.ai_summary:
         console.print("\n[bold blue]🤖 AI Summary[/bold blue]")
         console.print("AI summary can generate concise 1-2 sentence summaries of task status using Google Gemini.")
         if get_yes_no_input('Would you like to enable AI summaries for tasks? (y/n): '):
             args.ai_summary = True
             if not load_gemini_api_key():
-                gemini_api_key = input('Enter Gemini API Key (or press Enter to disable AI summary): ')
+                gemini_api_key = console.input('[bold cyan]🤖 Enter Gemini API Key (or press Enter to disable AI summary): [/bold cyan]')
                 if not gemini_api_key:
-                    print("No Gemini API key provided. AI summary will be disabled.")
+                    console.print("[yellow]⚠️  No Gemini API key provided. AI summary will be disabled.[/yellow]")
                     args.ai_summary = False
                 else:
-                    print("✓ AI summary enabled with manual API key.")
+                    console.print("✅ [green]AI summary enabled with manual API key.[/green]")
             else:
-                print("✓ AI summary enabled.")
+                console.print("✅ [green]AI summary enabled.[/green]")
         else:
-            print("✓ AI summary disabled.")
+            console.print("✅ [green]AI summary disabled.[/green]")
 
     # Convert string values to enums with fallback
     date_filter = DateFilter.ALL_OPEN
