@@ -17,11 +17,17 @@ from typing import TypeAlias
 # Type aliases for clarity
 SecretValue: TypeAlias = str | None
 
-# 1Password SDK imports
+# 1Password SDK imports with PyInstaller compatibility
+OnePasswordClient = None
 try:
-    from onepassword.client import Client as OnePasswordClient
+    # Only import if not running as PyInstaller executable
+    import sys
+    if not getattr(sys, 'frozen', False):
+        from onepassword.client import Client as OnePasswordClient
+    else:
+        print("Note: Running as executable - 1Password SDK disabled, using CLI fallback only")
 except ImportError:
-    OnePasswordClient = None
+    pass  # Will use CLI fallback
 
 
 def _load_secret_with_fallback(secret_reference: str, secret_name: str) -> SecretValue:
