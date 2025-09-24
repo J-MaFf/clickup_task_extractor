@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.01] - 2025-09-17
+
+### 🧹 Maintenance & Cleanup
+
+#### Code Quality Improvements
+
+- **Complete Legacy Entry Point Removal**: Fully removed `clickup_task_extractor.py` and all references
+- **Streamlined Architecture**: Single entry point eliminates maintenance overhead
+- **Updated All Documentation**: Consistent references to `main.py` across all files
+- **Cleaner Examples**: All usage examples now use the primary entry point
+
 ## [1.0.0] - 2025-08-04
 
 ### 🎉 Initial Release - Modern Python Architecture
@@ -117,7 +128,6 @@ python main.py --api-key "your_api_key"
 ```code
 clickup_task_extractor/
 ├── main.py                    # Primary entry point with CLI
-├── clickup_task_extractor.py  # Legacy compatibility entry point
 ├── config.py                  # Configuration dataclasses and enums
 ├── version.py                 # Version information and metadata
 ├── auth.py                    # Authentication and 1Password integration
