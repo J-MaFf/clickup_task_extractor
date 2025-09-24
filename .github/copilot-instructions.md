@@ -1,184 +1,66 @@
-# Copilot Instructions for ClickUp Task Extractor
+---
+# Copilot Instructions: ClickUp Task Extractor
 
-## Core Development Guidelines
+## Architecture & Data Flow
 
-**IMPORTANT**: Follow the comprehensive Python development guidelines specified in `.github/Python.prompt.md`. This includes:
-- SOLID principles and modular architecture
-- Modern type hints and type safety (uses `list[T]`, `dict[K,V]`, `str | None` syntax)
-- Proper error handling with specific exceptions (no bare `except:`)
-- Context managers for resource management
-- Protocol-based design over inheritance
-- Pathlib for cross-platform file operations
-- Comprehensive docstrings and code documentation
-- Enum classes for type-safe constants
+- **Entry Point:**
+  - `main.py`: CLI orchestrates authentication, config, extraction, and export.
+- **Core Modules:**
+  - `config.py`: Enum-based config (`ClickUpConfig`), `TaskRecord` dataclass, date formatting.
+  - `auth.py`: Multi-fallback API key retrieval (CLI → env → 1Password SDK/CLI → prompt).
+  - `api_client.py`: Protocol-based ClickUp API client, custom exceptions.
+  - `extractor.py`: `ClickUpTaskExtractor` (main logic), context-managed export, interactive selection.
+  - `ai_summary.py`: Optional Google Gemini AI summaries, with fallback and rate limiting.
+  - `mappers.py`: Custom field mapping (`LocationMapper`), date filtering.
+  - `logger_config.py`: Logging setup for debug and file output.
+- **Output:**
+  - CSV/HTML export (see `output/`), styled with Rich, cross-platform date formatting.
 
-The guidelines in `.github/Python.prompt.md` provide the foundation for all Python code in this project. The instructions below specify project-specific patterns and conventions that build upon those universal principles.
+## Key Patterns & Conventions
 
-## Project Overview
-This project is a Python script for extracting, processing, and exporting tasks from the ClickUp API. It features modern Python architecture following SOLID principles, cross-platform compatibility, 1Password integration for secure API key management, interactive task selection, and Rich console interfaces with progress bars and styled output.
+- **Enum config:** All config uses enums (e.g., `OutputFormat.HTML`), but string fallback is supported for CLI/backward compatibility.
+- **Protocol-based API client:** Use `APIClient` protocol for dependency injection/testing; see `api_client.py`.
+- **Context manager for export:** All file I/O via `export_file()` context manager in `extractor.py`.
+- **1Password auth chain:** API key retrieval order: CLI arg → env var → 1Password SDK → CLI → prompt.
+- **Rich UI:** All user interaction (progress, tables, selection) uses Rich; see `extractor.py` and `ai_summary.py`.
+- **AI summaries:** Enable with `--ai-summary` and Gemini key; fallback to original content if AI fails.
+- **Date formatting:** Use `format_datetime` in `config.py` for all output; removes leading zeros, cross-platform.
+- **Custom field mapping:** Use `LocationMapper` in `mappers.py` (id → orderindex → name fallback).
+- **Error handling:** Always raise specific exceptions (e.g., `APIError`), never bare except.
+- **Type hints:** Use modern Python type hints everywhere (`list[str]`, `str | None`).
+- **No external DB:** All output is local files; no persistent storage.
 
-## Architecture & Key Components
+## Developer Workflows
 
-### **Modular Architecture**
-The project follows clean modular architecture with single responsibility principle:
+- **Run app:** `python main.py` (default HTML export, interactive if `--interactive`)
+- **Export both formats:** `python main.py --output-format Both`
+- **Add export field:** Update `TaskRecord` in `config.py`, then update export logic in `extractor.py`.
+- **Add output format:** Extend `export` in `extractor.py`, add enum/config.
+- **Add custom field mapping:** Extend `LocationMapper` in `mappers.py`.
+- **Add authentication method:** Extend chain in `auth.py` and update CLI in `main.py`.
+- **Debug:** Use `logger_config.setup_logging()`; set log level to DEBUG for troubleshooting.
+- **Dependencies:** Install with `pip install -r requirements.txt` (see `requirements.txt`).
+- **Virtualenv:** Auto-detected; ensure `.venv/` is active for cross-platform compatibility.
 
-- **`config.py`**: Configuration & Data Models ⭐ **Recently Modernized**
-  - `ClickUpConfig` dataclass: Type-safe configuration with Enum fields
-  - `TaskRecord` dataclass: Exported task structure with modern type hints
-  - **Enums**: `TaskPriority`, `OutputFormat`, `DateFilter` for type safety
-  - Date formatting utilities (`format_datetime`) with cross-platform compatibility
+## Integration Points
 
-- **`logger_config.py`**: Logging Infrastructure ⭐ **New Addition**
-  - `setup_logging()`: Configurable console/file logging with proper formatting
-  - `get_logger()`: Logger factory function for consistent logging across modules
-  - Professional logging patterns following Python best practices
+- **ClickUp API v2**: All data via ClickUp API, robust error handling in `api_client.py`.
+- **1Password**: Secure API key storage/retrieval (SDK preferred, CLI fallback). Reference: `op://Home Server/ClickUp personal API token/credential`.
+- **Google Gemini AI**: Optional summaries, requires API key (see `ai_summary.py`).
+- **Rich**: All console UI (progress, tables, selection).
 
-- **`auth.py`**: Authentication & Security
-  - 1Password SDK/CLI integration with fallback chain
-  - Secure API key retrieval: CLI args → env vars → 1Password SDK → CLI → manual input
-  - Gemini API key management for AI features
+## Examples
 
-- **`api_client.py`**: ClickUp API Integration
-  - `APIClient` protocol: Structural typing interface for dependency inversion
-  - `ClickUpAPIClient` class: HTTP client with comprehensive error handling
-  - Custom exceptions: `APIError`, `AuthenticationError` with proper chaining
+- Basic: `python main.py`
+- Interactive: `python main.py --interactive`
+- Custom workspace: `python main.py --workspace "MyWorkspace" --space "MySpace"`
+- Both outputs: `python main.py --output-format Both`
+- With API key: `python main.py --api-key YOUR_KEY`
 
-- **`ai_summary.py`**: AI Integration
-  - Google Gemini API integration with intelligent rate limiting
-  - Progress bars for long-running AI operations
-  - Graceful fallback handling for API failures
+## References
 
-- **`mappers.py`**: Data Mapping & Utilities
-  - `LocationMapper` class: Custom field mapping with multiple fallback strategies
-  - `get_date_range()`: Enum-aware date filtering (supports both DateFilter enums and strings)
-  - Utility functions with proper type hints and error handling
-
-- **`extractor.py`**: Main Business Logic
-  - `ClickUpTaskExtractor` class: Main orchestrator following Single Responsibility
-  - `export_file()` context manager: Safe file operations with automatic cleanup
-  - Interactive task selection with Rich console interfaces
-  - Type-safe CSV/HTML export supporting enum-based configuration
-
-- **`main.py`**: Entry Point & CLI
-  - Enum-aware argument parsing with backward compatibility
-  - Virtual environment auto-switching for cross-platform compatibility
-  - Beautiful Rich console interfaces with configuration summaries
-
-- **`clickup_task_extractor.py`**: Legacy Compatibility
-  - Backward-compatible entry point preserving existing CLI interface
-  - Interactive task selection functionality (`interactive_include`)
-  - CSV and HTML export with styled output
-
-- **`main.py`**: Entry Point & CLI
-  - `main()` function: CLI argument parsing and application orchestration
-  - Virtual environment switching logic for cross-platform compatibility
-  - Authentication chain management
-
-- **`clickup_task_extractor.py`**: Legacy Compatibility
-  - Backward-compatible entry point that delegates to the new modular architecture
-  - Preserves existing command-line interface for users
-
-## Data Flow & Processing Pipeline
-1. **Authentication Chain**: Multi-fallback API key retrieval (CLI → env → 1Password SDK → CLI → manual)
-2. **Configuration**: Type-safe enum-based config with backward compatibility for string inputs
-3. **API Client**: Protocol-based HTTP client fetches workspaces, spaces, lists, and tasks
-4. **Task Processing**: Status filtering → custom field mapping → TaskRecord creation
-5. **Interactive Selection** (optional): Rich console interface for task review/filtering
-6. **Export**: Context manager-based file operations with enum-aware format selection (CSV/HTML/Both)
-
-## Critical Developer Patterns
-
-### **Type-Safe Configuration Pattern**
-```python
-# Always use enums for configuration - provides intellisense and prevents typos
-config = ClickUpConfig(
-    output_format=OutputFormat.HTML,  # Not string "HTML"
-    date_filter=DateFilter.THIS_WEEK  # Not string "ThisWeek"
-)
-
-# But backward compatibility is maintained for string inputs
-if isinstance(filter_input, str):
-    date_filter = DateFilter(filter_input)  # Auto-converts
-```
-
-### **Protocol-Based Dependency Injection**
-```python
-# Use APIClient protocol for testing and flexibility
-def process_tasks(client: APIClient) -> list[TaskRecord]:
-    # Depends on protocol, not concrete implementation
-    return client.get("/tasks")
-
-# Concrete implementation
-client = ClickUpAPIClient(api_key)
-```
-
-### **Context Manager Resource Pattern**
-```python
-# All file I/O uses the export_file context manager
-with export_file(output_path, 'w') as f:
-    writer = csv.DictWriter(f, fieldnames=fields)
-    # Automatic cleanup and error handling
-```
-
-### **Custom Field Mapping Strategy**
-```python
-# LocationMapper uses id → orderindex → name fallback strategy
-mapper = LocationMapper()
-location = mapper.map_field_value(custom_field_data, 'location')
-# Always check all three mapping strategies before falling back
-```
-
-### **Rich Console Integration Pattern**
-```python
-# Use Rich for all user interfaces - progress bars, panels, tables
-with Progress() as progress:
-    task = progress.add_task("Processing...", total=len(items))
-    # Rich provides beautiful cross-platform console output
-```
-
-## Authentication Priority
-1. Command line argument (`--api-key`)
-2. Environment variable (`CLICKUP_API_KEY`)
-3. 1Password SDK (requires `OP_SERVICE_ACCOUNT_TOKEN`)
-4. 1Password CLI fallback (requires `op` command)
-5. Manual input prompt
-
-## Developer Workflows & Commands
-- **Run application**: `python main.py` or `python clickup_task_extractor.py`
-- **Interactive mode**: `python main.py --interactive`
-- **Test imports**: `python -c "import config; print('✅ Config loaded')"`
-- **Type checking**: All modules use modern type hints - no external type checker needed
-- **Virtual environment**: Auto-switches on startup (cross-platform)
-- **Dependencies**: Core=`requests`; Optional=`onepassword-sdk`, `google-genai`, `rich`
-- **No build/test commands**: Pure Python script with no external build system
-
-## Development Setup & Environment
-- **Python Guidelines**: Uses centralized guidelines via `.github/Python.prompt.md` symlink
-- **Logging**: Use `logger_config.setup_logging()` for consistent logging across modules
-- **Cross-platform**: All paths use `pathlib.Path`, date formatting removes leading zeros
-- **Virtual Environment**: Automatically detected and switched to `.venv/` on startup
-
-## Project-Specific Conventions & Patterns
-
-**Following .github/Python.prompt.md principles in ClickUp-specific ways:**
-
-- **Enum-based configuration**: All config options use type-safe enums with backward compatibility
-- **Protocol patterns**: `APIClient` protocol enables dependency inversion and testing
-- **Context managers**: `export_file()` handles all file I/O with automatic cleanup
-- **Multi-strategy mapping**: `LocationMapper` tries id → orderindex → name fallback
-- **Rich UI patterns**: All user interaction uses Rich console (progress bars, panels, tables)
-- **Date formatting**: Cross-platform compatibility without leading zeros via post-processing
-- **Authentication chain**: Multiple fallback methods in priority order
-- **Export flexibility**: Single method handles CSV/HTML/Both via enum configuration
-- **Interactive selection**: Built-in task review/filtering before export
-- **Type safety**: Modern syntax (`list[str]`, `str | None`) with meaningful type aliases
-- **Error specificity**: Custom exceptions (`APIError`, `AuthenticationError`) with proper chaining
-- **Resource safety**: Pathlib for all file operations, context managers for resources
-
-## Development Guidelines
-
-**Following .github/Python.prompt.md principles in this project:**
-
+- See `README.md` for full CLI options, troubleshooting, and advanced usage.
+- See `.github/Python.prompt.md` for universal Python style/conventions.
 - **Adding new features**: Identify the appropriate module based on single responsibility principle from SOLID guidelines
 - **New export fields**: Update the `TaskRecord` dataclass in `config.py` and adjust export logic in `extractor.py` (following dataclass best practices)
 - **New output formats**: Extend the `export` method in `extractor.py` and add config options (Open/Closed principle)
@@ -218,16 +100,15 @@ with Progress() as progress:
 - `enable_ai_summary`: Enable AI summarization (requires gemini_api_key)
 
 ## Examples
-- **Basic usage**: `python clickup_task_extractor.py`
-- **Interactive mode**: `python clickup_task_extractor.py --interactive`
-- **Custom workspace**: `python clickup_task_extractor.py --workspace "MyWorkspace" --space "MySpace"`
-- **Both outputs**: `python clickup_task_extractor.py --output-format Both`
-- **Include completed**: `python clickup_task_extractor.py --include-completed`
-- **With API key**: `python clickup_task_extractor.py --api-key YOUR_KEY`
+- **Basic usage**: `python main.py`
+- **Interactive mode**: `python main.py --interactive`
+- **Custom workspace**: `python main.py --workspace "MyWorkspace" --space "MySpace"`
+- **Both outputs**: `python main.py --output-format Both`
+- **Include completed**: `python main.py --include-completed`
+- **With API key**: `python main.py --api-key YOUR_KEY`
 
 ## Key Files
 - **`main.py`**: Primary entry point with CLI parsing and orchestration
-- **`clickup_task_extractor.py`**: Legacy entry point for backward compatibility
 - **`config.py`**: Configuration dataclasses and constants
 - **`auth.py`**: Authentication and 1Password integration
 - **`api_client.py`**: ClickUp API HTTP client
