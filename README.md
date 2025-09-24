@@ -3,7 +3,7 @@
 A powerful, cross-platform Python application for extracting, processing, and exporting tasks from the ClickUp API with beautiful console interfaces and AI-powered summaries.
 
 ![Python](https://img.shields.io/badge/python-3.9%2B-blue.svg)
-![Version](https://img.shields.io/badge/version-1.0.0-green.svg)
+![Version](https://img.shields.io/badge/version-1.01-green.svg)
 ![Rich](https://img.shields.io/badge/rich-14.0%2B-green.svg)
 ![License](https://img.shields.io/badge/license-MIT-blue.svg)
 
@@ -114,7 +114,6 @@ The project follows a clean, modular architecture:
 ```text
 clickup_task_extractor/
 ├── main.py                    # Entry point and CLI parsing
-├── clickup_task_extractor.py  # Legacy entry point (backward compatibility)
 ├── config.py                  # Configuration and data models
 ├── auth.py                    # Authentication and 1Password integration
 ├── api_client.py              # ClickUp API client with error handling
