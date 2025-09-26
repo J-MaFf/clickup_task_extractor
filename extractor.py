@@ -222,11 +222,14 @@ class ClickUpTaskExtractor:
                 all_tasks = []
                 custom_fields_cache = {}
 
-                # Create progress bar for lists
-                list_task = progress.add_task("📝 Processing tasks from lists...", total=len(lists))
+                # Create dual progress bars: overall list progress (percentage) and per-list task progress (bar)
+                overall_task = progress.add_task("📊 Overall Progress", total=len(lists))
+                current_list_task = None
 
-                for list_item in lists:
-                    progress.update(list_task, description=f"📝 Processing: [bold]{list_item['name']}[/bold]")
+                for list_index, list_item in enumerate(lists):
+                    # Remove previous list task if it exists
+                    if current_list_task is not None:
+                        progress.remove_task(current_list_task)
 
                     tasks_resp = self.api.get(f"/list/{list_item['id']}/task?archived={str(self.config.include_completed).lower()}")
                     tasks = tasks_resp.get('tasks', [])
@@ -255,6 +258,12 @@ class ClickUpTaskExtractor:
 
                     console.print(f"  ✅ Found [bold cyan]{len(tasks)}[/bold cyan] tasks in list '[bold]{list_item['name']}[/bold]'")
 
+                    # Create per-list task progress bar (resets for each list)
+                    current_list_task = progress.add_task(
+                        f"📝 Processing: [bold]{list_item['name']}[/bold]", 
+                        total=len(tasks) if tasks else 1
+                    )
+
                     # Custom fields
                     if list_item['id'] not in custom_fields_cache:
                         list_details = self.api.get(f"/list/{list_item['id']}")
@@ -262,28 +271,39 @@ class ClickUpTaskExtractor:
                         custom_fields_cache[list_item['id']] = list_custom_fields
                     list_custom_fields = custom_fields_cache[list_item['id']]
 
-                    # Process tasks with AI feedback
+                    # Process tasks with progress feedback
                     task_records = []
-                    for task in tasks:
-                        name = task.get('name', 'Unknown Task')
-                        task_name = name[:30] + ('...' if len(name) > 30 else '')
+                    if tasks:
+                        for task_index, task in enumerate(tasks):
+                            name = task.get('name', 'Unknown Task')
+                            task_name = name[:30] + ('...' if len(name) > 30 else '')
 
-                        if self.config.enable_ai_summary and self.config.gemini_api_key:
-                            # Update progress description to show AI processing
-                            progress.update(list_task, description=f"📝 Processing: [bold]{list_item['name']}[/bold] - 🤖 AI: {task_name}")
-                        else:
-                            # Update progress description for regular processing
-                            progress.update(list_task, description=f"📝 Processing: [bold]{list_item['name']}[/bold] - {task_name}")
+                            # Update per-list progress description with current task
+                            if self.config.enable_ai_summary and self.config.gemini_api_key:
+                                progress.update(current_list_task, description=f"📝 Processing: [bold]{list_item['name']}[/bold] - 🤖 AI: {task_name}")
+                            else:
+                                progress.update(current_list_task, description=f"📝 Processing: [bold]{list_item['name']}[/bold] - {task_name}")
 
-                        record = self._process_task(task, list_custom_fields, list_item)
-                        if record is not None:
-                            task_records.append(record)
+                            record = self._process_task(task, list_custom_fields, list_item)
+                            if record is not None:
+                                task_records.append(record)
+
+                            # Advance per-list task progress
+                            progress.advance(current_list_task)
+                    else:
+                        # Handle empty list case - complete the progress bar
+                        progress.update(current_list_task, description=f"📝 Processing: [bold]{list_item['name']}[/bold] - (no tasks)")
+                        progress.advance(current_list_task)
 
                     all_tasks.extend(task_records)
 
-                    progress.advance(list_task)
+                    # Advance overall progress after completing a list
+                    progress.advance(overall_task)
 
-                progress.remove_task(list_task)
+                # Clean up final list task
+                if current_list_task is not None:
+                    progress.remove_task(current_list_task)
+                progress.remove_task(overall_task)
 
             # Create beautiful summary table
             stats_table = Table(title="📈 Processing Statistics", show_header=True, header_style="bold blue")
