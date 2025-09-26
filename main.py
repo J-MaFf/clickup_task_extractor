@@ -102,7 +102,7 @@ def main():
     parser.add_argument('--date-filter', type=str, choices=['AllOpen', 'ThisWeek', 'LastWeek'], help='Date filter')
     parser.add_argument('--ai-summary', action='store_true', help='Enable AI summary (requires Gemini API key - will auto-load from 1Password if available)')
     parser.add_argument('--gemini-api-key', type=str, help='Google Gemini API key for AI summary generation (or auto-load from 1Password: "op://Home Server/nftoo3gsi3wpx7z5bdmcsvr7p4/credential")')
-    parser.add_argument('--output-format', type=str, choices=['CSV', 'HTML', 'Both'], help='Output format (default: HTML)')
+    parser.add_argument('--output-format', type=str, choices=['CSV', 'HTML', 'Markdown', 'PDF', 'Both'], help='Output format: CSV, HTML, Markdown, PDF, or Both (CSV+HTML) - default: HTML')
     parser.add_argument('--interactive', action='store_true', help='Enable interactive task selection')
     args = parser.parse_args()
 
@@ -211,6 +211,8 @@ def main():
             output_format_map = {
                 'CSV': OutputFormat.CSV,
                 'HTML': OutputFormat.HTML,
+                'Markdown': OutputFormat.MARKDOWN,
+                'PDF': OutputFormat.PDF,
                 'Both': OutputFormat.BOTH
             }
             output_format = output_format_map.get(args.output_format, OutputFormat.HTML)
