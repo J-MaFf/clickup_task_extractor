@@ -81,7 +81,7 @@ python main.py --workspace "MyWorkspace" --space "MySpace"
 | `--workspace` | Workspace name | `KMS` |
 | `--space` | Space name | `Kikkoman` |
 | `--output` | Output file path | Auto-generated timestamp |
-| `--output-format` | Export format: `CSV`, `HTML`, `Markdown`, `PDF`, `Both` | `HTML` |
+| `--output-format` | Export format: `CSV`, `Markdown`, `PDF`, `Both` | `HTML` |
 | `--include-completed` | Include completed/archived tasks | `False` |
 | `--interactive` | Enable interactive task selection | Prompted |
 | `--date-filter` | Date filter: `AllOpen`, `ThisWeek`, `LastWeek` | `AllOpen` |
