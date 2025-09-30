@@ -74,6 +74,7 @@
 - Requirements live in `requirements.txt`; core deps are `requests`, `rich`, `weasyprint` (PDF), with optional `onepassword-sdk` and `google-generativeai`—guard imports accordingly.
 - Typical runs: `python main.py` (HTML export, workspace `KMS`, space `Kikkoman`), or override with `--output-format {CSV|HTML|Markdown|PDF|Both}`, `--interactive`, `--include-completed`, `--date-filter {AllOpen|ThisWeek|LastWeek}`, and `--ai-summary/--gemini-api-key`.
 - The extractor writes to `output/` using the timestamped path from `config.default_output_path()`; exporters adjust the extension per selected format.
+- Version bumps: update `version.py` (`__version__` and related metadata), refresh the README version badge URL, and add a new entry in `CHANGELOG.md` summarizing changes since the previous release.
 
 ## Extension playbook
 - Add fields: extend `TaskRecord`, update any renderers that iterate `get_export_fields()`, and make sure `_metadata` keeps AI payloads if needed.
