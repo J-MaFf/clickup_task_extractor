@@ -3,7 +3,7 @@
 A powerful, cross-platform Python application for extracting, processing, and exporting tasks from the ClickUp API with beautiful console interfaces and AI-powered summaries.
 
 ![Python](https://img.shields.io/badge/python-3.9%2B-blue.svg)
-![Version](https://img.shields.io/badge/version-1.01-green.svg)
+![Version](https://img.shields.io/badge/version-1.02-green.svg)
 ![Rich](https://img.shields.io/badge/rich-14.0%2B-green.svg)
 ![License](https://img.shields.io/badge/license-MIT-blue.svg)
 
@@ -47,6 +47,8 @@ A powerful, cross-platform Python application for extracting, processing, and ex
    - Environment variable: `export CLICKUP_API_KEY=YOUR_API_KEY`
    - 1Password: Store in 1Password with reference `op://Home Server/ClickUp personal API token/credential`
 
+> 💡 The CLI auto-relaunches inside `.venv/` when present, so activating the virtualenv manually is optional as long as dependencies live there.
+
 ### Basic Usage
 
 ```bash
@@ -71,6 +73,21 @@ python main.py --date-filter ThisWeek
 python main.py --workspace "MyWorkspace" --space "MySpace"
 ```
 
+## 🔧 Development workflow
+
+- Install deps via `pip install -r requirements.txt`; optional features require `onepassword-sdk` and `google-generativeai` which are already listed.
+- Run the extractor with `python main.py` (defaults: workspace `KMS`, space `Kikkoman`, HTML export). Override with `--output-format`, `--interactive`, `--include-completed`, `--date-filter`, `--ai-summary`, and `--gemini-api-key`.
+- Authentication falls back in this order: CLI flag → env var `CLICKUP_API_KEY` → 1Password SDK (requires `OP_SERVICE_ACCOUNT_TOKEN`) → `op read` CLI → manual prompt.
+- Logging comes from `logger_config.setup_logging`; pass `use_rich=False` for plain output or a `log_file` path to persist logs.
+- All exports land under `output/`, named with `default_output_path()` which strips leading zeros for cross-platform friendly filenames.
+
+### Extending the extractor
+
+- **Add export fields**: Extend `TaskRecord` in `config.py`, update `get_export_fields()`, and ensure HTML/Markdown renderers display the new column.
+- **New output formats**: Add an `OutputFormat` enum value, surface it in CLI choices, and implement the exporter inside `ClickUpTaskExtractor.export()` using `export_file()`.
+- **Custom filtering or mapping**: Hook into `_fetch_and_process_tasks()`, reuse `get_date_range()`, and lean on `LocationMapper.map_location()` for dropdowns.
+- **Authentication tweaks**: Keep changes inside `load_secret_with_fallback()` so logging and fallback order stay consistent.
+
 ## 📖 Documentation
 
 ### Command Line Options
@@ -92,18 +109,14 @@ python main.py --workspace "MyWorkspace" --space "MySpace"
 
 1. **Command Line Argument**: `--api-key YOUR_KEY`
 2. **Environment Variable**: `CLICKUP_API_KEY=YOUR_KEY`
-3. **1Password SDK**: Requires `OP_SERVICE_ACCOUNT_TOKEN` environment variable
-4. **1Password CLI**: Requires `op` command in PATH
-5. **Manual Input**: Prompted during execution
+3. **1Password SDK**: Requires `OP_SERVICE_ACCOUNT_TOKEN`
+4. **1Password CLI**: Uses `op read`
+5. **Manual Prompt**: Rich console input as the final fallback
 
-### 1Password Integration
+Store secrets in 1Password for reuse:
 
-For secure credential management, store your API keys in 1Password:
-
-- **ClickUp API Key**: `op://Home Server/ClickUp personal API token/credential`
-- **Gemini API Key**: `op://Home Server/nftoo3gsi3wpx7z5bdmcsvr7p4/credential`
-
-Set up 1Password SDK:
+- ClickUp API key: `op://Home Server/ClickUp personal API token/credential`
+- Gemini API key: `op://Home Server/nftoo3gsi3wpx7z5bdmcsvr7p4/credential`
 
 ```bash
 export OP_SERVICE_ACCOUNT_TOKEN=your_service_account_token
@@ -111,64 +124,28 @@ export OP_SERVICE_ACCOUNT_TOKEN=your_service_account_token
 
 ## 🏗️ Architecture
 
-The project follows a clean, modular architecture:
-
 ```text
 clickup_task_extractor/
-├── main.py                    # Entry point and CLI parsing
-├── config.py                  # Configuration and data models
-├── auth.py                    # Authentication and 1Password integration
-├── api_client.py              # ClickUp API client with error handling
-├── extractor.py               # Main business logic and export functionality
-├── ai_summary.py              # Google Gemini AI integration
-├── mappers.py                 # Data mapping and utility functions
-├── logger_config.py           # Logging configuration
-├── requirements.txt           # Python dependencies
-└── output/                    # Generated export files
+├── main.py                    # CLI entry, venv handoff, config assembly, auth chain
+├── config.py                  # Enum config, TaskRecord dataclass, datetime helpers
+├── auth.py                    # 1Password SDK/CLI loader with structured logging
+├── api_client.py              # APIClient protocol + ClickUpAPIClient (requests, 30 s timeout)
+├── extractor.py               # ClickUpTaskExtractor workflow, exports, interactive UI
+├── ai_summary.py              # Gemini summaries with retry/backoff and graceful fallback
+├── mappers.py                 # Prompts, date filters, dropdown mapping, image extraction
+├── logger_config.py           # Rich-enhanced logging setup and helper accessor
+├── requirements.txt           # Dependency manifest
+└── output/                    # Generated reports (HTML/CSV/Markdown/PDF)
 ```
 
 ### Key Components
 
-- **`ClickUpConfig`**: Type-safe configuration with enum-based options
-- **`TaskRecord`**: Structured data model for exported tasks
-- **`APIClient`**: Protocol-based HTTP client for ClickUp API
-- **`ClickUpTaskExtractor`**: Main orchestrator following single responsibility principle
-- **Rich Console Integration**: Beautiful progress bars, tables, and panels
-
-## 🔧 Development
-
-### Project Structure
-
-```python
-# Type-safe configuration pattern
-config = ClickUpConfig(
-    output_format=OutputFormat.HTML,  # Enum-based for type safety
-    date_filter=DateFilter.THIS_WEEK
-)
-
-# Protocol-based dependency injection
-def process_tasks(client: APIClient) -> list[TaskRecord]:
-    return client.get("/tasks")
-
-# Context manager for safe file operations
-with export_file(output_path, 'w') as f:
-    writer = csv.DictWriter(f, fieldnames=fields)
-```
-
-### Development Guidelines
-
-- **SOLID Principles**: Modular architecture with single responsibility
-- **Modern Type Hints**: Uses `list[T]`, `dict[K,V]`, `str | None` syntax
-- **Error Handling**: Specific exceptions with proper chaining
-- **Resource Management**: Context managers for file operations
-- **Cross-Platform**: Uses `pathlib` for file operations
-
-### Adding New Features
-
-- **New export fields**: Update `TaskRecord` dataclass in `config.py`
-- **New output formats**: Extend `export` method in `extractor.py`
-- **New authentication methods**: Extend authentication chain in `auth.py`
-- **New custom field mappings**: Extend `LocationMapper` class in `mappers.py`
+- **`main.py`**: Builds `ClickUpConfig`, orchestrates auth fallback, and prompts for interactive mode/AI summaries.
+- **`ClickUpConfig` & `TaskRecord`**: Enum-backed config (string-friendly fallbacks) plus an export dataclass whose `_metadata` stores raw task content for AI summaries.
+- **`ClickUpTaskExtractor`**: Walks workspace → space → lists → tasks, caches custom fields, filters by status/date, and uses `export_file()` for all I/O.
+- **`LocationMapper` utilities**: Map dropdown IDs via id → orderindex → name priority, extract images, and provide consistent yes/no prompts.
+- **`ai_summary.get_ai_summary`**: Talks to `gemini-2.5-flash-lite`, parses retry hints, and falls back to original text if the SDK or key is missing.
+- **`logger_config.setup_logging`**: Installs Rich tracebacks, emits to stdout, and optionally writes to disk.
 
 ## 📊 Output Examples
 
@@ -204,6 +181,12 @@ Enable AI summaries:
 ```bash
 python main.py --ai-summary --gemini-api-key YOUR_KEY
 ```
+
+Implementation details:
+
+- Uses `gemini-2.5-flash-lite` via the official `google-generativeai` SDK.
+- Retries up to three times on 429s, parsing `retryDelay` hints when available and showing Rich progress while waiting.
+- Falls back to raw subject/description/resolution text when the SDK is missing or the key is unavailable.
 
 ## 🛠️ Requirements
 
