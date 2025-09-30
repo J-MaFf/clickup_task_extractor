@@ -12,7 +12,7 @@ A powerful, cross-platform Python application for extracting, processing, and ex
 - 🔐 **Secure Authentication**: Multiple authentication methods including 1Password integration
 - 🎨 **Beautiful UI**: Rich console interfaces with progress bars, panels, and styled output
 - 🤖 **AI Summaries**: Optional Google Gemini AI integration for intelligent task summaries
-- 📊 **Multiple Export Formats**: CSV, HTML, or both with professional styling
+- 📊 **Multiple Export Formats**: CSV, HTML, Markdown, PDF, or combined formats with professional styling
 - 🔍 **Interactive Mode**: Review and select tasks before export
 - 📅 **Flexible Filtering**: Date range filtering (This Week, Last Week, All Open)
 - 🌐 **Cross-Platform**: Works on Windows, macOS, and Linux
@@ -56,8 +56,10 @@ python main.py
 # Interactive mode - review tasks before export
 python main.py --interactive
 
-# Export both CSV and HTML formats
-python main.py --output-format Both
+# Export specific formats
+python main.py --output-format Markdown
+python main.py --output-format PDF
+python main.py --output-format Both  # CSV + HTML
 
 # Include completed tasks
 python main.py --include-completed
@@ -79,7 +81,7 @@ python main.py --workspace "MyWorkspace" --space "MySpace"
 | `--workspace` | Workspace name | `KMS` |
 | `--space` | Space name | `Kikkoman` |
 | `--output` | Output file path | Auto-generated timestamp |
-| `--output-format` | Export format: `CSV`, `HTML`, `Both` | `HTML` |
+| `--output-format` | Export format: `CSV`, `Markdown`, `PDF`, `Both` | `HTML` |
 | `--include-completed` | Include completed/archived tasks | `False` |
 | `--interactive` | Enable interactive task selection | Prompted |
 | `--date-filter` | Date filter: `AllOpen`, `ThisWeek`, `LastWeek` | `AllOpen` |

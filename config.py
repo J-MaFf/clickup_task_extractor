@@ -32,7 +32,9 @@ class OutputFormat(Enum):
     """Enumeration of supported output formats."""
     CSV = "CSV"
     HTML = "HTML"
-    BOTH = "Both"
+    MARKDOWN = "Markdown"
+    PDF = "PDF"
+    BOTH = "Both"  # Legacy support for CSV + HTML
 
 
 class DateFilter(Enum):

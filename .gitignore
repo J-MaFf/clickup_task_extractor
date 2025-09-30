@@ -16,3 +16,6 @@ dist/
 
 # Ignore VS code workspace file
 .vscode/clickup_task_extractor.code-workspace
+
+# Ignore test output files
+test_outputs/

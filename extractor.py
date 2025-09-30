@@ -6,7 +6,7 @@ Main Business Logic Module for ClickUp Task Extractor
 Contains:
 - ClickUpTaskExtractor class for task processing and export
 - Interactive task selection functionality
-- CSV and HTML export with styling
+- CSV, HTML, Markdown, and PDF export with styling
 """
 
 import os
@@ -615,7 +615,7 @@ class ClickUpTaskExtractor:
 
     def export(self, tasks: TaskList) -> None:
         """
-        Export tasks to CSV and/or HTML format.
+        Export tasks to CSV, HTML, Markdown, and/or PDF format.
 
         Args:
             tasks: List of TaskRecord objects to export
@@ -659,6 +659,41 @@ class ClickUpTaskExtractor:
                 progress.remove_task(html_task)
                 console.print(f"✅ [green]HTML exported:[/green] [bold]{html_path}[/bold]")
 
+            # Markdown Export
+            if self.config.output_format == OutputFormat.MARKDOWN:
+                markdown_task = progress.add_task("📝 Generating Markdown...", total=None)
+                markdown_path = self.config.output_path.replace('.csv', '.md')
+
+                with export_file(markdown_path, 'w') as f:
+                    f.write(self.render_markdown(tasks))
+
+                progress.remove_task(markdown_task)
+                console.print(f"✅ [green]Markdown exported:[/green] [bold]{markdown_path}[/bold]")
+
+            # PDF Export
+            if self.config.output_format == OutputFormat.PDF:
+                pdf_task = progress.add_task("📄 Generating PDF...", total=None)
+                pdf_path = self.config.output_path.replace('.csv', '.pdf')
+
+                try:
+                    # Import weasyprint here to provide better error messages
+                    from weasyprint import HTML
+                    
+                    # Generate HTML first, then convert to PDF
+                    html_content = self.render_html(tasks)
+                    HTML(string=html_content).write_pdf(pdf_path)
+                    
+                    progress.remove_task(pdf_task)
+                    console.print(f"✅ [green]PDF exported:[/green] [bold]{pdf_path}[/bold]")
+                    
+                except ImportError:
+                    progress.remove_task(pdf_task)
+                    console.print(f"[red]❌ Error: weasyprint not installed. Install with: pip install weasyprint[/red]")
+                    console.print(f"[yellow]⚠️  PDF export skipped.[/yellow]")
+                except Exception as e:
+                    progress.remove_task(pdf_task)
+                    console.print(f"[red]❌ Error generating PDF: {e}[/red]")
+
         # Final success message
         console.print(Panel(
             f"[bold green]🎉 Export completed successfully![/bold green]\n"
@@ -689,3 +724,46 @@ class ClickUpTaskExtractor:
             table += '<tr>' + ''.join(f'<td>{html.escape(str(getattr(t, k) or ""))}</td>' for k in export_fields) + '</tr>'
         table += '</tbody></table></body></html>'
         return head + summary + table
+
+    def render_markdown(self, tasks: TaskList) -> str:
+        """
+        Render tasks as Markdown table.
+
+        Args:
+            tasks: List of TaskRecord objects
+
+        Returns:
+            Markdown formatted document as string
+        """
+        # Generate header with metadata
+        header = f"""# Weekly Task List
+
+**Generated:** {format_datetime(datetime.now(), DISPLAY_FORMAT)}  
+**Total Tasks:** {len(tasks)}  
+**Workspace:** {self.config.workspace_name} / {self.config.space_name}
+
+## Tasks
+
+"""
+        
+        # Get export fields (excluding internal fields like _metadata)
+        export_fields = get_export_fields()
+        
+        if not tasks:
+            return header + "*No tasks found.*\n"
+        
+        # Create markdown table header
+        table = "| " + " | ".join(export_fields) + " |\n"
+        table += "|" + "|".join([" --- " for _ in export_fields]) + "|\n"
+        
+        # Add table rows
+        for t in tasks:
+            row_values = []
+            for field in export_fields:
+                value = str(getattr(t, field) or "")
+                # Escape pipe characters in markdown table cells
+                value = value.replace("|", "\\|").replace("\n", "<br>")
+                row_values.append(value)
+            table += "| " + " | ".join(row_values) + " |\n"
+        
+        return header + table
