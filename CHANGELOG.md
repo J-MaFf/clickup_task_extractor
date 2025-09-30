@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.02] - 2025-09-30
+
+### 📚 Documentation & Guidance
+
+- Refreshed `README.md` with updated architecture overview, development workflow tips, and expanded AI integration details.
+- Rewrote `.github/copilot-instructions.md` to provide a concise architecture map, workflow guidance, and extension playbook for coding agents.
+
+### 🧭 Release Management
+
+- Documented the version bump workflow: update `version.py`, refresh the README badge, and capture changes in `CHANGELOG.md` for every release.
+
 ## [1.01] - 2025-09-17
 
 ### 🧹 Maintenance & Cleanup
