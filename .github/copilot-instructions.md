@@ -54,7 +54,10 @@
 - Basic: `python main.py`
 - Interactive: `python main.py --interactive`
 - Custom workspace: `python main.py --workspace "MyWorkspace" --space "MySpace"`
-- Both outputs: `python main.py --output-format Both`
+- HTML export: `python main.py --output-format HTML`
+- Markdown export: `python main.py --output-format Markdown`
+- PDF export: `python main.py --output-format PDF`
+- Both CSV+HTML: `python main.py --output-format Both`
 - With API key: `python main.py --api-key YOUR_KEY`
 
 ## References
@@ -87,12 +90,12 @@
 - **Status filtering**: Configurable task status exclusion (default excludes 'Dormant', 'On Hold', 'Document')
 - **Comprehensive error handling**: Detailed debugging information for API failures and edge cases
 - **Image extraction**: Automatically extracts image references from task descriptions and custom fields
-- **Flexible output**: Support for CSV, HTML, or both formats simultaneously
+- **Flexible output**: Support for CSV, HTML, Markdown, PDF, or combined formats
 
 ## Configuration Options
 - `workspace_name`: ClickUp workspace (default: 'KMS')
 - `space_name`: ClickUp space (default: 'Kikkoman')
-- `output_format`: Export format - `OutputFormat.CSV`, `OutputFormat.HTML`, or `OutputFormat.BOTH` (default: HTML)
+- `output_format`: Export format - `OutputFormat.CSV`, `OutputFormat.HTML`, `OutputFormat.MARKDOWN`, `OutputFormat.PDF`, or `OutputFormat.BOTH` (default: HTML)
 - `include_completed`: Include completed/archived tasks (default: False)
 - `interactive_selection`: Enable task review and selection (default: False, prompted if not set)
 - `exclude_statuses`: List of task statuses to exclude (default: ['Blocked', 'Dormant', 'On Hold', 'Document'])
@@ -103,7 +106,9 @@
 - **Basic usage**: `python main.py`
 - **Interactive mode**: `python main.py --interactive`
 - **Custom workspace**: `python main.py --workspace "MyWorkspace" --space "MySpace"`
-- **Both outputs**: `python main.py --output-format Both`
+- **Markdown export**: `python main.py --output-format Markdown`
+- **PDF export**: `python main.py --output-format PDF`
+- **Both CSV+HTML**: `python main.py --output-format Both`
 - **Include completed**: `python main.py --include-completed`
 - **With API key**: `python main.py --api-key YOUR_KEY`
 
