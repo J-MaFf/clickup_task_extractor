@@ -55,89 +55,28 @@
 - Interactive: `python main.py --interactive`
 - Custom workspace: `python main.py --workspace "MyWorkspace" --space "MySpace"`
 - HTML export: `python main.py --output-format HTML`
-- Markdown export: `python main.py --output-format Markdown`
-- PDF export: `python main.py --output-format PDF`
-- Both CSV+HTML: `python main.py --output-format Both`
-- With API key: `python main.py --api-key YOUR_KEY`
+# Copilot Instructions: ClickUp Task Extractor
 
-## References
+## Architecture quick map
+- `main.py` is the CLI entry: re-launches inside `.venv`, builds `ClickUpConfig`, and drives the auth fallback (CLI → env → 1Password SDK via `OP_SERVICE_ACCOUNT_TOKEN` → `op read` → manual prompt). It also seeds Rich prompts for interactive mode and AI summary.
+- `extractor.ClickUpTaskExtractor` runs the workflow (workspace → spaces → lists → tasks) with Rich progress bars, uses `TaskRecord._metadata` to store raw task content for later AI notes, and honors default status exclusions from `ClickUpConfig.exclude_statuses`.
+- `config.py` holds enums (`OutputFormat`, `DateFilter`, `TaskPriority`), the `ClickUpConfig` dataclass, and `format_datetime`/`default_output_path` which strip leading zeros for cross-platform filenames.
+- `api_client.ClickUpAPIClient` satisfies the `APIClient` protocol with `requests`, 30 s timeouts, and raises `AuthenticationError`/`APIError` with detailed context.
+- `auth.py` centralizes secret loading and logging; prefer `load_secret_with_fallback` instead of touching 1Password directly.
 
-- See `README.md` for full CLI options, troubleshooting, and advanced usage.
-- See `.github/Python.prompt.md` for universal Python style/conventions.
-- **Adding new features**: Identify the appropriate module based on single responsibility principle from SOLID guidelines
-- **New export fields**: Update the `TaskRecord` dataclass in `config.py` and adjust export logic in `extractor.py` (following dataclass best practices)
-- **New output formats**: Extend the `export` method in `extractor.py` and add config options (Open/Closed principle)
-- **New custom field mappings**: Extend the `LocationMapper` class in `mappers.py` with additional mapping logic
-- **New authentication methods**: Extend the authentication chain in `auth.py` and update `main.py` (Strategy pattern)
-- **Error handling**: Use specific exception types and proper error chaining as defined in Python guidelines
-- **Type hints**: Always use modern syntax (`list[str]`, `str | None`) and create type aliases for clarity
-- **File operations**: Use pathlib and context managers for all file I/O operations
-- **Date formatting changes**: Update functions in `config.py` for consistency across the application
+## UX and utilities
+- File output always uses the `export_file` context manager (creates parent dirs, handles IO errors) and `get_export_fields()` to define CSV/HTML column order.
+- `mappers.py` supplies Rich-friendly prompts (`get_yes_no_input`), date filters via `get_date_range`, screenshot scraping with `extract_images`, and `LocationMapper.map_location` (id → orderindex → name fallback) for custom fields.
+- `ai_summary.get_ai_summary` talks to Google Gemini (`gemini-2.5-flash-lite`), keeps retries with exponential/backoff parsing, and falls back to raw subject/description/resolution text when the SDK or key is missing.
+- `logger_config.setup_logging` installs Rich tracebacks and returns the shared `"clickup_extractor"` logger; pass `use_rich=False` for plain logging or supply `log_file` for file output.
 
-## Integration Points
-- **ClickUp API**: All data is fetched via ClickUp's v2 API with comprehensive error handling and debugging output.
-- **1Password**: Secure API key storage and retrieval using SDK (preferred) or CLI fallback. Reference: `"op://Home Server/ClickUp personal API token/credential"`.
-- **Cross-platform compatibility**: Date formatting works correctly on Windows, macOS, and Linux without leading zeros.
-- **Optional AI summary**: Placeholder for integrating AI summarization via GitHub token (not implemented by default).
+## Developer workflow
+- Requirements live in `requirements.txt`; core deps are `requests`, `rich`, `weasyprint` (PDF), with optional `onepassword-sdk` and `google-generativeai`—guard imports accordingly.
+- Typical runs: `python main.py` (HTML export, workspace `KMS`, space `Kikkoman`), or override with `--output-format {CSV|HTML|Markdown|PDF|Both}`, `--interactive`, `--include-completed`, `--date-filter {AllOpen|ThisWeek|LastWeek}`, and `--ai-summary/--gemini-api-key`.
+- The extractor writes to `output/` using the timestamped path from `config.default_output_path()`; exporters adjust the extension per selected format.
+
+## Extension playbook
+- Add fields: extend `TaskRecord`, update any renderers that iterate `get_export_fields()`, and make sure `_metadata` keeps AI payloads if needed.
+- New output format: add an `OutputFormat` enum value, expose it in CLI choices, and extend `ClickUpTaskExtractor.export()`/render helpers while still using `export_file`.
+- Extra API filtering or mapping: hook into `_fetch_and_process_tasks`, reuse `LocationMapper` and `get_date_range`, and surface errors through Rich panels rather than bare prints.
 - **Image extraction**: Extracts images from task descriptions using regex patterns for various formats.
-- **No external storage or DB**: All output is local (CSV/HTML files) with automatic directory creation.
-
-## Key Features
-- **Multiple authentication methods**: CLI args, environment variables, 1Password SDK/CLI, manual input
-- **Interactive task selection**: Review and filter tasks before export with detailed preview
-- **Cross-platform date formatting**: Remove leading zeros for cleaner output (e.g., "1/8/2025 at 3:45 PM")
-- **Styled HTML export**: Professional-looking HTML tables with CSS styling and summary information
-- **Status filtering**: Configurable task status exclusion (default excludes 'Dormant', 'On Hold', 'Document')
-- **Comprehensive error handling**: Detailed debugging information for API failures and edge cases
-- **Image extraction**: Automatically extracts image references from task descriptions and custom fields
-- **Flexible output**: Support for CSV, HTML, Markdown, PDF, or combined formats
-
-## Configuration Options
-- `workspace_name`: ClickUp workspace (default: 'KMS')
-- `space_name`: ClickUp space (default: 'Kikkoman')
-- `output_format`: Export format - `OutputFormat.CSV`, `OutputFormat.HTML`, `OutputFormat.MARKDOWN`, `OutputFormat.PDF`, or `OutputFormat.BOTH` (default: HTML)
-- `include_completed`: Include completed/archived tasks (default: False)
-- `interactive_selection`: Enable task review and selection (default: False, prompted if not set)
-- `exclude_statuses`: List of task statuses to exclude (default: ['Blocked', 'Dormant', 'On Hold', 'Document'])
-- `date_filter`: Date filtering - `DateFilter.ALL_OPEN`, `DateFilter.THIS_WEEK`, `DateFilter.LAST_WEEK` (default: ALL_OPEN)
-- `enable_ai_summary`: Enable AI summarization (requires gemini_api_key)
-
-## Examples
-- **Basic usage**: `python main.py`
-- **Interactive mode**: `python main.py --interactive`
-- **Custom workspace**: `python main.py --workspace "MyWorkspace" --space "MySpace"`
-- **Markdown export**: `python main.py --output-format Markdown`
-- **PDF export**: `python main.py --output-format PDF`
-- **Both CSV+HTML**: `python main.py --output-format Both`
-- **Include completed**: `python main.py --include-completed`
-- **With API key**: `python main.py --api-key YOUR_KEY`
-
-## Key Files
-- **`main.py`**: Primary entry point with CLI parsing and orchestration
-- **`config.py`**: Configuration dataclasses and constants
-- **`auth.py`**: Authentication and 1Password integration
-- **`api_client.py`**: ClickUp API HTTP client
-- **`ai_summary.py`**: Google Gemini AI integration for task summarization
-- **`mappers.py`**: Utilities and custom field mapping
-- **`extractor.py`**: Main business logic and export functionality
-- **`logger_config.py`**: Logging configuration and setup utilities
-- **`.github/copilot-instructions.md`**: This file with project conventions and patterns
-- **`requirements.txt`**: Python dependencies (requests, optional: onepassword-sdk, google-genai)
-- **`output/`**: Directory for generated CSV and HTML files
-
-## Development Guidelines
-- To add a new export field, update the `TaskRecord` dataclass and adjust the export logic in `export` and `render_html` methods.
-- To support a new output format, extend the `export` method and add a new config option.
-- When adding new custom field mappings, extend the `LocationMapper` class with additional mapping logic.
-- For new authentication methods, extend the authentication chain in the `main()` function.
-- All date formatting should use the provided `format_datetime` function for consistency.
-
-## 1Password Integration Details
-- **SDK Authentication**: Set `OP_SERVICE_ACCOUNT_TOKEN` environment variable
-- **CLI Fallback**: Ensure `op` command is available in PATH
-- **Secret Reference**: `"op://Home Server/ClickUp personal API token/credential"`
-- **Error Handling**: Graceful fallback through authentication chain with informative error messages
-
----
-
-For questions about project-specific conventions or to propose improvements, please update this file or contact the project maintainer.
