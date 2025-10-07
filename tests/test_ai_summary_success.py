@@ -316,6 +316,27 @@ class TestPromptConstruction(unittest.TestCase):
         model_name = call_args[1]['model']
         self.assertEqual(model_name, 'gemini-2.5-flash-lite')
 
+    @patch('ai_summary.genai')
+    def test_prompt_uses_first_person_perspective(self, mock_genai):
+        """Test prompt instructs AI to use first-person voice."""
+        mock_client = Mock()
+        mock_response = Mock()
+        mock_response.text = 'I completed the task'
+        mock_client.models.generate_content.return_value = mock_response
+        mock_genai.Client.return_value = mock_client
+        
+        field_entries = [('Subject', 'Bug fix'), ('Status', 'Done')]
+        get_ai_summary('Test Task', field_entries, 'api_key')
+        
+        # Check that generate_content was called with prompt containing first-person instructions
+        call_args = mock_client.models.generate_content.call_args
+        prompt = call_args[1]['contents']
+        
+        # Verify first-person perspective instructions are present
+        self.assertIn('first-person', prompt.lower())
+        self.assertIn('I completed', prompt)
+        self.assertIn('you have done', prompt.lower())
+
 
 if __name__ == '__main__':
     unittest.main()
