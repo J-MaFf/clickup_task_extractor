@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Any, cast
 from unittest.mock import patch
 
-from config import ClickUpConfig, OutputFormat, TaskRecord
+from config import ClickUpConfig, OutputFormat, TaskRecord, sort_tasks_by_priority_and_name
 from extractor import ClickUpTaskExtractor, get_export_fields
 
 
@@ -290,6 +290,52 @@ class FetchProcessTasksTests(unittest.TestCase):
             self.assertEqual(task_record.Priority, "High")
             self.assertEqual(task_record.Status, "In Progress")
             self.assertIn("Subject: Printer outage", task_record.Notes)
+
+
+class TaskExportSortingTests(unittest.TestCase):
+    """Test that tasks are properly sorted during export."""
+
+    def test_export_sorts_tasks_by_priority_then_name(self):
+        """Test that export method sorts tasks before rendering."""
+        # Create unsorted tasks
+        tasks = [
+            TaskRecord(Task="Zebra", Company="A", Branch="", Priority="High", Status="Open"),
+            TaskRecord(Task="Alpha", Company="B", Branch="", Priority="Urgent", Status="Open"),
+            TaskRecord(Task="Beta", Company="C", Branch="", Priority="Low", Status="Open"),
+            TaskRecord(Task="Charlie", Company="D", Branch="", Priority="Normal", Status="Open"),
+        ]
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            config = ClickUpConfig(
+                api_key="test",
+                output_path=str(Path(tmpdir) / "test.csv"),
+                output_format=OutputFormat.CSV,
+            )
+            api_client = DummyAPIClient({})
+            extractor = ClickUpTaskExtractor(config, api_client)
+
+            # Mock progress to avoid Rich output during test
+            with patch("extractor.Progress", DummyProgress), \
+                 patch("extractor.SpinnerColumn", DummySpinnerColumn), \
+                 patch("extractor.TextColumn", DummyTextColumn):
+                extractor.export(tasks)
+
+            # Read the CSV and verify order
+            with open(config.output_path, "r") as f:
+                import csv
+                reader = csv.DictReader(f)
+                rows = list(reader)
+
+            # Verify tasks are sorted
+            self.assertEqual(len(rows), 4)
+            self.assertEqual(rows[0]["Task"], "Alpha")
+            self.assertEqual(rows[0]["Priority"], "Urgent")
+            self.assertEqual(rows[1]["Task"], "Zebra")
+            self.assertEqual(rows[1]["Priority"], "High")
+            self.assertEqual(rows[2]["Task"], "Charlie")
+            self.assertEqual(rows[2]["Priority"], "Normal")
+            self.assertEqual(rows[3]["Task"], "Beta")
+            self.assertEqual(rows[3]["Priority"], "Low")
 
 
 if __name__ == "__main__":
