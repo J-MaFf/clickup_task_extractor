@@ -201,6 +201,7 @@ Tests for logging configuration in `logger_config.py`:
 ### Mocking
 
 Tests use `unittest.mock` extensively to:
+
 - Mock external dependencies (requests, 1Password SDK, Gemini API)
 - Isolate units under test
 - Control test conditions
@@ -209,6 +210,7 @@ Tests use `unittest.mock` extensively to:
 ### Test Independence
 
 Each test:
+
 - Sets up its own fixtures
 - Cleans up after itself
 - Can run in any order
@@ -217,12 +219,14 @@ Each test:
 ### Temporary Files
 
 Tests that write to disk use:
+
 - `tempfile.TemporaryDirectory()` for automatic cleanup
 - Context managers to ensure cleanup on exceptions
 
 ### Patching
 
 Tests patch at appropriate levels:
+
 - `@patch('module.function')` for function-level mocking
 - `@patch.dict('os.environ')` for environment variables
 - `@patch('module.Class')` for class-level mocking
@@ -241,6 +245,7 @@ When adding new functionality:
 ## Coverage Goals
 
 Aim for high coverage of:
+
 - ✅ Core business logic
 - ✅ Error handling paths
 - ✅ Edge cases and boundary conditions
@@ -250,6 +255,7 @@ Aim for high coverage of:
 ## Known Limitations
 
 Some areas not fully covered:
+
 - Integration tests with real ClickUp API
 - End-to-end workflow tests
 - Performance and load testing
