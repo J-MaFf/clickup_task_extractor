@@ -16,8 +16,8 @@ from enum import Enum
 
 
 # Date/time formatting constants - cross-platform compatible
-TIMESTAMP_FORMAT = '%d-%m-%Y_%I-%M%p'  # For filenames (with leading zeros for compatibility)
-DISPLAY_FORMAT = '%d/%m/%Y at %I:%M %p'  # For HTML display (with leading zeros for compatibility)
+TIMESTAMP_FORMAT = '%m-%d-%Y_%I-%M%p'  # For filenames (with leading zeros for compatibility)
+DISPLAY_FORMAT = '%m/%d/%Y at %I:%M %p'  # For HTML display (with leading zeros for compatibility)
 
 
 class TaskPriority(Enum):
@@ -61,8 +61,8 @@ def format_datetime(dt: datetime, format_string: str) -> str:
 
     Example:
         >>> dt = datetime(2025, 1, 8, 9, 30, 0)
-        >>> format_datetime(dt, '%d/%m/%Y at %I:%M %p')
-        '8/1/2025 at 9:30 AM'
+        >>> format_datetime(dt, '%m/%d/%Y at %I:%M %p')
+        '1/8/2025 at 9:30 AM'
     """
     s = dt.strftime(format_string)
     # Remove leading zeros from day and month
@@ -84,7 +84,7 @@ def default_output_path() -> str:
         Default file path for task export using current timestamp
 
     Example:
-        'output/WeeklyTaskList_8-1-2025_3-45PM.csv'
+        'output/WeeklyTaskList_1-8-2025_3-45PM.csv'
     """
     return f"output/WeeklyTaskList_{format_datetime(datetime.now(), TIMESTAMP_FORMAT)}.csv"
 
