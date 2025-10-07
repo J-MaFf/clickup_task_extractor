@@ -29,6 +29,7 @@ class MainEntrypointTests(unittest.TestCase):
 
         with patch.object(main_module, "console", mock_console), \
             patch.object(main_module, "get_yes_no_input", return_value=False) as mock_yes_no, \
+            patch.object(main_module, "get_choice_input", return_value="HTML") as mock_choice_input, \
             patch.object(main_module, "load_secret_with_fallback") as mock_load_secret, \
             patch.object(main_module, "ClickUpTaskExtractor") as mock_extractor_cls, \
             patch.object(main_module, "ClickUpAPIClient") as mock_api_client_cls:
@@ -81,6 +82,45 @@ class MainEntrypointTests(unittest.TestCase):
 
         load_func = mock_extractor_cls.call_args.args[2]
         self.assertTrue(callable(load_func))
+
+    def test_main_prompts_for_output_format_when_not_provided(self) -> None:
+        """Test that main prompts for output format when not provided via CLI."""
+        main_module = self._import_main_module()
+
+        mock_console = MagicMock()
+        mock_console.input.return_value = ""
+
+        with patch.object(main_module, "console", mock_console), \
+            patch.object(main_module, "get_yes_no_input", return_value=False) as mock_yes_no, \
+            patch.object(main_module, "get_choice_input", return_value="CSV") as mock_choice_input, \
+            patch.object(main_module, "load_secret_with_fallback") as mock_load_secret, \
+            patch.object(main_module, "ClickUpTaskExtractor") as mock_extractor_cls, \
+            patch.object(main_module, "ClickUpAPIClient") as mock_api_client_cls:
+
+            extractor_instance = mock_extractor_cls.return_value
+            extractor_instance.run = MagicMock()
+
+            # Note: NOT providing --output-format argument
+            argv = [
+                str(Path(__file__).resolve().parents[1] / "main.py"),
+                "--api-key",
+                "test-key",
+                "--workspace",
+                "TestWorkspace",
+            ]
+
+            self._run_main_with_args(main_module, argv)
+
+        # Verify the choice input function was called for output format
+        mock_choice_input.assert_called_once()
+        call_args = mock_choice_input.call_args
+        self.assertIn('CSV', call_args.args[1])  # CSV should be in choices
+        self.assertIn('HTML', call_args.args[1])  # HTML should be in choices
+        self.assertIn('PDF', call_args.args[1])  # PDF should be in choices
+
+        # Verify config was set with the selected format
+        config_arg = mock_extractor_cls.call_args.args[0]
+        self.assertEqual(config_arg.output_format, OutputFormat.CSV)
 
 
 if __name__ == "__main__":  # pragma: no cover - manual execution safeguard

@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### ✨ Features & Enhancements
+
+- **Interactive Output Format Selection**: Added user-friendly interactive prompt for selecting output format (CSV, HTML, Markdown, PDF, or Both) when `--output-format` is not specified via CLI. Users can now choose their preferred export format during runtime with numbered menu options or text input, following the same pattern as existing interactive mode and AI summary prompts.
+- **Enhanced User Input Utilities**: Added reusable `get_choice_input()` function in `mappers.py` for multi-choice selection with validation, default handling, and interrupt safety.
+
 ## [1.02] - 2025-09-30
 
 ### ✨ Features & Enhancements
