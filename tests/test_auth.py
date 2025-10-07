@@ -12,9 +12,8 @@ Tests cover:
 """
 
 import unittest
-from unittest.mock import patch, Mock, MagicMock
+from unittest.mock import patch, MagicMock
 import subprocess
-import asyncio
 
 from auth import load_secret_with_fallback, get_secret_from_1password
 
@@ -125,23 +124,47 @@ class TestGetSecretFrom1Password(unittest.TestCase):
         self.assertIn('OP_SERVICE_ACCOUNT_TOKEN', str(context.exception))
 
     @patch.dict('os.environ', {'OP_SERVICE_ACCOUNT_TOKEN': 'test_token'})
-    @patch('auth.asyncio.run')
     @patch('auth.OnePasswordClient')
-    def test_successful_secret_retrieval(self, mock_client_class, mock_asyncio_run):
+    def test_successful_secret_retrieval(self, mock_client_class):
         """Test successful secret retrieval from 1Password SDK."""
-        mock_asyncio_run.return_value = 'retrieved_secret'
+
+        class DummySecrets:
+            def __init__(self, value: str):
+                self._value = value
+
+            async def resolve(self, _reference: str) -> str:
+                return self._value
+
+        class DummyClient:
+            def __init__(self, secret: str):
+                self.secrets = DummySecrets(secret)
+
+        async def fake_authenticate(*args, **kwargs):
+            return DummyClient('retrieved_secret')
+
+        mock_client_class.authenticate = fake_authenticate
 
         result = get_secret_from_1password('op://vault/item/field', 'Test API Key')
 
         self.assertEqual(result, 'retrieved_secret')
-        mock_asyncio_run.assert_called_once()
 
     @patch.dict('os.environ', {'OP_SERVICE_ACCOUNT_TOKEN': 'test_token'})
-    @patch('auth.asyncio.run')
     @patch('auth.OnePasswordClient')
-    def test_wraps_exceptions_with_context(self, mock_client_class, mock_asyncio_run):
+    def test_wraps_exceptions_with_context(self, mock_client_class):
         """Test exceptions are wrapped with RuntimeError and context."""
-        mock_asyncio_run.side_effect = Exception('Network timeout')
+
+        class DummySecrets:
+            async def resolve(self, _reference: str) -> str:
+                raise Exception('Network timeout')
+
+        class DummyClient:
+            def __init__(self):
+                self.secrets = DummySecrets()
+
+        async def fake_authenticate(*args, **kwargs):
+            return DummyClient()
+
+        mock_client_class.authenticate = fake_authenticate
 
         with self.assertRaises(RuntimeError) as context:
             get_secret_from_1password('op://vault/item/field', 'Gemini API Key')
@@ -151,11 +174,14 @@ class TestGetSecretFrom1Password(unittest.TestCase):
         self.assertIn('Network timeout', error_message)
 
     @patch.dict('os.environ', {'OP_SERVICE_ACCOUNT_TOKEN': 'test_token'})
-    @patch('auth.asyncio.run')
     @patch('auth.OnePasswordClient')
-    def test_uses_custom_secret_type_in_error(self, mock_client_class, mock_asyncio_run):
+    def test_uses_custom_secret_type_in_error(self, mock_client_class):
         """Test custom secret_type is used in error messages."""
-        mock_asyncio_run.side_effect = Exception('Auth failed')
+
+        async def fake_authenticate(*args, **kwargs):
+            raise Exception('Auth failed')
+
+        mock_client_class.authenticate = fake_authenticate
 
         with self.assertRaises(RuntimeError) as context:
             get_secret_from_1password('op://vault/item/field', 'Custom Secret Type')
@@ -172,14 +198,14 @@ class TestAsyncSecretRetrieval(unittest.TestCase):
         """Test async function authenticates with correct parameters."""
         mock_client_instance = MagicMock()
         mock_client_instance.secrets.resolve = MagicMock()
-        
+
         # Create an async mock
         async def mock_authenticate(*args, **kwargs):
             return mock_client_instance
-        
+
         async def mock_resolve(*args):
             return 'test_secret'
-        
+
         mock_client_class.authenticate = mock_authenticate
         mock_client_instance.secrets.resolve = mock_resolve
 
@@ -194,11 +220,22 @@ class TestAsyncSecretRetrieval(unittest.TestCase):
             pass
 
     @patch.dict('os.environ', {'OP_SERVICE_ACCOUNT_TOKEN': 'test_token'})
-    @patch('auth.asyncio.run')
     @patch('auth.OnePasswordClient')
-    def test_empty_secret_raises_error(self, mock_client_class, mock_asyncio_run):
+    def test_empty_secret_raises_error(self, mock_client_class):
         """Test raises error when secret resolves to empty value."""
-        mock_asyncio_run.side_effect = ValueError("Secret reference 'op://vault/item/field' resolved to empty value")
+
+        class DummySecrets:
+            async def resolve(self, _reference: str) -> str:
+                return ''
+
+        class DummyClient:
+            def __init__(self):
+                self.secrets = DummySecrets()
+
+        async def fake_authenticate(*args, **kwargs):
+            return DummyClient()
+
+        mock_client_class.authenticate = fake_authenticate
 
         with self.assertRaises(RuntimeError) as context:
             get_secret_from_1password('op://vault/item/field')
