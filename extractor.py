@@ -373,13 +373,25 @@ class ClickUpTaskExtractor:
                                 console.print(f"  [dim]Processing task {i}/{len(all_tasks)}:[/dim] [bold]{task.Task}[/bold]")
                                 if hasattr(task, '_metadata') and task._metadata:
                                     metadata = task._metadata
-                                    ai_notes = get_ai_summary(
-                                        metadata['task_name'],
-                                        metadata['subject'],
-                                        metadata['description'],
-                                        metadata['resolution'],
-                                        self.config.gemini_api_key
-                                    )
+                                    raw_fields = metadata.get('ai_fields')
+                                    task_name = metadata.get('task_name', task.Task)
+                                    if raw_fields:
+                                        if isinstance(raw_fields, dict):
+                                            ai_fields = list(raw_fields.items())
+                                        else:
+                                            ai_fields = list(raw_fields)
+                                        ai_notes = get_ai_summary(
+                                            task_name,
+                                            ai_fields,
+                                            self.config.gemini_api_key
+                                        )
+                                    else:
+                                        fallback_fields = [('Notes', task.Notes or '(not provided)')]
+                                        ai_notes = get_ai_summary(
+                                            task_name,
+                                            fallback_fields,
+                                            self.config.gemini_api_key
+                                        )
                                     task.Notes = ai_notes
                             console.print("✅ [bold green]AI summaries generated for all selected tasks.[/bold green]")
                     else:
@@ -460,11 +472,12 @@ class ClickUpTaskExtractor:
             company = list_item.get('name', '')
 
             # Initialize other custom field values
-            branch = ''
+            branch_value = ''
             subject = ''
             custom_description = ''
             default_description = task_detail.get('description', '') or ''
             resolution = ''
+            notes_parts: list[str] = []
 
             # Process custom fields from detailed task data
             task_custom_fields = task_detail.get('custom_fields', [])
@@ -476,7 +489,7 @@ class ClickUpTaskExtractor:
                 val = branch_field.get('value')
                 type_config = branch_field.get('type_config', {})
                 options = type_config.get('options', [])
-                branch = LocationMapper.map_location(val, type_config, options)
+                branch_value = LocationMapper.map_location(val, type_config, options)
 
             def extract_field_value(field: dict | None) -> str:
                 if not field:
@@ -516,17 +529,23 @@ class ClickUpTaskExtractor:
             subject_value = extract_field_value(cf.get('Subject'))
             if subject_value:
                 subject = subject_value
+                notes_parts.append(f"Subject: {subject}")
 
             description_value = extract_field_value(cf.get('Description'))
             if description_value:
                 custom_description = description_value
+                notes_parts.append(f"Description: {custom_description}")
 
             resolution_value = extract_field_value(cf.get('Resolution'))
             if resolution_value:
                 resolution = resolution_value
+                notes_parts.append(f"Resolution: {resolution}")
+
+            if not custom_description and default_description:
+                notes_parts.append(f"Task Description: {default_description}")
 
             # Prepare AI field collection with placeholders
-            def with_placeholder(raw: str) -> str:
+            def with_placeholder(raw: str | None) -> str:
                 if raw is None:
                     return "(not provided)"
                 cleaned = raw.strip() if isinstance(raw, str) else str(raw)
@@ -534,37 +553,30 @@ class ClickUpTaskExtractor:
 
             ai_field_items: list[tuple[str, str]] = []
 
+            def add_ai_field(label: str, raw_value: str | None) -> None:
+                ai_field_items.append((label, with_placeholder(raw_value)))
+
             custom_name = extract_field_value(cf.get('Name'))
-            ai_field_items.append(('Name', with_placeholder(custom_name)))
-
-            ai_branch_value = with_placeholder(branch)
-            if ai_branch_value == "(not provided)":
-                ai_branch_value = with_placeholder(LocationMapper.map_location(branch_field.get('value'), branch_field.get('type_config', {}), branch_field.get('type_config', {}).get('options', [])) if branch_field else '')
-            ai_field_items.append(('Branch', ai_branch_value))
-
-            ai_field_items.append(('Phone #', with_placeholder(extract_field_value(cf.get('Phone #')))))
-            ai_field_items.append(('Computer #', with_placeholder(extract_field_value(cf.get('Computer #')))))
-            ai_field_items.append(('Subject', with_placeholder(subject_value)))
-            ai_field_items.append(('Description', with_placeholder(custom_description)))
-            ai_field_items.append(('Resolution', with_placeholder(resolution_value)))
-            ai_field_items.append(('Last time tracked', with_placeholder(extract_field_value(cf.get('Last time tracked')))))
-            ai_field_items.append(('Vendor', with_placeholder(extract_field_value(cf.get('Vendor')))))
-            ai_field_items.append(('Serial Number(s)', with_placeholder(extract_field_value(cf.get('Serial Number(s)')))))
-            ai_field_items.append(('Tracking #', with_placeholder(extract_field_value(cf.get('Tracking #')))))
-            ai_field_items.append(('RMA Number', with_placeholder(extract_field_value(cf.get('RMA Number')))))
-            ai_field_items.append(('Task Description', with_placeholder(default_description)))
-
-            # Update branch string for record display
-            branch = with_placeholder(branch)
+            add_ai_field('Name', custom_name)
+            add_ai_field('Branch', branch_value)
+            add_ai_field('Phone #', extract_field_value(cf.get('Phone #')))
+            add_ai_field('Computer #', extract_field_value(cf.get('Computer #')))
+            add_ai_field('Subject', subject_value)
+            add_ai_field('Description', custom_description)
+            add_ai_field('Resolution', resolution_value)
+            add_ai_field('Last time tracked', extract_field_value(cf.get('Last time tracked')))
+            add_ai_field('Vendor', extract_field_value(cf.get('Vendor')))
+            add_ai_field('Serial Number(s)', extract_field_value(cf.get('Serial Number(s)')))
+            add_ai_field('Tracking #', extract_field_value(cf.get('Tracking #')))
+            add_ai_field('RMA Number', extract_field_value(cf.get('RMA Number')))
+            add_ai_field('Task Description', default_description)
 
             # Generate AI summary or use original notes
             if self.config.enable_ai_summary and self.config.gemini_api_key:
                 from ai_summary import get_ai_summary
                 notes = get_ai_summary(
                     task_detail.get('name', ''),
-                    subject,
-                    description,
-                    resolution,
+                    ai_field_items,
                     self.config.gemini_api_key
                 )
             else:
@@ -580,7 +592,7 @@ class ClickUpTaskExtractor:
             task_record = TaskRecord(
                 Task=task_name,
                 Company=company,
-                Branch=branch,
+                Branch=branch_value,
                 Priority=priority,
                 Status=status,
                 ETA=eta,
@@ -591,9 +603,7 @@ class ClickUpTaskExtractor:
             # Store metadata for potential AI processing
             task_record._metadata = {
                 'task_name': task_name,
-                'subject': subject,
-                'description': description,
-                'resolution': resolution
+                'ai_fields': tuple(ai_field_items)
             }
 
             return task_record

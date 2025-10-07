@@ -11,7 +11,7 @@ Contains:
 
 import re
 import time
-from typing import TypeAlias
+from typing import Mapping, Sequence, TypeAlias
 
 # Rich console imports - create singleton instance
 try:
@@ -43,23 +43,38 @@ except ImportError:
     genai_types = None
 
 
-def get_ai_summary(task_name: str, subject: str, description: str, resolution: str, gemini_api_key: str) -> SummaryResult:
+def _normalize_field_entries(field_entries: Sequence[tuple[str, str]] | Mapping[str, str]) -> list[tuple[str, str]]:
+    """Normalize field entries into an ordered list of label/value pairs."""
+    if isinstance(field_entries, Mapping):
+        return [(str(label), str(value)) for label, value in field_entries.items()]
+    return [(str(label), str(value)) for label, value in field_entries]
+
+
+def get_ai_summary(
+    task_name: str,
+    field_entries: Sequence[tuple[str, str]] | Mapping[str, str],
+    gemini_api_key: str
+) -> SummaryResult:
     """
     Generate a concise 1-2 sentence summary about the current status of the task using Google Gemini AI.
     Automatically handles rate limiting with intelligent retry logic.
 
     Args:
         task_name: Name of the task
-        subject: Subject field content
-        description: Description field content
-        resolution: Resolution field content
+        field_entries: Iterable of (field label, value) pairs to include in prompt
         gemini_api_key: Google Gemini API key for authentication
 
     Returns:
         AI-generated summary or original content if AI fails
     """
+    normalized_entries = _normalize_field_entries(field_entries)
+
+    field_block = "\n".join(f"{label}: {value}" for label, value in normalized_entries if label)
+    if not field_block:
+        return "No content available for summary."
+
     if not gemini_api_key:
-        return f"Subject: {subject}\nDescription: {description}\nResolution: {resolution}".strip()
+        return field_block
 
     # Check if Google GenAI SDK is available
     if genai is None:
@@ -67,7 +82,7 @@ def get_ai_summary(task_name: str, subject: str, description: str, resolution: s
             _console.print("[yellow]Warning: Google GenAI SDK not available - install with: pip install google-generativeai[/yellow]")
         else:
             print("Warning: Google GenAI SDK not available - install with: pip install google-generativeai")
-        return f"Subject: {subject}\nDescription: {description}\nResolution: {resolution}".strip()
+        return field_block
 
     max_retries = 3
     base_delay = 30  # Increased base delay to 30 seconds for rate limiting
@@ -77,28 +92,18 @@ def get_ai_summary(task_name: str, subject: str, description: str, resolution: s
             # Initialize the Google GenAI client
             client = genai.Client(api_key=gemini_api_key)
 
-            # Prepare the content for AI analysis
-            content_parts = []
-            if subject:
-                content_parts.append(f"Subject: {subject}")
-            if description:
-                content_parts.append(f"Description: {description}")
-            if resolution:
-                content_parts.append(f"Resolution: {resolution}")
-
-            if not content_parts:
-                return "No content available for summary."
-
-            full_content = "\n".join(content_parts)
+            full_content = field_block
 
             # Create the prompt for AI summary
-            prompt = f"""Please provide a concise 1-2 sentence summary of the current status of this task using the Subject, Description, and Resolution fields:
+            prompt = f"""You are summarizing the current status of a ClickUp task.
 
 Task: {task_name}
 
+Here are the available fields (values may be "(not provided)" when absent):
+
 {full_content}
 
-Focus on the current state and what has been done or needs to be done. Be specific and actionable."""
+Provide a concise 1-2 sentence summary focusing on the task's current status and next steps. Ignore any fields marked "(not provided)"."""
 
             # Use the official Google GenAI SDK with proper configuration
             if genai_types:
@@ -132,7 +137,7 @@ Focus on the current state and what has been done or needs to be done. Be specif
                     _console.print(f"⚠️ [yellow]Warning: No text response from Gemini API for task: {task_name}[/yellow]")
                 else:
                     print(f"Warning: No text response from Gemini API for task: {task_name}")
-                return f"Subject: {subject}\nDescription: {description}\nResolution: {resolution}".strip()
+                return field_block
 
         except Exception as e:
             error_str = str(e)
@@ -198,7 +203,7 @@ Focus on the current state and what has been done or needs to be done. Be specif
                     print(f"AI Summary error for task '{task_name}': {e}")
 
             # Final attempt failed or non-retryable error - return fallback
-            return f"Subject: {subject}\nDescription: {description}\nResolution: {resolution}".strip()
+            return field_block
 
     # Should never reach here, but just in case
-    return f"Subject: {subject}\nDescription: {description}\nResolution: {resolution}".strip()
+    return field_block
