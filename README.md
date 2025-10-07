@@ -167,7 +167,7 @@ clickup_task_extractor/
 
 - Professional-looking HTML tables with CSS styling
 - Task summaries with status, priority, and custom fields
-- Cross-platform date formatting (e.g., "8/1/2025 at 3:45 PM")
+- Cross-platform date formatting (e.g., "10/7/2025 at 3:45 PM" for October 7, 2025 - MM/DD/YYYY format)
 - Image extraction from task descriptions
 
 ### CSV Export
