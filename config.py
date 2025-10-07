@@ -28,6 +28,16 @@ class TaskPriority(Enum):
     URGENT = "Urgent"
 
 
+# Priority sorting order (higher value = higher priority)
+PRIORITY_ORDER = {
+    "Urgent": 4,
+    "High": 3,
+    "Normal": 2,
+    "Low": 1,
+    "": 0,  # Handle empty/missing priority
+}
+
+
 class OutputFormat(Enum):
     """Enumeration of supported output formats."""
     CSV = "CSV"
@@ -87,6 +97,34 @@ def default_output_path() -> str:
         'output/WeeklyTaskList_8-1-2025_3-45PM.csv'
     """
     return f"output/WeeklyTaskList_{format_datetime(datetime.now(), TIMESTAMP_FORMAT)}.csv"
+
+
+def sort_tasks_by_priority_and_name(tasks: list['TaskRecord']) -> list['TaskRecord']:
+    """
+    Sort tasks by priority (Urgent → High → Normal → Low) and then alphabetically by task name.
+
+    Args:
+        tasks: List of TaskRecord objects to sort
+
+    Returns:
+        Sorted list of TaskRecord objects
+
+    Example:
+        >>> tasks = [
+        ...     TaskRecord(Task="Zebra", Priority="Low", ...),
+        ...     TaskRecord(Task="Apple", Priority="High", ...),
+        ...     TaskRecord(Task="Banana", Priority="High", ...)
+        ... ]
+        >>> sorted_tasks = sort_tasks_by_priority_and_name(tasks)
+        >>> # Result: [High-Apple, High-Banana, Low-Zebra]
+    """
+    return sorted(
+        tasks,
+        key=lambda task: (
+            -PRIORITY_ORDER.get(task.Priority, 0),  # Negative for descending order
+            task.Task.lower()  # Case-insensitive alphabetical
+        )
+    )
 
 
 @dataclass
