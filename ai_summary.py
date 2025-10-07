@@ -95,7 +95,7 @@ def get_ai_summary(
             full_content = field_block
 
             # Create the prompt for AI summary
-            prompt = f"""You are summarizing the current status of a ClickUp task.
+            prompt = f"""Please provide a concise 1-2 sentence summary of the current status of this task using the available fields, written as if you are the user describing your own work (use first-person voice, e.g., "I completed...", "I need to..."):
 
 Task: {task_name}
 
@@ -103,7 +103,7 @@ Here are the available fields (values may be "(not provided)" when absent):
 
 {full_content}
 
-Provide a concise 1-2 sentence summary focusing on the task's current status and next steps. Ignore any fields marked "(not provided)"."""
+Focus on the current state and what you have done or need to do. Be specific and actionable. Ignore any fields marked "(not provided)"."""
 
             # Use the official Google GenAI SDK with proper configuration
             if genai_types:
