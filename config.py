@@ -11,7 +11,7 @@ Contains:
 
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import TypeAlias
+from typing import Any, TypeAlias
 from enum import Enum
 
 
@@ -169,4 +169,4 @@ class TaskRecord:
     ETA: str = ''
     Notes: str = ''
     Extra: str = ''
-    _metadata: dict[str, str] = field(default_factory=dict, init=False, repr=False)
+    _metadata: dict[str, Any] = field(default_factory=dict, init=False, repr=False)

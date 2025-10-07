@@ -42,7 +42,21 @@ A powerful, cross-platform Python application for extracting, processing, and ex
    pip install -r requirements.txt
    ```
 
-3. **Set up your ClickUp API key** (choose one method):
+3. **(Windows, for PDF export)** Install WeasyPrint runtime libraries (Cairo, Pango, etc.). The simplest option is the GTK3 bundle:
+
+   ```powershell
+   winget install Gnome.Project.Gtk3
+   ```
+
+   > Alternatively, download the GTK3 Runtime installer from [tschoonj/GTK-for-Windows-Runtime-Environment-Installer](https://github.com/tschoonj/GTK-for-Windows-Runtime-Environment-Installer/releases) and let it add the DLLs to your PATH.
+
+4. **Install WeasyPrint inside the virtual environment** (if you plan to export PDFs):
+
+   ```bash
+   python -m pip install weasyprint
+   ```
+
+5. **Set up your ClickUp API key** (choose one method):
    - Command line: `python main.py --api-key YOUR_API_KEY`
    - Environment variable: `export CLICKUP_API_KEY=YOUR_API_KEY`
    - 1Password: Store in 1Password with reference `op://Home Server/ClickUp personal API token/credential`
