@@ -260,7 +260,7 @@ class ClickUpTaskExtractor:
 
                     # Create per-list task progress bar (resets for each list)
                     current_list_task = progress.add_task(
-                        f"📝 Processing: [bold]{list_item['name']}[/bold]", 
+                        f"📝 Processing: [bold]{list_item['name']}[/bold]",
                         total=len(tasks) if tasks else 1
                     )
 
@@ -462,7 +462,8 @@ class ClickUpTaskExtractor:
             # Initialize other custom field values
             branch = ''
             subject = ''
-            description = task_detail.get('description', '')
+            custom_description = ''
+            default_description = task_detail.get('description', '') or ''
             resolution = ''
 
             # Process custom fields from detailed task data
@@ -477,24 +478,84 @@ class ClickUpTaskExtractor:
                 options = type_config.get('options', [])
                 branch = LocationMapper.map_location(val, type_config, options)
 
-            # Build notes from custom fields (like original)
-            notes_parts = []
-            for fname in ['Subject', 'Description', 'Resolution']:
-                f = cf.get(fname)
-                if f and f.get('value'):
-                    if fname == 'Subject':
-                        subject = f['value']
-                    elif fname == 'Description':
-                        description = f['value']
-                    elif fname == 'Resolution':
-                        resolution = f['value']
-                    notes_parts.append(f"{fname}: {f['value']}")
+            def extract_field_value(field: dict | None) -> str:
+                if not field:
+                    return ''
+                value = field.get('value')
+                if value is None:
+                    return ''
+                if isinstance(value, str):
+                    return value
+                if isinstance(value, list):
+                    items: list[str] = []
+                    for item in value:
+                        if item is None:
+                            continue
+                        if isinstance(item, dict):
+                            if 'value' in item and item['value'] not in (None, ''):
+                                items.append(str(item['value']))
+                            elif 'name' in item and item['name'] not in (None, ''):
+                                items.append(str(item['name']))
+                            else:
+                                items.append(str(item))
+                        else:
+                            items.append(str(item))
+                    return ', '.join(items)
+                if isinstance(value, dict):
+                    if 'value' in value and value['value'] not in (None, ''):
+                        nested_value = value['value']
+                        if isinstance(nested_value, list):
+                            nested_items = [str(v) for v in nested_value if v not in (None, '')]
+                            return ', '.join(nested_items)
+                        return str(nested_value)
+                    if 'text' in value and value['text'] not in (None, ''):
+                        return str(value['text'])
+                return str(value)
 
-            # Add task description if no custom Description field
-            if not cf.get('Description') and task_detail.get('description'):
-                task_desc = task_detail['description']
-                description = task_desc
-                notes_parts.append(f"Task Description: {task_desc}")
+            # Build base values for key custom fields
+            subject_value = extract_field_value(cf.get('Subject'))
+            if subject_value:
+                subject = subject_value
+
+            description_value = extract_field_value(cf.get('Description'))
+            if description_value:
+                custom_description = description_value
+
+            resolution_value = extract_field_value(cf.get('Resolution'))
+            if resolution_value:
+                resolution = resolution_value
+
+            # Prepare AI field collection with placeholders
+            def with_placeholder(raw: str) -> str:
+                if raw is None:
+                    return "(not provided)"
+                cleaned = raw.strip() if isinstance(raw, str) else str(raw)
+                return cleaned if cleaned else "(not provided)"
+
+            ai_field_items: list[tuple[str, str]] = []
+
+            custom_name = extract_field_value(cf.get('Name'))
+            ai_field_items.append(('Name', with_placeholder(custom_name)))
+
+            ai_branch_value = with_placeholder(branch)
+            if ai_branch_value == "(not provided)":
+                ai_branch_value = with_placeholder(LocationMapper.map_location(branch_field.get('value'), branch_field.get('type_config', {}), branch_field.get('type_config', {}).get('options', [])) if branch_field else '')
+            ai_field_items.append(('Branch', ai_branch_value))
+
+            ai_field_items.append(('Phone #', with_placeholder(extract_field_value(cf.get('Phone #')))))
+            ai_field_items.append(('Computer #', with_placeholder(extract_field_value(cf.get('Computer #')))))
+            ai_field_items.append(('Subject', with_placeholder(subject_value)))
+            ai_field_items.append(('Description', with_placeholder(custom_description)))
+            ai_field_items.append(('Resolution', with_placeholder(resolution_value)))
+            ai_field_items.append(('Last time tracked', with_placeholder(extract_field_value(cf.get('Last time tracked')))))
+            ai_field_items.append(('Vendor', with_placeholder(extract_field_value(cf.get('Vendor')))))
+            ai_field_items.append(('Serial Number(s)', with_placeholder(extract_field_value(cf.get('Serial Number(s)')))))
+            ai_field_items.append(('Tracking #', with_placeholder(extract_field_value(cf.get('Tracking #')))))
+            ai_field_items.append(('RMA Number', with_placeholder(extract_field_value(cf.get('RMA Number')))))
+            ai_field_items.append(('Task Description', with_placeholder(default_description)))
+
+            # Update branch string for record display
+            branch = with_placeholder(branch)
 
             # Generate AI summary or use original notes
             if self.config.enable_ai_summary and self.config.gemini_api_key:
@@ -678,14 +739,14 @@ class ClickUpTaskExtractor:
                 try:
                     # Import weasyprint here to provide better error messages
                     from weasyprint import HTML
-                    
+
                     # Generate HTML first, then convert to PDF
                     html_content = self.render_html(tasks)
                     HTML(string=html_content).write_pdf(pdf_path)
-                    
+
                     progress.remove_task(pdf_task)
                     console.print(f"✅ [green]PDF exported:[/green] [bold]{pdf_path}[/bold]")
-                    
+
                 except ImportError:
                     progress.remove_task(pdf_task)
                     console.print(f"[red]❌ Error: weasyprint not installed. Install with: pip install weasyprint[/red]")
@@ -738,24 +799,24 @@ class ClickUpTaskExtractor:
         # Generate header with metadata
         header = f"""# Weekly Task List
 
-**Generated:** {format_datetime(datetime.now(), DISPLAY_FORMAT)}  
-**Total Tasks:** {len(tasks)}  
+**Generated:** {format_datetime(datetime.now(), DISPLAY_FORMAT)}
+**Total Tasks:** {len(tasks)}
 **Workspace:** {self.config.workspace_name} / {self.config.space_name}
 
 ## Tasks
 
 """
-        
+
         # Get export fields (excluding internal fields like _metadata)
         export_fields = get_export_fields()
-        
+
         if not tasks:
             return header + "*No tasks found.*\n"
-        
+
         # Create markdown table header
         table = "| " + " | ".join(export_fields) + " |\n"
         table += "|" + "|".join([" --- " for _ in export_fields]) + "|\n"
-        
+
         # Add table rows
         for t in tasks:
             row_values = []
@@ -765,5 +826,5 @@ class ClickUpTaskExtractor:
                 value = value.replace("|", "\\|").replace("\n", "<br>")
                 row_values.append(value)
             table += "| " + " | ".join(row_values) + " |\n"
-        
+
         return header + table
