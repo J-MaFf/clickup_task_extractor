@@ -36,7 +36,7 @@ except ImportError:
     sys.exit(1)
 
 # Import project modules
-from config import ClickUpConfig, TaskRecord, DISPLAY_FORMAT, format_datetime, OutputFormat
+from config import ClickUpConfig, TaskRecord, DISPLAY_FORMAT, format_datetime, OutputFormat, sort_tasks_by_priority_and_name
 from api_client import APIClient, ClickUpAPIClient, APIError, AuthenticationError
 from ai_summary import get_ai_summary
 from mappers import get_yes_no_input, get_date_range, extract_images, LocationMapper
@@ -694,6 +694,9 @@ class ClickUpTaskExtractor:
         if not tasks:
             console.print('[yellow]⚠️  No tasks found to export.[/yellow]')
             return
+
+        # Sort tasks by priority (Urgent → High → Normal → Low) and then alphabetically by name
+        tasks = sort_tasks_by_priority_and_name(tasks)
 
         console.print(f"\n[bold blue]📤 Exporting {len(tasks)} tasks...[/bold blue]")
 
