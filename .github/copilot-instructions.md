@@ -1,4 +1,3 @@
----
 # Copilot Instructions: ClickUp Task Extractor
 
 ## Architecture & Data Flow
