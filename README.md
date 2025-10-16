@@ -13,7 +13,8 @@ A powerful, cross-platform Python application for extracting, processing, and ex
 - 🎨 **Beautiful UI**: Rich console interfaces with progress bars, panels, and styled output
 - 🤖 **AI Summaries**: Optional Google Gemini AI integration for intelligent task summaries
 - 📊 **Multiple Export Formats**: CSV, HTML, Markdown, PDF, or combined formats with professional styling
-- 🔍 **Interactive Mode**: Review and select tasks before export
+- 🔍 **Interactive Mode**: Review and select tasks before export with user-friendly prompts
+- 📄 **Interactive Format Selection**: Choose output format at runtime via intuitive prompt
 - 📅 **Flexible Filtering**: Date range filtering (This Week, Last Week, All Open)
 - 🌐 **Cross-Platform**: Works on Windows, macOS, and Linux
 - ⚡ **Modern Architecture**: Clean, modular design following SOLID principles
@@ -87,6 +88,16 @@ python main.py --date-filter ThisWeek
 python main.py --workspace "MyWorkspace" --space "MySpace"
 ```
 
+### Interactive Prompts
+
+When certain options are not specified via CLI arguments, the application will prompt you interactively:
+
+1. **Interactive Mode**: Asks if you want to review and select which tasks to export
+2. **AI Summary**: Asks if you want to enable AI-powered task summaries (requires Gemini API key)
+3. **Output Format**: Asks you to choose your preferred export format (CSV, HTML, Markdown, PDF, or Both)
+
+Each prompt provides clear options and defaults, making it easy to configure the application on-the-fly without remembering all CLI flags.
+
 ## 🔧 Development workflow
 
 - Install deps via `pip install -r requirements.txt`; optional features require `onepassword-sdk` and `google-generativeai` which are already listed.
@@ -112,7 +123,7 @@ python main.py --workspace "MyWorkspace" --space "MySpace"
 | `--workspace` | Workspace name | `KMS` |
 | `--space` | Space name | `Kikkoman` |
 | `--output` | Output file path | Auto-generated timestamp |
-| `--output-format` | Export format: `CSV`, `Markdown`, `PDF`, `Both` | `HTML` |
+| `--output-format` | Export format: `CSV`, `Markdown`, `PDF`, `Both` | Prompted if not specified, defaults to `HTML` |
 | `--include-completed` | Include completed/archived tasks | `False` |
 | `--interactive` | Enable interactive task selection | Prompted |
 | `--date-filter` | Date filter: `AllOpen`, `ThisWeek`, `LastWeek` | `AllOpen` |

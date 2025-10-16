@@ -15,7 +15,7 @@ from unittest.mock import patch
 from io import StringIO
 
 from config import DateFilter
-from mappers import get_date_range, extract_images, LocationMapper, get_yes_no_input
+from mappers import get_date_range, extract_images, LocationMapper, get_yes_no_input, get_choice_input
 
 
 class TestGetDateRange(unittest.TestCase):
@@ -317,6 +317,108 @@ class TestGetYesNoInput(unittest.TestCase):
         """Test KeyboardInterrupt returns default."""
         result = get_yes_no_input('Test prompt: ', default_on_interrupt=False)
         self.assertFalse(result)
+
+
+class TestGetChoiceInput(unittest.TestCase):
+    """Tests for the get_choice_input function."""
+
+    @patch('builtins.input', return_value='1')
+    @patch('sys.stdout', new_callable=StringIO)
+    def test_numeric_input_first_choice(self, mock_stdout, mock_input):
+        """Test selecting first choice by number."""
+        choices = ['CSV', 'HTML', 'PDF']
+        result = get_choice_input('Select: ', choices, default_index=0)
+        self.assertEqual(result, 'CSV')
+
+    @patch('builtins.input', return_value='3')
+    @patch('sys.stdout', new_callable=StringIO)
+    def test_numeric_input_third_choice(self, mock_stdout, mock_input):
+        """Test selecting third choice by number."""
+        choices = ['CSV', 'HTML', 'PDF']
+        result = get_choice_input('Select: ', choices, default_index=1)
+        self.assertEqual(result, 'PDF')
+
+    @patch('builtins.input', return_value='HTML')
+    @patch('sys.stdout', new_callable=StringIO)
+    def test_text_input_exact_match(self, mock_stdout, mock_input):
+        """Test selecting by exact text match."""
+        choices = ['CSV', 'HTML', 'PDF']
+        result = get_choice_input('Select: ', choices, default_index=0)
+        self.assertEqual(result, 'HTML')
+
+    @patch('builtins.input', return_value='html')
+    @patch('sys.stdout', new_callable=StringIO)
+    def test_text_input_case_insensitive(self, mock_stdout, mock_input):
+        """Test selecting by case-insensitive text match."""
+        choices = ['CSV', 'HTML', 'PDF']
+        result = get_choice_input('Select: ', choices, default_index=0)
+        self.assertEqual(result, 'HTML')
+
+    @patch('builtins.input', return_value='')
+    @patch('sys.stdout', new_callable=StringIO)
+    def test_empty_input_uses_default(self, mock_stdout, mock_input):
+        """Test empty input uses default choice."""
+        choices = ['CSV', 'HTML', 'PDF']
+        result = get_choice_input('Select: ', choices, default_index=1)
+        self.assertEqual(result, 'HTML')
+
+    @patch('builtins.input', return_value='99')
+    @patch('sys.stdout', new_callable=StringIO)
+    def test_invalid_number_uses_default(self, mock_stdout, mock_input):
+        """Test invalid number uses default choice."""
+        choices = ['CSV', 'HTML', 'PDF']
+        result = get_choice_input('Select: ', choices, default_index=0)
+        self.assertEqual(result, 'CSV')
+        self.assertIn('Invalid choice', mock_stdout.getvalue())
+
+    @patch('builtins.input', return_value='invalid')
+    @patch('sys.stdout', new_callable=StringIO)
+    def test_invalid_text_uses_default(self, mock_stdout, mock_input):
+        """Test invalid text uses default choice."""
+        choices = ['CSV', 'HTML', 'PDF']
+        result = get_choice_input('Select: ', choices, default_index=2)
+        self.assertEqual(result, 'PDF')
+        self.assertIn('Invalid choice', mock_stdout.getvalue())
+
+    @patch('builtins.input', side_effect=EOFError)
+    @patch('sys.stdout', new_callable=StringIO)
+    def test_eof_uses_default(self, mock_stdout, mock_input):
+        """Test EOFError uses default choice."""
+        choices = ['CSV', 'HTML', 'PDF']
+        result = get_choice_input('Select: ', choices, default_index=1)
+        self.assertEqual(result, 'HTML')
+        self.assertIn('Defaulting to', mock_stdout.getvalue())
+
+    @patch('builtins.input', side_effect=KeyboardInterrupt)
+    @patch('sys.stdout', new_callable=StringIO)
+    def test_keyboard_interrupt_uses_default(self, mock_stdout, mock_input):
+        """Test KeyboardInterrupt uses default choice."""
+        choices = ['CSV', 'HTML', 'PDF']
+        result = get_choice_input('Select: ', choices, default_index=0)
+        self.assertEqual(result, 'CSV')
+        self.assertIn('Defaulting to', mock_stdout.getvalue())
+
+    def test_empty_choices_raises_error(self):
+        """Test that empty choices list raises ValueError."""
+        with self.assertRaises(ValueError):
+            get_choice_input('Select: ', [], default_index=0)
+
+    @patch('builtins.input', return_value='1')
+    @patch('sys.stdout', new_callable=StringIO)
+    def test_invalid_default_index_uses_zero(self, mock_stdout, mock_input):
+        """Test that invalid default index defaults to 0."""
+        choices = ['CSV', 'HTML', 'PDF']
+        # This should still work and return CSV (choice 1)
+        result = get_choice_input('Select: ', choices, default_index=10)
+        self.assertEqual(result, 'CSV')
+
+    @patch('builtins.input', return_value='')
+    @patch('sys.stdout', new_callable=StringIO)
+    def test_negative_default_index_uses_zero(self, mock_stdout, mock_input):
+        """Test that negative default index defaults to 0."""
+        choices = ['CSV', 'HTML', 'PDF']
+        result = get_choice_input('Select: ', choices, default_index=-1)
+        self.assertEqual(result, 'CSV')
 
 
 if __name__ == '__main__':
