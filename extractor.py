@@ -179,27 +179,29 @@ class ClickUpTaskExtractor:
 
                 # Since /team endpoint fails with SHARD_006 for this account,
                 # we'll use a direct workspace/team ID if provided, or prompt user
-                team_id = os.environ.get('CLICKUP_TEAM_ID') or self.config.team_id
-
+                team_id = None
                 team = None  # Initialize team variable
+                # Try /team endpoint as primary method
+                try:
+                    teams = self.api.get('/team')['teams']
+                    team = next((t for t in teams if t['name'] == self.config.workspace_name), None)
+                    if team:
+                        team_id = team['id']
+                except (ShardRoutingError, KeyError, StopIteration):
+                    # If /team fails, fall back to config/environment
+                    team_id = os.environ.get('CLICKUP_TEAM_ID') or self.config.team_id
+
+                # If still no team_id, prompt user
                 if not team_id:
-                    # Try /team endpoint as primary method
-                    try:
-                        teams = self.api.get('/team')['teams']
-                        team = next((t for t in teams if t['name'] == self.config.workspace_name), None)
-                        if team:
-                            team_id = team['id']
-                    except (ShardRoutingError, KeyError):
-                        # If /team fails, ask user for team ID
-                        console.print("[yellow]⚠️  The /team endpoint is not accessible for this account.[/yellow]")
-                        console.print("[dim]To find your Team/Workspace ID:[/dim]")
-                        console.print("[dim]  1. Go to https://app.clickup.com[/dim]")
-                        console.print("[dim]  2. Click on Workspace settings[/dim]")
-                        console.print("[dim]  3. Look for 'Team ID' or 'Workspace ID' in the URL or settings[/dim]")
-                        team_id = console.input("[bold cyan]Please enter your Team/Workspace ID: [/bold cyan]")
-                        if not team_id:
-                            console.print("[red]Team ID is required[/red]")
-                            return
+                    console.print("[yellow]⚠️  The /team endpoint is not accessible for this account, and no team ID was found in config or environment.[/yellow]")
+                    console.print("[dim]To find your Team/Workspace ID:[/dim]")
+                    console.print("[dim]  1. Go to https://app.clickup.com[/dim]")
+                    console.print("[dim]  2. Click on Workspace settings[/dim]")
+                    console.print("[dim]  3. Look for 'Team ID' or 'Workspace ID' in the URL or settings[/dim]")
+                    team_id = console.input("[bold cyan]Please enter your Team/Workspace ID: [/bold cyan]")
+                    if not team_id:
+                        console.print("[red]Team ID is required[/red]")
+                        return
 
                 # If team wasn't fetched from /team endpoint, create a minimal team object with workspace name
                 if team is None:
