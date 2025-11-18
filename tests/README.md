@@ -4,14 +4,18 @@ This directory contains comprehensive unit tests for the ClickUp Task Extractor 
 
 ## Overview
 
-The test suite includes 120 tests covering all major modules and functionality:
+The test suite includes 159 tests covering all major modules and functionality:
 
-- **test_mappers.py** (31 tests) - Utility helpers and data mapping
+- **test_mappers.py** (49 tests) - Utility helpers and data mapping
 - **test_logger_config.py** (23 tests) - Logging configuration
 - **test_ai_summary_success.py** (18 tests) - AI summary generation
-- **test_api_client.py** (17 tests) - API client and error handling
+- **test_api_client.py** (18 tests) - API client and error handling
 - **test_auth.py** (16 tests) - Authentication and secret resolution
 - **test_extractor_edge_flows.py** (15 tests) - Task extraction workflows
+- **test_config.py** (4 tests) - Configuration and formatting
+- **test_main.py** (2 tests) - CLI entry point
+- **test_sorting.py** (9 tests) - Task sorting logic
+- **test_ai_summary.py** (4 tests) - AI summary fallback behavior
 
 ## Running Tests
 

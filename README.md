@@ -64,6 +64,20 @@ A powerful, cross-platform Python application for extracting, processing, and ex
 
 > 💡 The CLI auto-relaunches inside `.venv/` when present, so activating the virtualenv manually is optional as long as dependencies live there.
 
+### Using the Executable
+
+For users who prefer not to install Python, pre-built executables are available:
+
+1. Download `ClickUpTaskExtractor.exe` from the latest [release](https://github.com/J-MaFf/clickup_task_extractor/releases)
+2. Run directly: `ClickUpTaskExtractor.exe` or from command line with options
+3. No Python installation required—all dependencies are bundled
+
+**Example:**
+
+```bash
+ClickUpTaskExtractor.exe --output-format Both --interactive
+```
+
 ### Basic Usage
 
 ```bash
