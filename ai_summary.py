@@ -88,7 +88,8 @@ def get_ai_summary(
     for attempt in range(max_retries + 1):
         try:
             # Initialize the Google GenAI client
-            client = genai.Client(api_key=gemini_api_key)
+            genai.configure(api_key=gemini_api_key)
+            model = genai.GenerativeModel('gemini-2.5-flash-001')
 
             full_content = field_block
 
@@ -104,20 +105,15 @@ Here are the available fields (values may be "(not provided)" when absent):
 Focus on the current state and what you have done or need to do. Be specific and actionable. Ignore any fields marked "(not provided)"."""
 
             # Use the official Google GenAI SDK with proper configuration
-            if genai:
-                # Configure generation parameters
-                genai.configure(api_key=gemini_api_key)
-
-            config = {
-                "temperature": 0.3,
-                "max_output_tokens": 150,
-            }
+            config = genai.types.GenerationConfig(
+                temperature=0.3,
+                max_output_tokens=150,
+            )
 
             # Make API call without status indicator to avoid progress bar conflicts
             # The main progress bar will handle the visual feedback
-            response = client.models.generate_content(
-                model='gemini-2.5-flash-lite',
-                contents=prompt,
+            response = model.generate_content(
+                prompt,
                 generation_config=config
             )
 
