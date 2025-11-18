@@ -50,7 +50,7 @@ from version import __version__, __description__
 from auth import load_secret_with_fallback
 from api_client import ClickUpAPIClient
 from extractor import ClickUpTaskExtractor
-from mappers import get_yes_no_input
+from mappers import get_yes_no_input, get_choice_input
 
 # Initialize Rich console
 console = Console()
@@ -187,6 +187,21 @@ def main():
                 console.print("✅ [green]AI summary enabled.[/green]")
         else:
             console.print("✅ [green]AI summary disabled.[/green]")
+
+    # Ask about output format if not explicitly set via CLI
+    if not args.output_format:
+        console.print("\n[bold blue]📄 Output Format[/bold blue]")
+        console.print("Choose the format for your exported task list:")
+        console.print("  • [cyan]CSV[/cyan] - Comma-separated values, great for spreadsheets")
+        console.print("  • [cyan]HTML[/cyan] - Rich formatted web page with styling")
+        console.print("  • [cyan]Markdown[/cyan] - Lightweight markup format")
+        console.print("  • [cyan]PDF[/cyan] - Portable document format")
+        console.print("  • [cyan]Both[/cyan] - Export as both CSV and HTML")
+        
+        format_choices = ['CSV', 'HTML', 'Markdown', 'PDF', 'Both']
+        selected_format = get_choice_input('Enter your choice (1-5) or format name [default: HTML]: ', format_choices, default_index=1)
+        args.output_format = selected_format
+        console.print(f"✅ [green]Output format set to: {selected_format}[/green]")
 
     # Convert string values to enums with fallback
     date_filter = DateFilter.ALL_OPEN

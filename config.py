@@ -11,13 +11,13 @@ Contains:
 
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import TypeAlias
+from typing import Any, TypeAlias
 from enum import Enum
 
 
 # Date/time formatting constants - cross-platform compatible
-TIMESTAMP_FORMAT = '%d-%m-%Y_%I-%M%p'  # For filenames (with leading zeros for compatibility)
-DISPLAY_FORMAT = '%d/%m/%Y at %I:%M %p'  # For HTML display (with leading zeros for compatibility)
+TIMESTAMP_FORMAT = '%m-%d-%Y_%I-%M%p'  # For filenames (with leading zeros for compatibility)
+DISPLAY_FORMAT = '%m/%d/%Y at %I:%M %p'  # For HTML display (with leading zeros for compatibility)
 
 
 class TaskPriority(Enum):
@@ -26,6 +26,16 @@ class TaskPriority(Enum):
     NORMAL = "Normal"
     HIGH = "High"
     URGENT = "Urgent"
+
+
+# Priority sorting order (higher value = higher priority)
+PRIORITY_ORDER = {
+    "Urgent": 4,
+    "High": 3,
+    "Normal": 2,
+    "Low": 1,
+    "": 0,  # Handle empty/missing priority
+}
 
 
 class OutputFormat(Enum):
@@ -61,8 +71,8 @@ def format_datetime(dt: datetime, format_string: str) -> str:
 
     Example:
         >>> dt = datetime(2025, 1, 8, 9, 30, 0)
-        >>> format_datetime(dt, '%d/%m/%Y at %I:%M %p')
-        '8/1/2025 at 9:30 AM'
+        >>> format_datetime(dt, '%m/%d/%Y at %I:%M %p')
+        '1/8/2025 at 9:30 AM'
     """
     s = dt.strftime(format_string)
     # Remove leading zeros from day and month
@@ -84,9 +94,37 @@ def default_output_path() -> str:
         Default file path for task export using current timestamp
 
     Example:
-        'output/WeeklyTaskList_8-1-2025_3-45PM.csv'
+        'output/WeeklyTaskList_1-8-2025_3-45PM.csv'
     """
     return f"output/WeeklyTaskList_{format_datetime(datetime.now(), TIMESTAMP_FORMAT)}.csv"
+
+
+def sort_tasks_by_priority_and_name(tasks: list['TaskRecord']) -> list['TaskRecord']:
+    """
+    Sort tasks by priority (Urgent → High → Normal → Low) and then alphabetically by task name.
+
+    Args:
+        tasks: List of TaskRecord objects to sort
+
+    Returns:
+        Sorted list of TaskRecord objects
+
+    Example:
+        >>> tasks = [
+        ...     TaskRecord(Task="Zebra", Priority="Low", ...),
+        ...     TaskRecord(Task="Apple", Priority="High", ...),
+        ...     TaskRecord(Task="Banana", Priority="High", ...)
+        ... ]
+        >>> sorted_tasks = sort_tasks_by_priority_and_name(tasks)
+        >>> # Result: [High-Apple, High-Banana, Low-Zebra]
+    """
+    return sorted(
+        tasks,
+        key=lambda task: (
+            -PRIORITY_ORDER.get(task.Priority, 0),  # Negative for descending order
+            task.Task.lower()  # Case-insensitive alphabetical
+        )
+    )
 
 
 @dataclass
@@ -169,4 +207,4 @@ class TaskRecord:
     ETA: str = ''
     Notes: str = ''
     Extra: str = ''
-    _metadata: dict[str, str] = field(default_factory=dict, init=False, repr=False)
+    _metadata: dict[str, Any] = field(default_factory=dict, init=False, repr=False)
