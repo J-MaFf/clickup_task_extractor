@@ -176,22 +176,36 @@ class ClickUpTaskExtractor:
 
                 # Fetch workspaces
                 task = progress.add_task("🏢 Fetching workspaces...", total=None)
-                teams = self.api.get('/team')['teams']
-                team = next((t for t in teams if t['name'] == self.config.workspace_name), None)
-                if not team:
-                    console.print(Panel(
-                        f"[red]Workspace '{self.config.workspace_name}' not found.[/red]\n"
-                        f"[dim]Available workspaces: {', '.join([t['name'] for t in teams[:3]])}{'...' if len(teams) > 3 else ''}[/dim]",
-                        title="❌ Workspace Error",
-                        style="red"
-                    ))
-                    return
-                console.print(f"✅ [green]Workspace found:[/green] [bold]{team['name']}[/bold]")
+                
+                # Since /team endpoint fails with SHARD_006 for this account,
+                # we'll use a direct workspace/team ID if provided, or prompt user
+                team_id = os.environ.get('CLICKUP_TEAM_ID')
+                
+                if not team_id:
+                    # Try /team endpoint as primary method
+                    try:
+                        teams = self.api.get('/team')['teams']
+                        team = next((t for t in teams if t['name'] == self.config.workspace_name), None)
+                        if team:
+                            team_id = team['id']
+                    except (ShardRoutingError, KeyError, StopIteration):
+                        # If /team fails, ask user for team ID
+                        console.print("[yellow]⚠️  The /team endpoint is not accessible for this account.[/yellow]")
+                        console.print("[dim]To find your Team/Workspace ID:[/dim]")
+                        console.print("[dim]  1. Go to https://app.clickup.com[/dim]")
+                        console.print("[dim]  2. Click on Workspace settings[/dim]")
+                        console.print("[dim]  3. Look for 'Team ID' or 'Workspace ID' in the URL or settings[/dim]")
+                        team_id = console.input("[bold cyan]Please enter your Team/Workspace ID: [/bold cyan]")
+                        if not team_id:
+                            console.print("[red]Team ID is required[/red]")
+                            return
+                
+                console.print(f"✅ [green]Using workspace/team ID:[/green] [bold]{team_id}[/bold]")
                 progress.remove_task(task)
 
                 # Fetch spaces
                 task = progress.add_task("🌌 Fetching spaces...", total=None)
-                spaces = self.api.get(f"/team/{team['id']}/space")['spaces']
+                spaces = self.api.get(f"/team/{team_id}/space")['spaces']
                 space = next((s for s in spaces if s['name'] == self.config.space_name), None)
                 if not space:
                     console.print(Panel(
