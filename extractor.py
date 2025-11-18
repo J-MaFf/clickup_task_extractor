@@ -189,7 +189,7 @@ class ClickUpTaskExtractor:
                         team = next((t for t in teams if t['name'] == self.config.workspace_name), None)
                         if team:
                             team_id = team['id']
-                    except (ShardRoutingError, KeyError, StopIteration):
+                    except (ShardRoutingError, KeyError):
                         # If /team fails, ask user for team ID
                         console.print("[yellow]⚠️  The /team endpoint is not accessible for this account.[/yellow]")
                         console.print("[dim]To find your Team/Workspace ID:[/dim]")
