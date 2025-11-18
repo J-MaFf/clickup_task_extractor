@@ -79,7 +79,7 @@ def get_ai_summary(
         return field_block
 
     # Check if Google GenAI SDK is available
-    if GenerativeModel is None:
+    if GenerativeModel is None or configure is None or types is None:
         if RICH_AVAILABLE and _console:
             _console.print("[yellow]Warning: Google GenAI SDK not available - install with: pip install google-generativeai[/yellow]")
         else:
