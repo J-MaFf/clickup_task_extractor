@@ -37,7 +37,7 @@ except ImportError:
 
 # Import project modules
 from config import ClickUpConfig, TaskRecord, DISPLAY_FORMAT, format_datetime, OutputFormat, sort_tasks_by_priority_and_name
-from api_client import APIClient, ClickUpAPIClient, APIError, AuthenticationError
+from api_client import APIClient, ClickUpAPIClient, APIError, AuthenticationError, ShardRoutingError
 from ai_summary import get_ai_summary
 from mappers import get_yes_no_input, get_date_range, extract_images, LocationMapper
 
@@ -117,6 +117,7 @@ class ClickUpTaskExtractor:
 
         Raises:
             AuthenticationError: If API authentication fails
+            ShardRoutingError: If API encounters shard routing issues
             APIError: If API requests fail
             SystemExit: On critical errors that prevent execution
         """
@@ -129,6 +130,15 @@ class ClickUpTaskExtractor:
                 f"[dim]Please check your ClickUp API key and try again.[/dim]",
                 title="❌ Authentication Error",
                 style="red"
+            ))
+            sys.exit(1)
+        except ShardRoutingError as e:
+            console.print(Panel(
+                f"[red]🔀 Shard Routing Error[/red]\n"
+                f"[yellow]{str(e)}[/yellow]",
+                title="❌ Workspace Access Error",
+                style="red",
+                padding=(1, 2)
             ))
             sys.exit(1)
         except APIError as e:
