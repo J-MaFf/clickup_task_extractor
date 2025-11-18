@@ -161,7 +161,7 @@ class ClickUpConfig:
     api_key: str
     workspace_name: str = 'KMS'
     space_name: str = 'Kikkoman'
-    team_id: str = '9014534294'
+    team_id: str = ''
     output_path: str = field(default_factory=default_output_path)
     include_completed: bool = False
     date_filter: DateFilter = DateFilter.ALL_OPEN
