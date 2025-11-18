@@ -72,6 +72,28 @@ For users who prefer not to install Python, pre-built executables are available:
 2. Run directly: `ClickUpTaskExtractor.exe` or from command line with options
 3. No Python installation required—all dependencies are bundled
 
+**Authentication for Executable Users:**
+
+The executable version does **not** include the 1Password SDK (due to bundling limitations). You have three options:
+
+1. **Environment Variable** (Recommended):
+   ```bash
+   set CLICKUP_API_KEY=your_api_key_here
+   ClickUpTaskExtractor.exe
+   ```
+
+2. **Command Line Argument**:
+   ```bash
+   ClickUpTaskExtractor.exe --api-key your_api_key_here
+   ```
+
+3. **1Password CLI** (Advanced):
+   Install the [1Password CLI](https://developer.1password.com/docs/cli/get-started/) and ensure it's in your PATH:
+   ```bash
+   # The executable will automatically try to use 'op read' command
+   ClickUpTaskExtractor.exe
+   ```
+
 **Example:**
 
 ```bash
@@ -146,17 +168,27 @@ Each prompt provides clear options and defaults, making it easy to configure the
 
 ### Authentication Methods (Priority Order)
 
+#### For Python Users:
 1. **Command Line Argument**: `--api-key YOUR_KEY`
 2. **Environment Variable**: `CLICKUP_API_KEY=YOUR_KEY`
-3. **1Password SDK**: Requires `OP_SERVICE_ACCOUNT_TOKEN`
-4. **1Password CLI**: Uses `op read`
+3. **1Password SDK**: Requires `OP_SERVICE_ACCOUNT_TOKEN` environment variable
+4. **1Password CLI**: Uses `op read` command
 5. **Manual Prompt**: Rich console input as the final fallback
+
+#### For Executable (EXE) Users:
+1. **Command Line Argument**: `--api-key YOUR_KEY`
+2. **Environment Variable**: `CLICKUP_API_KEY=YOUR_KEY`
+3. **1Password CLI**: Uses `op read` command (SDK not available in EXE)
+4. **Manual Prompt**: Rich console input as the final fallback
+
+**Note**: The 1Password SDK cannot be bundled in the executable due to native dependencies. EXE users should use environment variables, command line arguments, or install the [1Password CLI](https://developer.1password.com/docs/cli/get-started/) separately.
 
 Store secrets in 1Password for reuse:
 
 - ClickUp API key: `op://Home Server/ClickUp personal API token/credential`
 - Gemini API key: `op://Home Server/nftoo3gsi3wpx7z5bdmcsvr7p4/credential`
 
+For Python users with 1Password SDK:
 ```bash
 export OP_SERVICE_ACCOUNT_TOKEN=your_service_account_token
 ```
@@ -248,6 +280,33 @@ Implementation details:
 - Verify your ClickUp API key is valid
 - Check 1Password integration setup
 - Ensure environment variables are set correctly
+
+**1Password Integration (Executable Users):**
+
+If you see errors like "1Password SDK not available" or "op command not found" when using the executable:
+
+1. **Using Environment Variables (Easiest)**:
+   ```bash
+   # Windows Command Prompt
+   set CLICKUP_API_KEY=your_api_key_here
+   ClickUpTaskExtractor.exe
+   
+   # Windows PowerShell
+   $env:CLICKUP_API_KEY="your_api_key_here"
+   .\ClickUpTaskExtractor.exe
+   ```
+
+2. **Using Command Line Argument**:
+   ```bash
+   ClickUpTaskExtractor.exe --api-key your_api_key_here
+   ```
+
+3. **Using 1Password CLI** (if you prefer 1Password):
+   - Install 1Password CLI from: https://developer.1password.com/docs/cli/get-started/
+   - Ensure `op` command is in your PATH
+   - The executable will automatically use it
+
+**Note**: The 1Password SDK is only available when running the Python version, not the compiled executable. This is a known limitation due to native dependencies.
 
 **Import Errors:**
 
