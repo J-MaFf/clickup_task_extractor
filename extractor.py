@@ -41,6 +41,9 @@ from api_client import APIClient, ClickUpAPIClient, APIError, AuthenticationErro
 from ai_summary import get_ai_summary
 from mappers import get_yes_no_input, get_date_range, extract_images, LocationMapper
 
+# Get the directory of this script for output path resolution
+script_dir = os.path.dirname(os.path.abspath(__file__))
+
 # Initialize Rich console
 console = Console()
 
@@ -731,6 +734,12 @@ class ClickUpTaskExtractor:
 
         console.print(f"\n[bold blue]📤 Exporting {len(tasks)} tasks...[/bold blue]")
 
+        # Ensure all output files go to clickup_task_extractor/output directory
+        # Extract the base filename without extension from the config path
+        output_path = Path(self.config.output_path)
+        base_filename = output_path.stem  # Get filename without extension
+        output_dir = Path(script_dir) / 'output'  # clickup_task_extractor/output
+
         with Progress(
             SpinnerColumn(),
             TextColumn("[progress.description]{task.description}"),
@@ -741,8 +750,9 @@ class ClickUpTaskExtractor:
             if self.config.output_format in (OutputFormat.CSV, OutputFormat.BOTH):
                 csv_task = progress.add_task("💾 Generating CSV...", total=None)
                 export_fields = get_export_fields()
+                csv_path = output_dir / f"{base_filename}.csv"
 
-                with export_file(self.config.output_path, 'w') as f:
+                with export_file(str(csv_path), 'w') as f:
                     writer = csv.DictWriter(f, fieldnames=export_fields)
                     writer.writeheader()
                     for t in tasks:
@@ -751,14 +761,14 @@ class ClickUpTaskExtractor:
                         writer.writerow(row_data)
 
                 progress.remove_task(csv_task)
-                console.print(f"✅ [green]CSV exported:[/green] [bold]{self.config.output_path}[/bold]")
+                console.print(f"✅ [green]CSV exported:[/green] [bold]{csv_path}[/bold]")
 
             # HTML Export
             if self.config.output_format in (OutputFormat.HTML, OutputFormat.BOTH):
                 html_task = progress.add_task("🌐 Generating HTML...", total=None)
-                html_path = self.config.output_path.replace('.csv', '.html')
+                html_path = output_dir / f"{base_filename}.html"
 
-                with export_file(html_path, 'w') as f:
+                with export_file(str(html_path), 'w') as f:
                     f.write(self.render_html(tasks))
 
                 progress.remove_task(html_task)
@@ -767,9 +777,9 @@ class ClickUpTaskExtractor:
             # Markdown Export
             if self.config.output_format == OutputFormat.MARKDOWN:
                 markdown_task = progress.add_task("📝 Generating Markdown...", total=None)
-                markdown_path = self.config.output_path.replace('.csv', '.md')
+                markdown_path = output_dir / f"{base_filename}.md"
 
-                with export_file(markdown_path, 'w') as f:
+                with export_file(str(markdown_path), 'w') as f:
                     f.write(self.render_markdown(tasks))
 
                 progress.remove_task(markdown_task)
@@ -778,7 +788,7 @@ class ClickUpTaskExtractor:
             # PDF Export
             if self.config.output_format == OutputFormat.PDF:
                 pdf_task = progress.add_task("📄 Generating PDF...", total=None)
-                pdf_path = self.config.output_path.replace('.csv', '.pdf')
+                pdf_path = output_dir / f"{base_filename}.pdf"
 
                 try:
                     # Import weasyprint here to provide better error messages
@@ -786,7 +796,7 @@ class ClickUpTaskExtractor:
 
                     # Generate HTML first, then convert to PDF
                     html_content = self.render_html(tasks)
-                    HTML(string=html_content).write_pdf(pdf_path)
+                    HTML(string=html_content).write_pdf(str(pdf_path))
 
                     progress.remove_task(pdf_task)
                     console.print(f"✅ [green]PDF exported:[/green] [bold]{pdf_path}[/bold]")
