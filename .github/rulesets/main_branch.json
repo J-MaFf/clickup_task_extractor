@@ -1,0 +1,58 @@
+{
+  "name": "Main Branch Protection",
+  "description": "Protection rules for the main branch",
+  "type": "branch",
+  "creation": "required",
+  "enforcement": "active",
+  "target": "branch",
+  "rules": [
+    {
+      "type": "commit_message_pattern",
+      "parameters": {
+        "operator": "starts_with",
+        "pattern": ""
+      },
+      "enabled": false
+    },
+    {
+      "type": "commit_author_email_pattern",
+      "parameters": {
+        "operator": "contains",
+        "pattern": ""
+      },
+      "enabled": false
+    },
+    {
+      "type": "pull_request_required",
+      "parameters": {
+        "dismiss_stale_reviews_on_push": true,
+        "require_code_owner_review": false,
+        "require_last_push_approval": false,
+        "required_approving_review_count": 1
+      }
+    },
+    {
+      "type": "required_status_checks",
+      "parameters": {
+        "strict_required_status_checks_policy": true,
+        "required_status_checks": []
+      }
+    },
+    {
+      "type": "deletion_allowed",
+      "enabled": false
+    },
+    {
+      "type": "non_fast_forward",
+      "enabled": false
+    }
+  ],
+  "conditions": {
+    "ref_name": {
+      "include": [
+        "refs/heads/main"
+      ],
+      "exclude": []
+    }
+  }
+}
