@@ -73,7 +73,8 @@ class TestLoadSecretWithFallback(unittest.TestCase):
         self.assertIsNone(result)
         mock_logger.error.assert_called()
         error_call = str(mock_logger.error.call_args)
-        self.assertIn('Could not read Test Secret from 1Password CLI', error_call)
+        # Updated to match new error message format
+        self.assertIn('1Password CLI authentication failed for Test Secret', error_call)
 
     @patch('auth.subprocess.check_output')
     @patch('auth.get_secret_from_1password')
@@ -101,6 +102,38 @@ class TestLoadSecretWithFallback(unittest.TestCase):
         result = load_secret_with_fallback('op://vault/item/field', 'Secret')
 
         self.assertEqual(result, 'secret_with_whitespace')
+
+    @patch('auth.subprocess.check_output')
+    @patch('auth.get_secret_from_1password')
+    @patch('auth.logger')
+    def test_cli_not_found_error_message(self, mock_logger, mock_get_secret, mock_subprocess):
+        """Test FileNotFoundError provides helpful error message."""
+        mock_get_secret.side_effect = ImportError('SDK not available')
+        mock_subprocess.side_effect = FileNotFoundError('[WinError 2] The system cannot find the file specified')
+
+        result = load_secret_with_fallback('op://vault/item/field', 'API Key')
+
+        self.assertIsNone(result)
+        mock_logger.error.assert_called()
+        error_call = str(mock_logger.error.call_args)
+        # Updated to match actual error message text
+        self.assertIn("1Password CLI ('op' command) not found", error_call)
+
+    @patch('auth.subprocess.check_output')
+    @patch('auth.get_secret_from_1password')
+    @patch('auth.logger')
+    @patch('sys.frozen', True, create=True)
+    def test_exe_user_gets_helpful_error_when_cli_missing(self, mock_logger, mock_get_secret, mock_subprocess):
+        """Test EXE users get helpful guidance when CLI is not found."""
+        mock_get_secret.side_effect = ImportError('SDK not available')
+        mock_subprocess.side_effect = FileNotFoundError('op command not found')
+
+        result = load_secret_with_fallback('op://vault/item/field', 'Secret')
+
+        self.assertIsNone(result)
+        # Check that error mentions options for executable users
+        error_calls = [str(call) for call in mock_logger.error.call_args_list]
+        self.assertTrue(any('environment variables' in call or 'CLICKUP_API_KEY' in call for call in error_calls))
 
 
 class TestGetSecretFrom1Password(unittest.TestCase):
