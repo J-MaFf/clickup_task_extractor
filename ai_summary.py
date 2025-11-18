@@ -36,11 +36,9 @@ SummaryResult: TypeAlias = str
 
 # Google GenAI SDK imports
 try:
-    from google import genai
-    from google.genai import types as genai_types
+    import google.generativeai as genai
 except ImportError:
     genai = None
-    genai_types = None
 
 
 def _normalize_field_entries(field_entries: Sequence[tuple[str, str]] | Mapping[str, str]) -> list[tuple[str, str]]:
@@ -106,21 +104,21 @@ Here are the available fields (values may be "(not provided)" when absent):
 Focus on the current state and what you have done or need to do. Be specific and actionable. Ignore any fields marked "(not provided)"."""
 
             # Use the official Google GenAI SDK with proper configuration
-            if genai_types:
-                config = genai_types.GenerateContentConfig(
-                    temperature=0.3,
-                    max_output_tokens=150,
-                    response_mime_type="text/plain"
-                )
-            else:
-                config = None
+            if genai:
+                # Configure generation parameters
+                genai.configure(api_key=gemini_api_key)
+
+            config = {
+                "temperature": 0.3,
+                "max_output_tokens": 150,
+            }
 
             # Make API call without status indicator to avoid progress bar conflicts
             # The main progress bar will handle the visual feedback
             response = client.models.generate_content(
                 model='gemini-2.5-flash-lite',
                 contents=prompt,
-                config=config
+                generation_config=config
             )
 
             if response and hasattr(response, 'text') and response.text:
