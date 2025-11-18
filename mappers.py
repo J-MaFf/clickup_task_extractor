@@ -38,6 +38,64 @@ def get_yes_no_input(prompt: str, default_on_interrupt: bool = False) -> bool:
         return default_on_interrupt
 
 
+def get_choice_input(prompt: str, choices: list[str], default_index: int = 0) -> str:
+    """
+    Generic function to get a choice from a list of options with consistent behavior.
+
+    Args:
+        prompt: The prompt message to display to the user
+        choices: List of available choices
+        default_index: Index of the default choice if user interrupts or provides invalid input
+
+    Returns:
+        The selected choice string
+
+    Example:
+        >>> formats = ['CSV', 'HTML', 'Markdown', 'PDF']
+        >>> selected = get_choice_input('Select format:', formats, default_index=1)
+    """
+    if not choices:
+        raise ValueError("Choices list cannot be empty")
+    
+    if default_index < 0 or default_index >= len(choices):
+        default_index = 0
+    
+    try:
+        # Display choices
+        for i, choice in enumerate(choices, 1):
+            default_marker = " (default)" if i - 1 == default_index else ""
+            print(f"  {i}. {choice}{default_marker}")
+        
+        # Get user input
+        response = input(prompt).strip()
+        
+        # Handle empty input (use default)
+        if not response:
+            return choices[default_index]
+        
+        # Try to parse as number
+        try:
+            choice_num = int(response)
+            if 1 <= choice_num <= len(choices):
+                return choices[choice_num - 1]
+        except ValueError:
+            pass
+        
+        # Try to match by name (case-insensitive)
+        response_lower = response.lower()
+        for choice in choices:
+            if choice.lower() == response_lower:
+                return choice
+        
+        # Invalid input, use default
+        print(f"Invalid choice. Using default: {choices[default_index]}")
+        return choices[default_index]
+        
+    except (EOFError, KeyboardInterrupt):
+        print(f"\nDefaulting to: {choices[default_index]}")
+        return choices[default_index]
+
+
 def get_date_range(filter_name: DateFilter | str) -> DateRange:
     """
     Get date range for filtering based on filter name.

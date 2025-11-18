@@ -1,6 +1,6 @@
 """Version information for ClickUp Task Extractor."""
 
-__version__ = "1.01"
+__version__ = "1.02"
 __author__ = "J-MaFf"
 __description__ = "ClickUp Task Extractor - Extract, process, and export tasks from ClickUp API"
 __url__ = "https://github.com/J-MaFf/clickup_task_extractor"

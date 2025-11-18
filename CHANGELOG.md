@@ -5,6 +5,45 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.02] - Unreleased
+
+### ✨ Features & Enhancements
+
+- **Interactive Output Format Selection**: Added user-friendly interactive prompt for selecting output format (CSV, HTML, Markdown, PDF, or Both) when `--output-format` is not specified via CLI. Users can now choose their preferred export format during runtime with numbered menu options or text input, following the same pattern as existing interactive mode and AI summary prompts.
+- **Enhanced User Input Utilities**: Added reusable `get_choice_input()` function in `mappers.py` for multi-choice selection with validation, default handling, and interrupt safety.
+- Introduced unified export pipeline that now covers CSV, HTML, Markdown, PDF, and dual-format (`Both`) runs, all powered by the shared `export_file()` context manager for safe writes and automatic directory creation.
+- Extended the interactive review experience with Rich tables, list-level progress, and optional AI re-generation so operators can curate exports without losing task metadata.
+- **Intelligent Task Sorting**: Tasks are now automatically sorted by priority (Urgent → High → Normal → Low) then alphabetically by name, providing better organization in exports without requiring user configuration.
+- **Custom Field Expansion**: Enhanced task record to include and properly map additional custom fields from ClickUp, improving data completeness and field normalization.
+- **US Date Format for Filenames**: Output filenames now use MM-DD-YYYY (US format) for better consistency and readability in Windows environments.
+
+### 🤖 AI Summary Improvements
+
+- Hardened Gemini integration with `_normalize_field_entries`, deterministic prompt construction, newline trimming, and automatic punctuation to produce polished 1–2 sentence rollups.
+- Added smart rate-limit handling that parses `retryDelay` hints, surfaces Rich countdowns while waiting, and gracefully falls back to raw task content after exhaustively retrying.
+- Ensured fallbacks when the Google SDK or API key is missing now return original field blocks while still logging actionable warnings.
+- **First-Person Perspective**: AI-generated summaries now use first-person perspective for more natural and engaging task descriptions.
+
+### 🧰 Developer Experience
+
+- Delivered a reusable `setup_logging()` helper with opt-in Rich handlers, stdout-friendly defaults, and file logging support, accompanied by `get_logger()` for module-level reuse.
+- Strengthened 1Password secret loading by wrapping SDK usage with CLI fallback (`op read`), clear logging, and structured error propagation for both ClickUp and Gemini credentials.
+- Updated the CLI workflow to auto-bootstrap virtual environments, summarize runtime configuration, and offer guided prompts for interactive mode and AI summaries.
+
+### 📚 Documentation & Guidance
+
+- Refreshed `README.md` with updated architecture overview, development workflow tips, and expanded AI integration details.
+- Rewrote `.github/copilot-instructions.md` to provide a concise architecture map, workflow guidance, and extension playbook for coding agents.
+- Added `tests/README.md` that catalogs every test module, execution recipe, and coverage goal to help contributors navigate the suite.
+
+### 🧭 Release Management
+
+- Documented the version bump workflow: update `version.py`, refresh the README badge, and capture changes in `CHANGELOG.md` for every release.
+
+### ✅ Testing
+
+- Expanded the automated suite to 133 unit tests spanning AI summaries, extractor edge flows, authentication fallbacks, Rich logging, CLI orchestration, and API client error paths for Windows-friendly reliability.
+
 ## [1.01] - 2025-09-17
 
 ### 🧹 Maintenance & Cleanup
