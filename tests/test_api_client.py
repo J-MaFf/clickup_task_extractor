@@ -7,6 +7,7 @@ Tests cover:
 - ClickUpAPIClient initialization
 - Successful API requests
 - Authentication errors (401)
+- Shard routing errors (SHARD_* error codes)
 - Network errors
 - Invalid JSON responses
 - Various HTTP error status codes
@@ -16,7 +17,7 @@ import unittest
 from unittest.mock import Mock, patch, MagicMock
 import requests
 
-from api_client import ClickUpAPIClient, APIError, AuthenticationError
+from api_client import ClickUpAPIClient, APIError, AuthenticationError, ShardRoutingError
 
 
 class TestClickUpAPIClient(unittest.TestCase):
@@ -229,6 +230,60 @@ class TestClickUpAPIClient(unittest.TestCase):
         # Verify timeout parameter was passed
         self.assertEqual(mock_get.call_args[1]['timeout'], 30)
 
+    @patch('api_client.requests.get')
+    @patch('builtins.print')
+    def test_shard_routing_error_shard_006(self, mock_print, mock_get):
+        """Test 404 with SHARD_006 raises ShardRoutingError."""
+        mock_response = Mock()
+        mock_response.ok = False
+        mock_response.status_code = 404
+        mock_response.text = '{"err":"Not found","ECODE":"SHARD_006"}'
+        mock_response.json.return_value = {'err': 'Not found', 'ECODE': 'SHARD_006'}
+        mock_get.return_value = mock_response
+
+        with self.assertRaises(ShardRoutingError) as context:
+            self.client.get('/team')
+
+        error_message = str(context.exception).lower()
+        self.assertIn('shard_006', error_message)
+        self.assertIn('shard routing error', error_message)
+        self.assertIn('workspace', error_message)
+        self.assertIn('api key', error_message)
+
+    @patch('api_client.requests.get')
+    @patch('builtins.print')
+    def test_shard_routing_error_generic_shard(self, mock_print, mock_get):
+        """Test any SHARD_* error code raises ShardRoutingError."""
+        mock_response = Mock()
+        mock_response.ok = False
+        mock_response.status_code = 500
+        mock_response.text = '{"err":"Service error","ECODE":"SHARD_999"}'
+        mock_response.json.return_value = {'err': 'Service error', 'ECODE': 'SHARD_999'}
+        mock_get.return_value = mock_response
+
+        with self.assertRaises(ShardRoutingError) as context:
+            self.client.get('/team/123')
+
+        self.assertIn('SHARD_999', str(context.exception))
+
+    @patch('api_client.requests.get')
+    @patch('builtins.print')
+    def test_non_shard_404_raises_api_error(self, mock_print, mock_get):
+        """Test 404 without SHARD error code raises generic APIError."""
+        mock_response = Mock()
+        mock_response.ok = False
+        mock_response.status_code = 404
+        mock_response.text = '{"err":"Not found","ECODE":"RESOURCE_NOT_FOUND"}'
+        mock_response.json.return_value = {'err': 'Not found', 'ECODE': 'RESOURCE_NOT_FOUND'}
+        mock_get.return_value = mock_response
+
+        with self.assertRaises(APIError) as context:
+            self.client.get('/task/invalid')
+
+        # Should raise generic APIError, not ShardRoutingError
+        self.assertNotIsInstance(context.exception, ShardRoutingError)
+        self.assertIn('HTTP 404', str(context.exception))
+
 
 class TestAPIErrorExceptions(unittest.TestCase):
     """Tests for custom exception classes."""
@@ -244,6 +299,12 @@ class TestAPIErrorExceptions(unittest.TestCase):
         self.assertIsInstance(error, APIError)
         self.assertIsInstance(error, Exception)
 
+    def test_shard_routing_error_inheritance(self):
+        """Test ShardRoutingError inherits from APIError."""
+        error = ShardRoutingError("Shard routing failed")
+        self.assertIsInstance(error, APIError)
+        self.assertIsInstance(error, Exception)
+
     def test_exception_messages(self):
         """Test exception messages are preserved."""
         api_error = APIError("API error message")
@@ -251,6 +312,9 @@ class TestAPIErrorExceptions(unittest.TestCase):
 
         auth_error = AuthenticationError("Auth error message")
         self.assertEqual(str(auth_error), "Auth error message")
+
+        shard_error = ShardRoutingError("Shard routing error message")
+        self.assertEqual(str(shard_error), "Shard routing error message")
 
 
 if __name__ == '__main__':
