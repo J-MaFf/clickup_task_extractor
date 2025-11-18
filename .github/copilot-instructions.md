@@ -54,6 +54,16 @@
 - Interactive: `python main.py --interactive`
 - Custom workspace: `python main.py --workspace "MyWorkspace" --space "MySpace"`
 - HTML export: `python main.py --output-format HTML`
+- Using executable: `ClickUpTaskExtractor.exe --output-format Both`
+
+## Building Executables
+
+- PyInstaller spec file available: `ClickUpTaskExtractor.spec`
+- Build with: `.venv\Scripts\pyinstaller.exe ClickUpTaskExtractor.spec --distpath .\dist\v<version>`
+- Requires PyInstaller 6.16+: `pip install pyinstaller`
+- Output: Single-file executable with all dependencies bundled (~42 MB)
+- On Windows, PDF export requires GTK3 runtime: `winget install Gnome.Project.Gtk3`
+
 # Copilot Instructions: ClickUp Task Extractor
 
 ## Architecture quick map
@@ -74,6 +84,7 @@
 - Typical runs: `python main.py` (HTML export, workspace `KMS`, space `Kikkoman`), or override with `--output-format {CSV|HTML|Markdown|PDF|Both}`, `--interactive`, `--include-completed`, `--date-filter {AllOpen|ThisWeek|LastWeek}`, and `--ai-summary/--gemini-api-key`.
 - The extractor writes to `output/` using the timestamped path from `config.default_output_path()`; exporters adjust the extension per selected format.
 - Version bumps: update `version.py` (`__version__` and related metadata), refresh the README version badge URL, and add a new entry in `CHANGELOG.md` summarizing changes since the previous release.
+- Release builds: Create a `release/v<version>` branch, commit version changes, tag with `v<version>`, and build exe with PyInstaller spec pointing to `dist/v<version>`.
 
 ## Extension playbook
 - Add fields: extend `TaskRecord`, update any renderers that iterate `get_export_fields()`, and make sure `_metadata` keeps AI payloads if needed.

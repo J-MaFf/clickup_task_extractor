@@ -6,7 +6,7 @@ __description__ = "ClickUp Task Extractor - Extract, process, and export tasks f
 __url__ = "https://github.com/J-MaFf/clickup_task_extractor"
 
 # Release information
-RELEASE_DATE = "2025-09-17"
+RELEASE_DATE = "2025-11-18"
 PYTHON_REQUIRES = ">=3.9"
 
 # Feature flags for this version
