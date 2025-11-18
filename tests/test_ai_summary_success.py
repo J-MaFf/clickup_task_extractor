@@ -70,9 +70,11 @@ class TestGetAISummaryFallback(unittest.TestCase):
         self.assertIn('Description: Test description', result)
         self.assertIn('Resolution: (not provided)', result)
 
-    @patch('ai_summary.configure', side_effect=Exception('SDK not available'))
+    @patch('ai_summary.types', None)
+    @patch('ai_summary.configure', None)
+    @patch('ai_summary.GenerativeModel', None)
     @patch('ai_summary._console')
-    def test_no_genai_sdk_returns_fallback(self, mock_console, mock_configure):
+    def test_no_genai_sdk_returns_fallback(self, mock_console):
         """Test returns fallback when GenAI SDK not available."""
         field_entries = [('Name', 'Task 1'), ('Status', 'Open')]
 
@@ -85,9 +87,10 @@ class TestGetAISummaryFallback(unittest.TestCase):
 class TestGetAISummarySuccess(unittest.TestCase):
     """Tests for successful AI summary generation."""
 
+    @patch('ai_summary.types')
     @patch('ai_summary.GenerativeModel')
     @patch('ai_summary.configure')
-    def test_successful_summary_generation(self, mock_configure, mock_model_class):
+    def test_successful_summary_generation(self, mock_configure, mock_model_class, mock_types):
         """Test successful AI summary generation."""
         # Mock the model and response
         mock_model = Mock()
@@ -108,9 +111,10 @@ class TestGetAISummarySuccess(unittest.TestCase):
         self.assertEqual(result, 'This is an AI-generated summary about the task status.')
         mock_configure.assert_called_once_with(api_key='test_api_key')
 
+    @patch('ai_summary.types')
     @patch('ai_summary.GenerativeModel')
     @patch('ai_summary.configure')
-    def test_summary_adds_period_if_missing(self, mock_configure, mock_model_class):
+    def test_summary_adds_period_if_missing(self, mock_configure, mock_model_class, mock_types):
         """Test summary adds period at end if missing."""
         mock_model = Mock()
         mock_response = Mock()
@@ -124,9 +128,10 @@ class TestGetAISummarySuccess(unittest.TestCase):
 
         self.assertTrue(result.endswith('.'))
 
+    @patch('ai_summary.types')
     @patch('ai_summary.GenerativeModel')
     @patch('ai_summary.configure')
-    def test_summary_removes_newlines(self, mock_configure, mock_model_class):
+    def test_summary_removes_newlines(self, mock_configure, mock_model_class, mock_types):
         """Test summary removes newlines from response."""
         mock_model = Mock()
         mock_response = Mock()
@@ -141,9 +146,10 @@ class TestGetAISummarySuccess(unittest.TestCase):
         self.assertNotIn('\n', result)
         self.assertIn('Summary with newlines in it', result)
 
+    @patch('ai_summary.types')
     @patch('ai_summary.GenerativeModel')
     @patch('ai_summary.configure')
-    def test_empty_response_returns_fallback(self, mock_configure, mock_model_class):
+    def test_empty_response_returns_fallback(self, mock_configure, mock_model_class, mock_types):
         """Test empty response from API returns fallback."""
         mock_model = Mock()
         mock_response = Mock()
@@ -158,9 +164,10 @@ class TestGetAISummarySuccess(unittest.TestCase):
         self.assertIn('Subject: Test', result)
         self.assertIn('Description: Desc', result)
 
+    @patch('ai_summary.types')
     @patch('ai_summary.GenerativeModel')
     @patch('ai_summary.configure')
-    def test_none_response_returns_fallback(self, mock_configure, mock_model_class):
+    def test_none_response_returns_fallback(self, mock_configure, mock_model_class, mock_types):
         """Test None response returns fallback."""
         mock_model = Mock()
         mock_model.generate_content.return_value = None
@@ -175,12 +182,13 @@ class TestGetAISummarySuccess(unittest.TestCase):
 class TestRateLimitingAndRetry(unittest.TestCase):
     """Tests for rate limiting and retry logic."""
 
+    @patch('ai_summary.types')
     @patch('ai_summary.Progress')
     @patch('ai_summary.time.sleep')
     @patch('ai_summary.GenerativeModel')
     @patch('ai_summary.configure')
     @patch('ai_summary._console')
-    def test_rate_limit_retry_succeeds(self, mock_console, mock_configure, mock_model_class, mock_sleep, mock_progress):
+    def test_rate_limit_retry_succeeds(self, mock_console, mock_configure, mock_model_class, mock_sleep, mock_progress, mock_types):
         """Test successful retry after rate limit."""
         mock_model = Mock()
 
@@ -205,12 +213,13 @@ class TestRateLimitingAndRetry(unittest.TestCase):
         # Should have slept for rate limit (or used progress bar)
         self.assertTrue(mock_sleep.called or mock_progress.called)
 
+    @patch('ai_summary.types')
     @patch('ai_summary.Progress')
     @patch('ai_summary.time.sleep')
     @patch('ai_summary.GenerativeModel')
     @patch('ai_summary.configure')
     @patch('ai_summary._console')
-    def test_rate_limit_all_retries_fail(self, mock_console, mock_configure, mock_model_class, mock_sleep, mock_progress):
+    def test_rate_limit_all_retries_fail(self, mock_console, mock_configure, mock_model_class, mock_sleep, mock_progress, mock_types):
         """Test fallback after all retries fail."""
         mock_model = Mock()
         mock_model.generate_content.side_effect = Exception('429 RESOURCE_EXHAUSTED')
@@ -227,10 +236,11 @@ class TestRateLimitingAndRetry(unittest.TestCase):
         self.assertIn('Subject: Test', result)
         self.assertIn('Description: Desc', result)
 
+    @patch('ai_summary.types')
     @patch('ai_summary.time.sleep')
     @patch('ai_summary.GenerativeModel')
     @patch('ai_summary.configure')
-    def test_rate_limit_extracts_retry_delay(self, mock_configure, mock_model_class, mock_sleep):
+    def test_rate_limit_extracts_retry_delay(self, mock_configure, mock_model_class, mock_sleep, mock_types):
         """Test retry delay is extracted from error message."""
         mock_model = Mock()
 
@@ -250,10 +260,11 @@ class TestRateLimitingAndRetry(unittest.TestCase):
         # Check that it used extracted delay (would be in sleep calls)
         self.assertEqual(result, 'Success.')
 
+    @patch('ai_summary.types')
     @patch('ai_summary.GenerativeModel')
     @patch('ai_summary.configure')
     @patch('ai_summary._console')
-    def test_non_rate_limit_error_returns_fallback(self, mock_console, mock_configure, mock_model_class):
+    def test_non_rate_limit_error_returns_fallback(self, mock_console, mock_configure, mock_model_class, mock_types):
         """Test non-rate-limit errors return fallback immediately."""
         mock_model = Mock()
         mock_model.generate_content.side_effect = Exception('Some other error')
@@ -270,9 +281,10 @@ class TestRateLimitingAndRetry(unittest.TestCase):
 class TestPromptConstruction(unittest.TestCase):
     """Tests for AI prompt construction."""
 
+    @patch('ai_summary.types')
     @patch('ai_summary.GenerativeModel')
     @patch('ai_summary.configure')
-    def test_prompt_includes_task_name(self, mock_configure, mock_model_class):
+    def test_prompt_includes_task_name(self, mock_configure, mock_model_class, mock_types):
         """Test prompt includes task name."""
         mock_model = Mock()
         mock_response = Mock()
@@ -286,9 +298,10 @@ class TestPromptConstruction(unittest.TestCase):
         # Check that generate_content was called
         mock_model.generate_content.assert_called_once()
 
+    @patch('ai_summary.types')
     @patch('ai_summary.GenerativeModel')
     @patch('ai_summary.configure')
-    def test_prompt_includes_field_labels(self, mock_configure, mock_model_class):
+    def test_prompt_includes_field_labels(self, mock_configure, mock_model_class, mock_types):
         """Test prompt includes field labels."""
         mock_model = Mock()
         mock_response = Mock()
@@ -305,9 +318,10 @@ class TestPromptConstruction(unittest.TestCase):
 
         mock_model.generate_content.assert_called_once()
 
+    @patch('ai_summary.types')
     @patch('ai_summary.GenerativeModel')
     @patch('ai_summary.configure')
-    def test_uses_correct_model(self, mock_configure, mock_model_class):
+    def test_uses_correct_model(self, mock_configure, mock_model_class, mock_types):
         """Test uses correct Gemini model."""
         mock_model = Mock()
         mock_response = Mock()
@@ -321,9 +335,10 @@ class TestPromptConstruction(unittest.TestCase):
         # Verify GenerativeModel was called with correct model
         mock_model_class.assert_called_once_with('gemini-flash-lite-latest')
 
+    @patch('ai_summary.types')
     @patch('ai_summary.GenerativeModel')
     @patch('ai_summary.configure')
-    def test_prompt_uses_first_person_perspective(self, mock_configure, mock_model_class):
+    def test_prompt_uses_first_person_perspective(self, mock_configure, mock_model_class, mock_types):
         """Test prompt instructs AI to use first-person voice."""
         mock_model = Mock()
         mock_response = Mock()
