@@ -80,7 +80,7 @@ def main():
     header_text = Text()
     header_text.append("ClickUp Task Extractor", style="bold blue")
     header_text.append(f" v{__version__}", style="dim blue")
-    header_text.append(" 📋", style="emoji")
+    header_text.append(" [TASKS]", style="dim blue")
 
     console.print(Panel(
         header_text,
@@ -132,7 +132,7 @@ def main():
         if not api_key:
             if is_frozen:
                 console.print(Panel(
-                    "[red]❌ Could not load API key from 1Password.[/red]\n\n"
+                    "[red][FAIL] Could not load API key from 1Password.[/red]\n\n"
                     "[yellow]For executable users, we recommend:[/yellow]\n"
                     "  • Set environment variable: [cyan]CLICKUP_API_KEY=your_key[/cyan]\n"
                     "  • Or use command line: [cyan]--api-key your_key[/cyan]\n"
@@ -142,7 +142,7 @@ def main():
                 ))
             else:
                 console.print(Panel(
-                    "[red]❌ Could not load API key from 1Password.[/red]\n"
+                    "[red][FAIL] Could not load API key from 1Password.[/red]\n"
                     "[dim]Please provide via --api-key or CLICKUP_API_KEY environment variable.[/dim]",
                     title="Authentication Failed",
                     style="red"
@@ -182,14 +182,14 @@ def main():
     # Check if interactive mode should be enabled when not explicitly set
     interactive_mode = args.interactive
     if not interactive_mode:
-        console.print("\n[bold blue]🔍 Interactive Mode[/bold blue]")
+        console.print("\n[bold blue][SEARCH] Interactive Mode[/bold blue]")
         console.print("Interactive mode allows you to review and select which tasks to export.")
         console.print("Without interactive mode, all tasks will be automatically exported.")
         interactive_mode = get_yes_no_input('Would you like to run in interactive mode? (y/n): ')
         if interactive_mode:
-            console.print("✅ [green]Interactive mode enabled[/green] - you'll be able to review each task before export.")
+            console.print("[OK] [green]Interactive mode enabled[/green] - you'll be able to review each task before export.")
         else:
-            console.print("🚀 [green]Running in automatic mode[/green] - all tasks will be exported.")
+            console.print("[RUN] [green]Running in automatic mode[/green] - all tasks will be exported.")
 
     # Ask about AI summary right after interactive mode (regardless of mode chosen)
     if not args.ai_summary:
@@ -218,7 +218,7 @@ def main():
         console.print("  • [cyan]Markdown[/cyan] - Lightweight markup format")
         console.print("  • [cyan]PDF[/cyan] - Portable document format")
         console.print("  • [cyan]Both[/cyan] - Export as both CSV and HTML")
-        
+
         format_choices = ['CSV', 'HTML', 'Markdown', 'PDF', 'Both']
         selected_format = get_choice_input('Enter your choice (1-5) or format name [default: HTML]: ', format_choices, default_index=1)
         args.output_format = selected_format
@@ -275,9 +275,9 @@ def main():
     config_table.add_row("Space", config.space_name)
     config_table.add_row("Output Format", config.output_format.value)
     config_table.add_row("Date Filter", config.date_filter.value)
-    config_table.add_row("Include Completed", "✅ Yes" if config.include_completed else "❌ No")
-    config_table.add_row("Interactive Mode", "✅ Yes" if config.interactive_selection else "❌ No")
-    config_table.add_row("AI Summary", "✅ Yes" if config.enable_ai_summary else "❌ No")
+    config_table.add_row("Include Completed", "[OK] Yes" if config.include_completed else "[NO] No")
+    config_table.add_row("Interactive Mode", "[OK] Yes" if config.interactive_selection else "[NO] No")
+    config_table.add_row("AI Summary", "[OK] Yes" if config.enable_ai_summary else "[NO] No")
 
     console.print(config_table)
 

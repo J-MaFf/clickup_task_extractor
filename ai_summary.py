@@ -36,9 +36,13 @@ SummaryResult: TypeAlias = str
 
 # Google GenAI SDK imports
 try:
-    import google.generativeai as genai
+    from google.generativeai.client import configure  # type: ignore
+    from google.generativeai.generative_models import GenerativeModel  # type: ignore
+    from google.generativeai import types  # type: ignore
 except ImportError:
-    genai = None
+    configure = None
+    GenerativeModel = None
+    types = None
 
 
 def _normalize_field_entries(field_entries: Sequence[tuple[str, str]] | Mapping[str, str]) -> list[tuple[str, str]]:
@@ -75,7 +79,7 @@ def get_ai_summary(
         return field_block
 
     # Check if Google GenAI SDK is available
-    if genai is None:
+    if GenerativeModel is None or configure is None or types is None:
         if RICH_AVAILABLE and _console:
             _console.print("[yellow]Warning: Google GenAI SDK not available - install with: pip install google-generativeai[/yellow]")
         else:
@@ -88,7 +92,8 @@ def get_ai_summary(
     for attempt in range(max_retries + 1):
         try:
             # Initialize the Google GenAI client
-            client = genai.Client(api_key=gemini_api_key)
+            configure(api_key=gemini_api_key)
+            model = GenerativeModel('gemini-flash-lite-latest')
 
             full_content = field_block
 
@@ -104,20 +109,15 @@ Here are the available fields (values may be "(not provided)" when absent):
 Focus on the current state and what you have done or need to do. Be specific and actionable. Ignore any fields marked "(not provided)"."""
 
             # Use the official Google GenAI SDK with proper configuration
-            if genai:
-                # Configure generation parameters
-                genai.configure(api_key=gemini_api_key)
-
-            config = {
-                "temperature": 0.3,
-                "max_output_tokens": 150,
-            }
+            config = types.GenerationConfig(
+                temperature=0.3,
+                max_output_tokens=150,
+            )
 
             # Make API call without status indicator to avoid progress bar conflicts
             # The main progress bar will handle the visual feedback
-            response = client.models.generate_content(
-                model='gemini-2.5-flash-lite',
-                contents=prompt,
+            response = model.generate_content(
+                prompt,
                 generation_config=config
             )
 

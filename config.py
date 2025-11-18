@@ -140,6 +140,7 @@ class ClickUpConfig:
         api_key: ClickUp API key for authentication
         workspace_name: Name of the ClickUp workspace to extract from
         space_name: Name of the ClickUp space within the workspace
+        team_id: ClickUp Team/Workspace ID (optional, used if /team endpoint fails)
         output_path: File path for exported task data
         include_completed: Whether to include completed/archived tasks
         date_filter: Date range filter (DateFilter enum: ALL_OPEN, THIS_WEEK, LAST_WEEK)
@@ -153,12 +154,14 @@ class ClickUpConfig:
         >>> config = ClickUpConfig(
         ...     api_key="pk_123456789",
         ...     workspace_name="My Workspace",
-        ...     space_name="Development"
+        ...     space_name="Development",
+        ...     team_id="9014534294"
         ... )
     """
     api_key: str
     workspace_name: str = 'KMS'
     space_name: str = 'Kikkoman'
+    team_id: str = '9014534294'
     output_path: str = field(default_factory=default_output_path)
     include_completed: bool = False
     date_filter: DateFilter = DateFilter.ALL_OPEN

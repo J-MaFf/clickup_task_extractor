@@ -224,6 +224,7 @@ class FetchProcessTasksTests(unittest.TestCase):
 
         workspace_name = "KMS"
         space_name = "Kikkoman"
+        team_id = "team1"
 
         responses: dict[str, Any] = {
             "/team": {"teams": [{"id": "team1", "name": workspace_name}]},
@@ -273,6 +274,7 @@ class FetchProcessTasksTests(unittest.TestCase):
             config = ClickUpConfig(
                 api_key="dummy",
                 output_path=str(Path(tmpdir) / "out.csv"),
+                team_id=team_id,
             )
             api_client = DummyAPIClient(responses)
             extractor = RecordingExtractor(config, api_client)
