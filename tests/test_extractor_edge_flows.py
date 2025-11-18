@@ -326,9 +326,10 @@ class TestErrorHandling(unittest.TestCase):
     def test_workspace_not_found_error(self, mock_console):
         """Test error handling when workspace is not found."""
         client = Mock()
-        # Mock the API responses - return empty teams first, then empty spaces
+        # Mock the API responses - return empty teams, then empty spaces
         client.get.side_effect = [
             {'teams': []},  # /team endpoint
+            {'spaces': []},  # /space endpoint
         ]
 
         extractor = ClickUpTaskExtractor(self.config, client)
