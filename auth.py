@@ -47,14 +47,22 @@ def load_secret_with_fallback(secret_reference: str, secret_name: str) -> Secret
     Returns:
         The secret string if successful, None if failed
     """
-    # Try 1Password SDK first
+    import sys
+    is_frozen = getattr(sys, 'frozen', False)
+    
+    # Try 1Password SDK first (only available for Python, not EXE)
     try:
         secret = get_secret_from_1password(secret_reference, secret_name)
         logger.info(f"✅ {secret_name} loaded from 1Password SDK.")
         return secret
     except ImportError as e:
-        logger.warning(f"1Password SDK not available for {secret_name}: {e}")
-        logger.info(f"Falling back to 1Password CLI for {secret_name}...")
+        # SDK not available - this is expected for EXE builds
+        if is_frozen:
+            logger.info(f"1Password SDK not available in executable - trying 1Password CLI for {secret_name}...")
+        else:
+            logger.warning(f"1Password SDK not available for {secret_name}: {e}")
+            logger.info(f"Falling back to 1Password CLI for {secret_name}...")
+        
         # Fallback to 1Password CLI
         try:
             secret = subprocess.check_output([
@@ -62,8 +70,37 @@ def load_secret_with_fallback(secret_reference: str, secret_name: str) -> Secret
             ], encoding='utf-8').strip()
             logger.info(f"✅ {secret_name} loaded from 1Password CLI.")
             return secret
+        except FileNotFoundError:
+            # CLI not installed - provide helpful error message
+            if is_frozen:
+                logger.error(
+                    f"❌ 1Password CLI not found. When using the executable, you have two options:\n"
+                    f"   1. Install 1Password CLI from: https://developer.1password.com/docs/cli/get-started/\n"
+                    f"   2. Use environment variables (e.g., CLICKUP_API_KEY) or --api-key argument"
+                )
+            else:
+                logger.error(
+                    f"❌ 1Password CLI ('op' command) not found.\n"
+                    f"   Install from: https://developer.1password.com/docs/cli/get-started/\n"
+                    f"   Or use environment variables/command line arguments instead."
+                )
+            return None
+        except subprocess.CalledProcessError as cli_error:
+            # CLI command failed (auth error, not found, etc.)
+            logger.error(f"❌ 1Password CLI authentication failed for {secret_name}: {cli_error}")
+            if is_frozen:
+                logger.info(
+                    "💡 Tip: For executables, environment variables (e.g., CLICKUP_API_KEY) "
+                    "or --api-key argument are simpler alternatives to 1Password."
+                )
+            return None
         except Exception as cli_error:
-            logger.error(f"Could not read {secret_name} from 1Password CLI: {cli_error}")
+            logger.error(f"❌ Could not read {secret_name} from 1Password CLI: {cli_error}")
+            if is_frozen:
+                logger.info(
+                    "💡 Tip: For executables, use environment variables (e.g., CLICKUP_API_KEY) "
+                    "or the --api-key argument instead."
+                )
             return None
     except Exception as e:
         logger.error(f"Could not read {secret_name} from 1Password SDK: {e}")

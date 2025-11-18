@@ -111,21 +111,42 @@ def main():
 
     if not api_key:
         # Try to get API key from 1Password with fallback
-        console.print(Panel(
-            "[yellow]🔐 Attempting to load API key from 1Password...[/yellow]\n"
-            "[dim]Reference: op://Home Server/ClickUp personal API token/credential[/dim]",
-            title="Authentication",
-            style="yellow"
-        ))
+        is_frozen = getattr(sys, 'frozen', False)
+        if is_frozen:
+            console.print(Panel(
+                "[yellow]🔐 Attempting to load API key from 1Password CLI...[/yellow]\n"
+                "[dim]Reference: op://Home Server/ClickUp personal API token/credential[/dim]\n"
+                "[dim]Note: Executable version uses 1Password CLI only (SDK not available)[/dim]",
+                title="Authentication",
+                style="yellow"
+            ))
+        else:
+            console.print(Panel(
+                "[yellow]🔐 Attempting to load API key from 1Password...[/yellow]\n"
+                "[dim]Reference: op://Home Server/ClickUp personal API token/credential[/dim]",
+                title="Authentication",
+                style="yellow"
+            ))
         secret_reference = 'op://Home Server/ClickUp personal API token/credential'
         api_key = load_secret_with_fallback(secret_reference, "ClickUp API key")
         if not api_key:
-            console.print(Panel(
-                "[red]❌ Could not load API key from 1Password.[/red]\n"
-                "[dim]Please provide via --api-key or CLICKUP_API_KEY environment variable.[/dim]",
-                title="Authentication Failed",
-                style="red"
-            ))
+            if is_frozen:
+                console.print(Panel(
+                    "[red]❌ Could not load API key from 1Password.[/red]\n\n"
+                    "[yellow]For executable users, we recommend:[/yellow]\n"
+                    "  • Set environment variable: [cyan]CLICKUP_API_KEY=your_key[/cyan]\n"
+                    "  • Or use command line: [cyan]--api-key your_key[/cyan]\n"
+                    "  • Or install 1Password CLI: [cyan]https://developer.1password.com/docs/cli/[/cyan]",
+                    title="Authentication Failed",
+                    style="red"
+                ))
+            else:
+                console.print(Panel(
+                    "[red]❌ Could not load API key from 1Password.[/red]\n"
+                    "[dim]Please provide via --api-key or CLICKUP_API_KEY environment variable.[/dim]",
+                    title="Authentication Failed",
+                    style="red"
+                ))
 
     # If still no API key, prompt for manual input
     if not api_key:
