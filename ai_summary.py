@@ -93,7 +93,7 @@ def get_ai_summary(
         try:
             # Initialize the Google GenAI client
             configure(api_key=gemini_api_key)
-            model = GenerativeModel('gemini-2.5-flash-001')
+            model = GenerativeModel('gemini-flash-lite-latest')
 
             full_content = field_block
 

@@ -5,15 +5,15 @@ Since the `/team` API endpoint is not accessible for your account (SHARD_006 err
 ## How to Find Your Team ID
 
 1. **Log into ClickUp web interface**
-   - Go to https://app.clickup.com
+   - Go to <https://app.clickup.com>
 
 2. **Find your Team ID**
-   
+
    **Option A: From Settings**
    - Click on your workspace name (top left)
    - Select "Workspace Settings" or similar
    - Look for "Team ID" or "Workspace ID" in the settings
-   
+
    **Option B: From the URL**
    - Look at the URL when you're in your workspace
    - It will look something like: `https://app.clickup.com/v/wGk8qxl/v/team/...`
@@ -50,6 +50,7 @@ $env:CLICKUP_TEAM_ID = "123456"
 ## Troubleshooting
 
 If you still get errors:
+
 - Double-check the Team ID is correct
 - Make sure you're using just the ID number, not any text
 - Verify your API key has access to this workspace

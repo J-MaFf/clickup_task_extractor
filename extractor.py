@@ -176,11 +176,12 @@ class ClickUpTaskExtractor:
 
                 # Fetch workspaces
                 task = progress.add_task("🏢 Fetching workspaces...", total=None)
-                
+
                 # Since /team endpoint fails with SHARD_006 for this account,
                 # we'll use a direct workspace/team ID if provided, or prompt user
-                team_id = os.environ.get('CLICKUP_TEAM_ID')
-                
+                team_id = os.environ.get('CLICKUP_TEAM_ID') or self.config.team_id
+
+                team = None  # Initialize team variable
                 if not team_id:
                     # Try /team endpoint as primary method
                     try:
@@ -199,7 +200,11 @@ class ClickUpTaskExtractor:
                         if not team_id:
                             console.print("[red]Team ID is required[/red]")
                             return
-                
+
+                # If team wasn't fetched from /team endpoint, create a minimal team object with workspace name
+                if team is None:
+                    team = {'name': self.config.workspace_name, 'id': team_id}
+
                 console.print(f"✅ [green]Using workspace/team ID:[/green] [bold]{team_id}[/bold]")
                 progress.remove_task(task)
 

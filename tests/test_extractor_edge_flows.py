@@ -29,10 +29,10 @@ class TestExportFile(unittest.TestCase):
         """Test export_file creates parent directories."""
         with tempfile.TemporaryDirectory() as tmpdir:
             test_path = os.path.join(tmpdir, 'nested', 'subdir', 'test.csv')
-            
+
             with export_file(test_path, 'w') as f:
                 f.write('test content')
-            
+
             self.assertTrue(os.path.exists(test_path))
             with open(test_path, 'r') as f:
                 self.assertEqual(f.read(), 'test content')
@@ -41,20 +41,20 @@ class TestExportFile(unittest.TestCase):
         """Test export_file works with existing directories."""
         with tempfile.TemporaryDirectory() as tmpdir:
             test_path = os.path.join(tmpdir, 'test.txt')
-            
+
             with export_file(test_path, 'w') as f:
                 f.write('content')
-            
+
             self.assertTrue(os.path.exists(test_path))
 
     def test_export_file_custom_encoding(self):
         """Test export_file respects encoding parameter."""
         with tempfile.TemporaryDirectory() as tmpdir:
             test_path = os.path.join(tmpdir, 'utf8.txt')
-            
+
             with export_file(test_path, 'w', encoding='utf-8') as f:
                 f.write('Test with émojis 🎉')
-            
+
             with open(test_path, 'r', encoding='utf-8') as f:
                 content = f.read()
                 self.assertIn('émojis', content)
@@ -67,10 +67,10 @@ class TestGetExportFields(unittest.TestCase):
     def test_get_export_fields_excludes_private(self):
         """Test get_export_fields excludes fields starting with underscore."""
         fields = get_export_fields()
-        
+
         # Should not include _metadata
         self.assertNotIn('_metadata', fields)
-        
+
         # Should include normal fields
         self.assertIn('Task', fields)
         self.assertIn('Company', fields)
@@ -190,7 +190,7 @@ class TestMultiFormatExport(unittest.TestCase):
         """Test CSV export creates file with correct format."""
         with tempfile.TemporaryDirectory() as tmpdir:
             output_path = os.path.join(tmpdir, 'test.csv')
-            
+
             config = ClickUpConfig(
                 api_key='test_key',
                 workspace_name='Test Workspace',
@@ -199,7 +199,7 @@ class TestMultiFormatExport(unittest.TestCase):
                 output_path=output_path
             )
             extractor = ClickUpTaskExtractor(config, self.client)
-            
+
             tasks = [
                 TaskRecord(
                     Task='Test Task',
@@ -211,9 +211,9 @@ class TestMultiFormatExport(unittest.TestCase):
                     Extra='Extra'
                 )
             ]
-            
+
             extractor.export(tasks)
-            
+
             self.assertTrue(os.path.exists(output_path))
             with open(output_path, 'r') as f:
                 content = f.read()
@@ -225,7 +225,7 @@ class TestMultiFormatExport(unittest.TestCase):
         """Test HTML export creates file with correct format."""
         with tempfile.TemporaryDirectory() as tmpdir:
             output_path = os.path.join(tmpdir, 'test.html')
-            
+
             config = ClickUpConfig(
                 api_key='test_key',
                 workspace_name='Test Workspace',
@@ -234,7 +234,7 @@ class TestMultiFormatExport(unittest.TestCase):
                 output_path=output_path
             )
             extractor = ClickUpTaskExtractor(config, self.client)
-            
+
             tasks = [
                 TaskRecord(
                     Task='HTML Test',
@@ -246,9 +246,9 @@ class TestMultiFormatExport(unittest.TestCase):
                     Extra='Extra'
                 )
             ]
-            
+
             extractor.export(tasks)
-            
+
             self.assertTrue(os.path.exists(output_path))
             with open(output_path, 'r') as f:
                 content = f.read()
@@ -260,7 +260,7 @@ class TestMultiFormatExport(unittest.TestCase):
         """Test Both format creates both CSV and HTML files."""
         with tempfile.TemporaryDirectory() as tmpdir:
             csv_path = os.path.join(tmpdir, 'test.csv')
-            
+
             config = ClickUpConfig(
                 api_key='test_key',
                 workspace_name='Test Workspace',
@@ -269,7 +269,7 @@ class TestMultiFormatExport(unittest.TestCase):
                 output_path=csv_path
             )
             extractor = ClickUpTaskExtractor(config, self.client)
-            
+
             tasks = [
                 TaskRecord(
                     Task='Both Format Test',
@@ -281,9 +281,9 @@ class TestMultiFormatExport(unittest.TestCase):
                     Extra='Extra'
                 )
             ]
-            
+
             extractor.export(tasks)
-            
+
             # Check both files exist
             html_path = csv_path.replace('.csv', '.html')
             self.assertTrue(os.path.exists(csv_path))
@@ -300,9 +300,9 @@ class TestMultiFormatExport(unittest.TestCase):
             output_path='test.csv'
         )
         extractor = ClickUpTaskExtractor(config, self.client)
-        
+
         extractor.export([])
-        
+
         # Should print warning message
         mock_console.print.assert_called()
         warning_call = str(mock_console.print.call_args)
@@ -326,14 +326,16 @@ class TestErrorHandling(unittest.TestCase):
     def test_workspace_not_found_error(self, mock_console):
         """Test error handling when workspace is not found."""
         client = Mock()
-        client.get.return_value = {'teams': []}
-        
+        # Mock the API responses - return empty teams first, then empty spaces
+        client.get.side_effect = [
+            {'teams': []},  # /team endpoint
+        ]
+
         extractor = ClickUpTaskExtractor(self.config, client)
-        
+
         # Run should handle missing workspace gracefully
-        result = extractor.run()
-        
-        self.assertIsNone(result)
+        with self.assertRaises(SystemExit):
+            extractor.run()
 
     @patch('extractor.sys.exit')
     @patch('extractor.console')
@@ -341,10 +343,10 @@ class TestErrorHandling(unittest.TestCase):
         """Test handling of authentication errors."""
         client = Mock()
         client.get.side_effect = AuthenticationError('Invalid API key')
-        
+
         extractor = ClickUpTaskExtractor(self.config, client)
         extractor.run()
-        
+
         # Should call sys.exit(1) on auth error
         mock_exit.assert_called_once_with(1)
 
@@ -354,10 +356,10 @@ class TestErrorHandling(unittest.TestCase):
         """Test handling of general API errors."""
         client = Mock()
         client.get.side_effect = APIError('Network error')
-        
+
         extractor = ClickUpTaskExtractor(self.config, client)
         extractor.run()
-        
+
         # Should call sys.exit(1) on API error
         mock_exit.assert_called_once_with(1)
 
