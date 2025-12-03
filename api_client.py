@@ -100,12 +100,6 @@ class ClickUpAPIClient:
             try:
                 resp = requests.get(url, headers=self.headers, timeout=30)
 
-                # Handle authentication errors specifically (don't retry)
-                if resp.status_code == 401:
-                    raise AuthenticationError(
-                        "API authentication failed. Please check your ClickUp API key."
-                    )
-
                 # Check if this is a retryable error
                 if resp.status_code in self.RETRYABLE_STATUS_CODES and attempt < self.MAX_RETRIES - 1:
                     wait_time = self._exponential_backoff_with_jitter(attempt)
