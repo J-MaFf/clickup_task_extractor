@@ -319,9 +319,9 @@ class TestRetryLogic(unittest.TestCase):
         self.assertEqual(mock_get.call_count, 2)
         # Verify sleep was called once (for retry)
         self.assertEqual(mock_sleep.call_count, 1)
-        # Verify backoff time is reasonable (1s base + jitter)
+        # Verify backoff time is reasonable (1s base + up to 10% jitter = 1.1s max)
         self.assertGreaterEqual(mock_sleep.call_args[0][0], 1.0)
-        self.assertLessEqual(mock_sleep.call_args[0][0], 1.2)  # 1s + 10% jitter
+        self.assertLessEqual(mock_sleep.call_args[0][0], 1.15)  # Allow small margin for test stability
 
     @patch('api_client.time.sleep')
     @patch('api_client.requests.get')
@@ -391,8 +391,7 @@ class TestRetryLogic(unittest.TestCase):
 
     @patch('api_client.time.sleep')
     @patch('api_client.requests.get')
-    @patch('builtins.print')
-    def test_max_retries_exhausted(self, mock_print, mock_get, mock_sleep):
+    def test_max_retries_exhausted(self, mock_get, mock_sleep):
         """Test that max retries are enforced (3 attempts total)."""
         # All three attempts return 502
         mock_response = Mock()
@@ -429,8 +428,7 @@ class TestRetryLogic(unittest.TestCase):
         self.assertEqual(mock_get.call_count, 1)
 
     @patch('api_client.requests.get')
-    @patch('builtins.print')
-    def test_no_retry_on_404(self, mock_print, mock_get):
+    def test_no_retry_on_404(self, mock_get):
         """Test that 404 errors are not retried."""
         mock_response = Mock()
         mock_response.ok = False
@@ -447,8 +445,7 @@ class TestRetryLogic(unittest.TestCase):
         self.assertEqual(mock_get.call_count, 1)
 
     @patch('api_client.requests.get')
-    @patch('builtins.print')
-    def test_no_retry_on_400(self, mock_print, mock_get):
+    def test_no_retry_on_400(self, mock_get):
         """Test that 400 errors are not retried."""
         mock_response = Mock()
         mock_response.ok = False
@@ -483,15 +480,15 @@ class TestRetryLogic(unittest.TestCase):
         # Verify sleep was called twice (before 2nd and 3rd attempts)
         self.assertEqual(mock_sleep.call_count, 2)
 
-        # Check first backoff (attempt 0): base = 1s, with jitter
+        # Check first backoff (attempt 0): base = 1s, with up to 10% jitter (max 1.1s)
         first_backoff = mock_sleep.call_args_list[0][0][0]
         self.assertGreaterEqual(first_backoff, 1.0)
-        self.assertLessEqual(first_backoff, 1.2)  # 1s + 10% jitter = 1.1s, with margin
+        self.assertLessEqual(first_backoff, 1.15)  # Allow small margin for test stability
 
-        # Check second backoff (attempt 1): base = 2s, with jitter
+        # Check second backoff (attempt 1): base = 2s, with up to 10% jitter (max 2.2s)
         second_backoff = mock_sleep.call_args_list[1][0][0]
         self.assertGreaterEqual(second_backoff, 2.0)
-        self.assertLessEqual(second_backoff, 2.3)  # 2s + 10% jitter = 2.2s, with margin
+        self.assertLessEqual(second_backoff, 2.25)  # Allow small margin for test stability
 
     @patch('api_client.time.sleep')
     @patch('api_client.requests.get')
