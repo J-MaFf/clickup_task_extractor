@@ -7,10 +7,16 @@ Contains:
 - APIClient protocol for structural typing
 - ClickUpAPIClient class for HTTP API interactions
 - Error handling and debugging for API requests
+- Retry logic with exponential backoff for transient errors
 """
 
 import requests
+import time
+import random
 from typing import Any, Protocol
+from logger_config import get_logger
+
+logger = get_logger(__name__)
 
 
 class APIError(Exception):
@@ -37,9 +43,15 @@ class APIClient(Protocol):
 
 
 class ClickUpAPIClient:
-    """HTTP client for ClickUp API v2 with error handling and debugging."""
+    """HTTP client for ClickUp API v2 with error handling, debugging, and retry logic."""
 
     BASE_URL = 'https://api.clickup.com/api/v2'
+
+    # Retry configuration
+    MAX_RETRIES = 3
+    INITIAL_BACKOFF = 1  # seconds
+    MAX_BACKOFF = 30  # seconds
+    RETRYABLE_STATUS_CODES = {502, 503, 504, 429}  # Bad Gateway, Service Unavailable, Gateway Timeout, Rate Limit
 
     def __init__(self, api_key: str) -> None:
         """
@@ -53,9 +65,23 @@ class ClickUpAPIClient:
             'Content-Type': 'application/json'
         }
 
+    def _exponential_backoff_with_jitter(self, attempt: int) -> float:
+        """
+        Calculate exponential backoff time with jitter.
+
+        Args:
+            attempt: Current retry attempt (0-indexed)
+
+        Returns:
+            Time to wait in seconds
+        """
+        backoff = min(self.INITIAL_BACKOFF * (2 ** attempt), self.MAX_BACKOFF)
+        jitter = random.uniform(0, backoff * 0.1)  # Add up to 10% jitter
+        return backoff + jitter
+
     def get(self, endpoint: str) -> Any:
         """
-        Make a GET request to the ClickUp API.
+        Make a GET request to the ClickUp API with retry logic.
 
         Args:
             endpoint: API endpoint (without base URL)
@@ -70,10 +96,47 @@ class ClickUpAPIClient:
         """
         url = f"{self.BASE_URL}{endpoint}"
 
-        try:
-            resp = requests.get(url, headers=self.headers, timeout=30)
-        except requests.exceptions.RequestException as e:
-            raise APIError(f"Network error while accessing {url}: {e}") from e
+        for attempt in range(self.MAX_RETRIES):
+            try:
+                resp = requests.get(url, headers=self.headers, timeout=30)
+
+                # Check if this is a retryable error
+                if resp.status_code in self.RETRYABLE_STATUS_CODES and attempt < self.MAX_RETRIES - 1:
+                    wait_time = self._exponential_backoff_with_jitter(attempt)
+                    logger.warning(
+                        f"🔄 API returned {resp.status_code}. "
+                        f"Retrying in {wait_time:.2f}s (attempt {attempt + 1}/{self.MAX_RETRIES})..."
+                    )
+                    time.sleep(wait_time)
+                    continue
+
+                # For non-retryable errors or final attempt, break and handle below
+                break
+
+            except requests.exceptions.Timeout:
+                if attempt < self.MAX_RETRIES - 1:
+                    wait_time = self._exponential_backoff_with_jitter(attempt)
+                    logger.warning(
+                        f"⏱️  Request timeout. Retrying in {wait_time:.2f}s "
+                        f"(attempt {attempt + 1}/{self.MAX_RETRIES})..."
+                    )
+                    time.sleep(wait_time)
+                    continue
+                else:
+                    raise APIError(f"Network timeout while accessing {url}") from None
+            except requests.exceptions.ConnectionError as e:
+                if attempt < self.MAX_RETRIES - 1:
+                    wait_time = self._exponential_backoff_with_jitter(attempt)
+                    logger.warning(
+                        f"🌐 Connection error. Retrying in {wait_time:.2f}s "
+                        f"(attempt {attempt + 1}/{self.MAX_RETRIES})..."
+                    )
+                    time.sleep(wait_time)
+                    continue
+                else:
+                    raise APIError(f"Network error while accessing {url}: {e}") from e
+            except requests.exceptions.RequestException as e:
+                raise APIError(f"Network error while accessing {url}: {e}") from e
 
         # Handle authentication errors specifically
         if resp.status_code == 401:
