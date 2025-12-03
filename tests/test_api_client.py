@@ -84,8 +84,8 @@ class TestClickUpAPIClient(unittest.TestCase):
         with self.assertRaises(APIError) as context:
             self.client.get('/test/endpoint')
 
-        self.assertIn('Network error', str(context.exception))
-        self.assertIn('timed out', str(context.exception))
+        self.assertIn('Network timeout', str(context.exception))
+        self.assertIn('accessing', str(context.exception))
 
     @patch('api_client.requests.get')
     def test_invalid_json_response(self, mock_get):

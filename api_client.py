@@ -95,7 +95,6 @@ class ClickUpAPIClient:
             APIError: If the request fails for other reasons
         """
         url = f"{self.BASE_URL}{endpoint}"
-        last_exception = None
 
         for attempt in range(self.MAX_RETRIES):
             try:
@@ -128,7 +127,6 @@ class ClickUpAPIClient:
                         f"(attempt {attempt + 1}/{self.MAX_RETRIES})..."
                     )
                     time.sleep(wait_time)
-                    last_exception = APIError(f"Network timeout while accessing {url}")
                     continue
                 else:
                     raise APIError(f"Network timeout while accessing {url}") from None
@@ -140,7 +138,6 @@ class ClickUpAPIClient:
                         f"(attempt {attempt + 1}/{self.MAX_RETRIES})..."
                     )
                     time.sleep(wait_time)
-                    last_exception = APIError(f"Network error while accessing {url}: {e}")
                     continue
                 else:
                     raise APIError(f"Network error while accessing {url}: {e}") from e
