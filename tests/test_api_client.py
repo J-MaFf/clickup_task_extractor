@@ -11,10 +11,11 @@ Tests cover:
 - Network errors
 - Invalid JSON responses
 - Various HTTP error status codes
+- Retry logic with exponential backoff
 """
 
 import unittest
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import Mock, patch, MagicMock, call
 import requests
 
 from api_client import ClickUpAPIClient, APIError, AuthenticationError, ShardRoutingError
@@ -283,6 +284,391 @@ class TestClickUpAPIClient(unittest.TestCase):
         # Should raise generic APIError, not ShardRoutingError
         self.assertNotIsInstance(context.exception, ShardRoutingError)
         self.assertIn('HTTP 404', str(context.exception))
+
+
+class TestRetryLogic(unittest.TestCase):
+    """Tests for exponential backoff retry logic."""
+
+    def setUp(self):
+        """Set up test client."""
+        self.api_key = 'test_api_key_12345'
+        self.client = ClickUpAPIClient(self.api_key)
+
+    @patch('api_client.time.sleep')
+    @patch('api_client.requests.get')
+    def test_retry_on_502_then_success(self, mock_get, mock_sleep):
+        """Test successful retry after 502 Bad Gateway error."""
+        # First call returns 502, second call succeeds
+        mock_response_502 = Mock()
+        mock_response_502.ok = False
+        mock_response_502.status_code = 502
+        mock_response_502.text = 'Bad Gateway'
+
+        mock_response_success = Mock()
+        mock_response_success.ok = True
+        mock_response_success.status_code = 200
+        mock_response_success.json.return_value = {'data': 'success'}
+
+        mock_get.side_effect = [mock_response_502, mock_response_success]
+
+        result = self.client.get('/test/endpoint')
+
+        # Verify successful result
+        self.assertEqual(result, {'data': 'success'})
+        # Verify two requests were made
+        self.assertEqual(mock_get.call_count, 2)
+        # Verify sleep was called once (for retry)
+        self.assertEqual(mock_sleep.call_count, 1)
+        # Verify backoff time is reasonable (1s base + jitter)
+        self.assertGreaterEqual(mock_sleep.call_args[0][0], 1.0)
+        self.assertLessEqual(mock_sleep.call_args[0][0], 1.2)  # 1s + 10% jitter
+
+    @patch('api_client.time.sleep')
+    @patch('api_client.requests.get')
+    def test_retry_on_503_then_success(self, mock_get, mock_sleep):
+        """Test successful retry after 503 Service Unavailable error."""
+        mock_response_503 = Mock()
+        mock_response_503.ok = False
+        mock_response_503.status_code = 503
+        mock_response_503.text = 'Service Unavailable'
+
+        mock_response_success = Mock()
+        mock_response_success.ok = True
+        mock_response_success.status_code = 200
+        mock_response_success.json.return_value = {'data': 'recovered'}
+
+        mock_get.side_effect = [mock_response_503, mock_response_success]
+
+        result = self.client.get('/test/endpoint')
+
+        self.assertEqual(result, {'data': 'recovered'})
+        self.assertEqual(mock_get.call_count, 2)
+        self.assertEqual(mock_sleep.call_count, 1)
+
+    @patch('api_client.time.sleep')
+    @patch('api_client.requests.get')
+    def test_retry_on_504_then_success(self, mock_get, mock_sleep):
+        """Test successful retry after 504 Gateway Timeout error."""
+        mock_response_504 = Mock()
+        mock_response_504.ok = False
+        mock_response_504.status_code = 504
+        mock_response_504.text = 'Gateway Timeout'
+
+        mock_response_success = Mock()
+        mock_response_success.ok = True
+        mock_response_success.status_code = 200
+        mock_response_success.json.return_value = {'data': 'recovered'}
+
+        mock_get.side_effect = [mock_response_504, mock_response_success]
+
+        result = self.client.get('/test/endpoint')
+
+        self.assertEqual(result, {'data': 'recovered'})
+        self.assertEqual(mock_get.call_count, 2)
+        self.assertEqual(mock_sleep.call_count, 1)
+
+    @patch('api_client.time.sleep')
+    @patch('api_client.requests.get')
+    def test_retry_on_429_then_success(self, mock_get, mock_sleep):
+        """Test successful retry after 429 Rate Limit error."""
+        mock_response_429 = Mock()
+        mock_response_429.ok = False
+        mock_response_429.status_code = 429
+        mock_response_429.text = 'Rate Limit Exceeded'
+
+        mock_response_success = Mock()
+        mock_response_success.ok = True
+        mock_response_success.status_code = 200
+        mock_response_success.json.return_value = {'data': 'success_after_rate_limit'}
+
+        mock_get.side_effect = [mock_response_429, mock_response_success]
+
+        result = self.client.get('/test/endpoint')
+
+        self.assertEqual(result, {'data': 'success_after_rate_limit'})
+        self.assertEqual(mock_get.call_count, 2)
+        self.assertEqual(mock_sleep.call_count, 1)
+
+    @patch('api_client.time.sleep')
+    @patch('api_client.requests.get')
+    @patch('builtins.print')
+    def test_max_retries_exhausted(self, mock_print, mock_get, mock_sleep):
+        """Test that max retries are enforced (3 attempts total)."""
+        # All three attempts return 502
+        mock_response = Mock()
+        mock_response.ok = False
+        mock_response.status_code = 502
+        mock_response.text = 'Bad Gateway'
+        mock_response.json.return_value = {'err': 'Bad Gateway'}
+
+        mock_get.return_value = mock_response
+
+        with self.assertRaises(APIError) as context:
+            self.client.get('/test/endpoint')
+
+        # Verify all 3 attempts were made
+        self.assertEqual(mock_get.call_count, 3)
+        # Verify sleep was called 2 times (before 2nd and 3rd attempts)
+        self.assertEqual(mock_sleep.call_count, 2)
+        self.assertIn('HTTP 502', str(context.exception))
+
+    @patch('api_client.requests.get')
+    def test_no_retry_on_401(self, mock_get):
+        """Test that 401 errors are not retried."""
+        mock_response = Mock()
+        mock_response.ok = False
+        mock_response.status_code = 401
+        mock_response.text = 'Unauthorized'
+
+        mock_get.return_value = mock_response
+
+        with self.assertRaises(AuthenticationError):
+            self.client.get('/test/endpoint')
+
+        # Verify only 1 request was made (no retries)
+        self.assertEqual(mock_get.call_count, 1)
+
+    @patch('api_client.requests.get')
+    @patch('builtins.print')
+    def test_no_retry_on_404(self, mock_print, mock_get):
+        """Test that 404 errors are not retried."""
+        mock_response = Mock()
+        mock_response.ok = False
+        mock_response.status_code = 404
+        mock_response.text = 'Not Found'
+        mock_response.json.return_value = {'err': 'Resource not found'}
+
+        mock_get.return_value = mock_response
+
+        with self.assertRaises(APIError):
+            self.client.get('/test/endpoint')
+
+        # Verify only 1 request was made (no retries)
+        self.assertEqual(mock_get.call_count, 1)
+
+    @patch('api_client.requests.get')
+    @patch('builtins.print')
+    def test_no_retry_on_400(self, mock_print, mock_get):
+        """Test that 400 errors are not retried."""
+        mock_response = Mock()
+        mock_response.ok = False
+        mock_response.status_code = 400
+        mock_response.text = 'Bad Request'
+        mock_response.json.return_value = {'err': 'Invalid parameters'}
+
+        mock_get.return_value = mock_response
+
+        with self.assertRaises(APIError):
+            self.client.get('/test/endpoint')
+
+        # Verify only 1 request was made (no retries)
+        self.assertEqual(mock_get.call_count, 1)
+
+    @patch('api_client.time.sleep')
+    @patch('api_client.requests.get')
+    def test_exponential_backoff_timing(self, mock_get, mock_sleep):
+        """Test exponential backoff calculations with jitter."""
+        # Mock three 502 responses
+        mock_response = Mock()
+        mock_response.ok = False
+        mock_response.status_code = 502
+        mock_response.text = 'Bad Gateway'
+        mock_response.json.return_value = {'err': 'Bad Gateway'}
+
+        mock_get.return_value = mock_response
+
+        with self.assertRaises(APIError):
+            self.client.get('/test/endpoint')
+
+        # Verify sleep was called twice (before 2nd and 3rd attempts)
+        self.assertEqual(mock_sleep.call_count, 2)
+
+        # Check first backoff (attempt 0): base = 1s, with jitter
+        first_backoff = mock_sleep.call_args_list[0][0][0]
+        self.assertGreaterEqual(first_backoff, 1.0)
+        self.assertLessEqual(first_backoff, 1.2)  # 1s + 10% jitter = 1.1s, with margin
+
+        # Check second backoff (attempt 1): base = 2s, with jitter
+        second_backoff = mock_sleep.call_args_list[1][0][0]
+        self.assertGreaterEqual(second_backoff, 2.0)
+        self.assertLessEqual(second_backoff, 2.3)  # 2s + 10% jitter = 2.2s, with margin
+
+    @patch('api_client.time.sleep')
+    @patch('api_client.requests.get')
+    def test_max_backoff_limit(self, mock_get, mock_sleep):
+        """Test that backoff is capped at MAX_BACKOFF."""
+        # Simulate a scenario where backoff would exceed MAX_BACKOFF
+        # MAX_BACKOFF = 30, so with attempt >= 5, backoff would be > 30s
+        # We'll test by mocking the _exponential_backoff_with_jitter method
+        
+        mock_response = Mock()
+        mock_response.ok = False
+        mock_response.status_code = 502
+        mock_response.text = 'Bad Gateway'
+        mock_response.json.return_value = {'err': 'Bad Gateway'}
+        mock_get.return_value = mock_response
+
+        # Test the backoff calculation directly
+        backoff_5 = self.client._exponential_backoff_with_jitter(5)
+        backoff_10 = self.client._exponential_backoff_with_jitter(10)
+        
+        # Both should be capped at MAX_BACKOFF (30s) + jitter (10% = 3s)
+        self.assertLessEqual(backoff_5, 33)
+        self.assertLessEqual(backoff_10, 33)
+
+    @patch('api_client.time.sleep')
+    @patch('api_client.requests.get')
+    def test_timeout_retry_behavior(self, mock_get, mock_sleep):
+        """Test that timeouts are retried with exponential backoff."""
+        # First two calls timeout, third succeeds
+        mock_response_success = Mock()
+        mock_response_success.ok = True
+        mock_response_success.status_code = 200
+        mock_response_success.json.return_value = {'data': 'success_after_timeout'}
+
+        mock_get.side_effect = [
+            requests.exceptions.Timeout('Request timed out'),
+            requests.exceptions.Timeout('Request timed out'),
+            mock_response_success
+        ]
+
+        result = self.client.get('/test/endpoint')
+
+        self.assertEqual(result, {'data': 'success_after_timeout'})
+        # Verify three requests were made
+        self.assertEqual(mock_get.call_count, 3)
+        # Verify sleep was called twice (before 2nd and 3rd attempts)
+        self.assertEqual(mock_sleep.call_count, 2)
+
+    @patch('api_client.time.sleep')
+    @patch('api_client.requests.get')
+    def test_timeout_max_retries(self, mock_get, mock_sleep):
+        """Test that timeouts are retried up to max attempts then raise."""
+        mock_get.side_effect = requests.exceptions.Timeout('Request timed out')
+
+        with self.assertRaises(APIError) as context:
+            self.client.get('/test/endpoint')
+
+        # Verify all 3 attempts were made
+        self.assertEqual(mock_get.call_count, 3)
+        # Verify sleep was called 2 times (before 2nd and 3rd attempts)
+        self.assertEqual(mock_sleep.call_count, 2)
+        self.assertIn('Network timeout', str(context.exception))
+
+    @patch('api_client.time.sleep')
+    @patch('api_client.requests.get')
+    def test_connection_error_retry_behavior(self, mock_get, mock_sleep):
+        """Test that connection errors are retried with exponential backoff."""
+        # First call fails, second succeeds
+        mock_response_success = Mock()
+        mock_response_success.ok = True
+        mock_response_success.status_code = 200
+        mock_response_success.json.return_value = {'data': 'success_after_connection_error'}
+
+        mock_get.side_effect = [
+            requests.exceptions.ConnectionError('Connection refused'),
+            mock_response_success
+        ]
+
+        result = self.client.get('/test/endpoint')
+
+        self.assertEqual(result, {'data': 'success_after_connection_error'})
+        # Verify two requests were made
+        self.assertEqual(mock_get.call_count, 2)
+        # Verify sleep was called once (before 2nd attempt)
+        self.assertEqual(mock_sleep.call_count, 1)
+
+    @patch('api_client.time.sleep')
+    @patch('api_client.requests.get')
+    def test_connection_error_max_retries(self, mock_get, mock_sleep):
+        """Test that connection errors are retried up to max attempts then raise."""
+        mock_get.side_effect = requests.exceptions.ConnectionError('Connection refused')
+
+        with self.assertRaises(APIError) as context:
+            self.client.get('/test/endpoint')
+
+        # Verify all 3 attempts were made
+        self.assertEqual(mock_get.call_count, 3)
+        # Verify sleep was called 2 times (before 2nd and 3rd attempts)
+        self.assertEqual(mock_sleep.call_count, 2)
+        self.assertIn('Network error', str(context.exception))
+        self.assertIn('Connection refused', str(context.exception))
+
+    @patch('api_client.time.sleep')
+    @patch('api_client.requests.get')
+    @patch('api_client.logger')
+    def test_retry_logging(self, mock_logger, mock_get, mock_sleep):
+        """Test that retry attempts are logged correctly."""
+        # First call returns 502, second succeeds
+        mock_response_502 = Mock()
+        mock_response_502.ok = False
+        mock_response_502.status_code = 502
+        mock_response_502.text = 'Bad Gateway'
+
+        mock_response_success = Mock()
+        mock_response_success.ok = True
+        mock_response_success.status_code = 200
+        mock_response_success.json.return_value = {'data': 'success'}
+
+        mock_get.side_effect = [mock_response_502, mock_response_success]
+
+        result = self.client.get('/test/endpoint')
+
+        # Verify logger.warning was called for retry
+        self.assertEqual(mock_logger.warning.call_count, 1)
+        # Verify the log message contains retry information
+        log_message = mock_logger.warning.call_args[0][0]
+        self.assertIn('502', log_message)
+        self.assertIn('Retrying', log_message)
+        self.assertIn('attempt 1/3', log_message)
+
+    @patch('api_client.time.sleep')
+    @patch('api_client.requests.get')
+    @patch('api_client.logger')
+    def test_timeout_retry_logging(self, mock_logger, mock_get, mock_sleep):
+        """Test that timeout retries are logged correctly."""
+        mock_response_success = Mock()
+        mock_response_success.ok = True
+        mock_response_success.status_code = 200
+        mock_response_success.json.return_value = {'data': 'success'}
+
+        mock_get.side_effect = [
+            requests.exceptions.Timeout('Request timed out'),
+            mock_response_success
+        ]
+
+        result = self.client.get('/test/endpoint')
+
+        # Verify logger.warning was called for timeout retry
+        self.assertEqual(mock_logger.warning.call_count, 1)
+        log_message = mock_logger.warning.call_args[0][0]
+        self.assertIn('timeout', log_message.lower())
+        self.assertIn('Retrying', log_message)
+        self.assertIn('attempt 1/3', log_message)
+
+    @patch('api_client.time.sleep')
+    @patch('api_client.requests.get')
+    @patch('api_client.logger')
+    def test_connection_error_retry_logging(self, mock_logger, mock_get, mock_sleep):
+        """Test that connection error retries are logged correctly."""
+        mock_response_success = Mock()
+        mock_response_success.ok = True
+        mock_response_success.status_code = 200
+        mock_response_success.json.return_value = {'data': 'success'}
+
+        mock_get.side_effect = [
+            requests.exceptions.ConnectionError('Connection refused'),
+            mock_response_success
+        ]
+
+        result = self.client.get('/test/endpoint')
+
+        # Verify logger.warning was called for connection error retry
+        self.assertEqual(mock_logger.warning.call_count, 1)
+        log_message = mock_logger.warning.call_args[0][0]
+        self.assertIn('Connection error', log_message)
+        self.assertIn('Retrying', log_message)
+        self.assertIn('attempt 1/3', log_message)
 
 
 class TestAPIErrorExceptions(unittest.TestCase):
