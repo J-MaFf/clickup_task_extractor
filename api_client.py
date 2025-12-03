@@ -46,7 +46,7 @@ class ClickUpAPIClient:
     """HTTP client for ClickUp API v2 with error handling, debugging, and retry logic."""
 
     BASE_URL = 'https://api.clickup.com/api/v2'
-    
+
     # Retry configuration
     MAX_RETRIES = 3
     INITIAL_BACKOFF = 1  # seconds
@@ -68,10 +68,10 @@ class ClickUpAPIClient:
     def _exponential_backoff_with_jitter(self, attempt: int) -> float:
         """
         Calculate exponential backoff time with jitter.
-        
+
         Args:
             attempt: Current retry attempt (0-indexed)
-            
+
         Returns:
             Time to wait in seconds
         """
@@ -100,13 +100,13 @@ class ClickUpAPIClient:
         for attempt in range(self.MAX_RETRIES):
             try:
                 resp = requests.get(url, headers=self.headers, timeout=30)
-                
+
                 # Handle authentication errors specifically (don't retry)
                 if resp.status_code == 401:
                     raise AuthenticationError(
                         "API authentication failed. Please check your ClickUp API key."
                     )
-                
+
                 # Check if this is a retryable error
                 if resp.status_code in self.RETRYABLE_STATUS_CODES and attempt < self.MAX_RETRIES - 1:
                     wait_time = self._exponential_backoff_with_jitter(attempt)
@@ -116,10 +116,10 @@ class ClickUpAPIClient:
                     )
                     time.sleep(wait_time)
                     continue
-                
+
                 # For non-retryable errors or final attempt, break and handle below
                 break
-                
+
             except requests.exceptions.Timeout:
                 if attempt < self.MAX_RETRIES - 1:
                     wait_time = self._exponential_backoff_with_jitter(attempt)
@@ -146,7 +146,7 @@ class ClickUpAPIClient:
                     raise APIError(f"Network error while accessing {url}: {e}") from e
             except requests.exceptions.RequestException as e:
                 raise APIError(f"Network error while accessing {url}: {e}") from e
-        
+
         # Handle authentication errors specifically
         if resp.status_code == 401:
             raise AuthenticationError(
