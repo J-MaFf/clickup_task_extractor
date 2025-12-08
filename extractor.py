@@ -106,6 +106,8 @@ class ClickUpTaskExtractor:
         self.config = config
         self.api = api_client
         self.load_gemini_key_func = load_gemini_key_func
+        self._progress_context: Progress | None = None
+        self._pause_progress_callback: callable | None = None
 
     def run(self) -> None:
         """
@@ -176,6 +178,18 @@ class ClickUpTaskExtractor:
                 console=console,
                 transient=True
             ) as progress:
+                # Store progress context for use in callbacks (e.g., during AI summary rate limit waits)
+                self._progress_context = progress
+
+                # Create a pause callback that stops refreshing the progress display
+                # This is used by get_ai_summary to hide progress bars during rate limit waits
+                def pause_progress_for_rate_limit() -> None:
+                    """Pause progress display to avoid visual conflicts during rate limit waits."""
+                    if self._progress_context:
+                        # Stop updating the progress display
+                        self._progress_context.stop()
+
+                self._pause_progress_callback = pause_progress_for_rate_limit
 
                 # Fetch workspaces
                 task = progress.add_task("🏢 Fetching workspaces...", total=None)
@@ -417,14 +431,16 @@ class ClickUpTaskExtractor:
                                         ai_notes = get_ai_summary(
                                             task_name,
                                             ai_fields,
-                                            self.config.gemini_api_key
+                                            self.config.gemini_api_key,
+                                            progress_pause_callback=self._pause_progress_callback
                                         )
                                     else:
                                         fallback_fields = [('Notes', task.Notes or '(not provided)')]
                                         ai_notes = get_ai_summary(
                                             task_name,
                                             fallback_fields,
-                                            self.config.gemini_api_key
+                                            self.config.gemini_api_key,
+                                            progress_pause_callback=self._pause_progress_callback
                                         )
                                     task.Notes = ai_notes
                             console.print("✅ [bold green]AI summaries generated for all selected tasks.[/bold green]")
@@ -611,7 +627,8 @@ class ClickUpTaskExtractor:
                 notes = get_ai_summary(
                     task_detail.get('name', ''),
                     ai_field_items,
-                    self.config.gemini_api_key
+                    self.config.gemini_api_key,
+                    progress_pause_callback=self._pause_progress_callback
                 )
             else:
                 notes = '\n'.join(notes_parts)

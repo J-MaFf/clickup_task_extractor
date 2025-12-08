@@ -11,7 +11,7 @@ Contains:
 
 import re
 import time
-from typing import Mapping, Sequence, TypeAlias
+from typing import Callable, Mapping, Sequence, TypeAlias
 
 # Rich console imports - create singleton instance
 try:
@@ -55,7 +55,8 @@ def _normalize_field_entries(field_entries: Sequence[tuple[str, str]] | Mapping[
 def get_ai_summary(
     task_name: str,
     field_entries: Sequence[tuple[str, str]] | Mapping[str, str],
-    gemini_api_key: str
+    gemini_api_key: str,
+    progress_pause_callback: Callable[[], None] | None = None
 ) -> SummaryResult:
     """
     Generate a concise 1-2 sentence summary about the current status of the task using Google Gemini AI.
@@ -65,6 +66,7 @@ def get_ai_summary(
         task_name: Name of the task
         field_entries: Iterable of (field label, value) pairs to include in prompt
         gemini_api_key: Google Gemini API key for authentication
+        progress_pause_callback: Optional callback to pause/resume main progress bars during rate limit wait
 
     Returns:
         AI-generated summary or original content if AI fails
@@ -170,6 +172,10 @@ Focus on the current state and what you have done or need to do. Be specific and
                     retry_delay = base_delay * (2 ** attempt)
 
                 if attempt < max_retries:
+                    # Pause main progress bars if callback is provided
+                    if progress_pause_callback:
+                        progress_pause_callback()
+
                     # Use Rich console for better styling
                     if RICH_AVAILABLE and _console and Progress and TextColumn and BarColumn and TimeRemainingColumn:
                         _console.print(f"⏳ [yellow]Rate limit hit for task '{task_name}'. Waiting {retry_delay} seconds before retry (attempt {attempt + 1}/{max_retries})...[/yellow]")
