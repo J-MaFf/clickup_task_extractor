@@ -16,12 +16,17 @@ from enum import Enum
 
 
 # Date/time formatting constants - cross-platform compatible
-TIMESTAMP_FORMAT = '%m-%d-%Y_%I-%M%p'  # For filenames (with leading zeros for compatibility)
-DISPLAY_FORMAT = '%m/%d/%Y at %I:%M %p'  # For HTML display (with leading zeros for compatibility)
+TIMESTAMP_FORMAT = (
+    "%m-%d-%Y_%I-%M%p"  # For filenames (with leading zeros for compatibility)
+)
+DISPLAY_FORMAT = (
+    "%m/%d/%Y at %I:%M %p"  # For HTML display (with leading zeros for compatibility)
+)
 
 
 class TaskPriority(Enum):
     """Enumeration of task priority levels."""
+
     LOW = "Low"
     NORMAL = "Normal"
     HIGH = "High"
@@ -40,6 +45,7 @@ PRIORITY_ORDER = {
 
 class OutputFormat(Enum):
     """Enumeration of supported output formats."""
+
     CSV = "CSV"
     HTML = "HTML"
     MARKDOWN = "Markdown"
@@ -49,6 +55,7 @@ class OutputFormat(Enum):
 
 class DateFilter(Enum):
     """Enumeration of supported date filter options."""
+
     ALL_OPEN = "AllOpen"
     THIS_WEEK = "ThisWeek"
     LAST_WEEK = "LastWeek"
@@ -74,16 +81,42 @@ def format_datetime(dt: datetime, format_string: str) -> str:
         >>> format_datetime(dt, '%m/%d/%Y at %I:%M %p')
         '1/8/2025 at 9:30 AM'
     """
-    s = dt.strftime(format_string)
-    # Remove leading zeros from day and month
-    s = s.replace(dt.strftime('%d'), str(dt.day), 1)
-    s = s.replace(dt.strftime('%m'), str(dt.month), 1)
-    # Handle hour formatting for 12-hour format
+    # Parse the format string and build result, handling %m, %d, %I specially
+    result = ""
+    i = 0
+
     hour_12 = dt.hour % 12
     if hour_12 == 0:
         hour_12 = 12
-    s = s.replace(dt.strftime('%I'), str(hour_12), 1)
-    return s
+
+    while i < len(format_string):
+        if format_string[i] == "%":
+            if i + 1 < len(format_string):
+                code = format_string[i : i + 2]
+                if code == "%m":
+                    # Month without leading zero
+                    result += str(dt.month)
+                    i += 2
+                elif code == "%d":
+                    # Day without leading zero
+                    result += str(dt.day)
+                    i += 2
+                elif code == "%I":
+                    # 12-hour format without leading zero
+                    result += str(hour_12)
+                    i += 2
+                else:
+                    # Other format codes - use strftime for this char
+                    result += dt.strftime(code)
+                    i += 2
+            else:
+                result += format_string[i]
+                i += 1
+        else:
+            result += format_string[i]
+            i += 1
+
+    return result
 
 
 def default_output_path() -> str:
@@ -96,10 +129,12 @@ def default_output_path() -> str:
     Example:
         'output/WeeklyTaskList_1-8-2025_3-45PM.csv'
     """
-    return f"output/WeeklyTaskList_{format_datetime(datetime.now(), TIMESTAMP_FORMAT)}.csv"
+    return (
+        f"output/WeeklyTaskList_{format_datetime(datetime.now(), TIMESTAMP_FORMAT)}.csv"
+    )
 
 
-def sort_tasks_by_priority_and_name(tasks: list['TaskRecord']) -> list['TaskRecord']:
+def sort_tasks_by_priority_and_name(tasks: list["TaskRecord"]) -> list["TaskRecord"]:
     """
     Sort tasks by priority (Urgent → High → Normal → Low) and then alphabetically by task name.
 
@@ -122,8 +157,8 @@ def sort_tasks_by_priority_and_name(tasks: list['TaskRecord']) -> list['TaskReco
         tasks,
         key=lambda task: (
             -PRIORITY_ORDER.get(task.Priority, 0),  # Negative for descending order
-            task.Task.lower()  # Case-insensitive alphabetical
-        )
+            task.Task.lower(),  # Case-insensitive alphabetical
+        ),
     )
 
 
@@ -158,10 +193,11 @@ class ClickUpConfig:
         ...     team_id="9014534294"
         ... )
     """
+
     api_key: str
-    workspace_name: str = 'KMS'
-    space_name: str = 'Kikkoman'
-    team_id: str = '9014534294'
+    workspace_name: str = "KMS"
+    space_name: str = "Kikkoman"
+    team_id: str = "9014534294"
     output_path: str = field(default_factory=default_output_path)
     include_completed: bool = False
     date_filter: DateFilter = DateFilter.ALL_OPEN
@@ -170,7 +206,9 @@ class ClickUpConfig:
     output_format: OutputFormat = OutputFormat.HTML
     interactive_selection: bool = False
     # Exclude tasks with these statuses
-    exclude_statuses: list[str] = field(default_factory=lambda: ['Blocked', 'Dormant', 'On Hold', 'Document'])
+    exclude_statuses: list[str] = field(
+        default_factory=lambda: ["Blocked", "Dormant", "On Hold", "Document"]
+    )
 
 
 @dataclass
@@ -202,12 +240,13 @@ class TaskRecord:
         ...     Status="In Progress"
         ... )
     """
+
     Task: str
     Company: str
     Branch: str
     Priority: str  # Keep as string for CSV export compatibility
     Status: str
-    ETA: str = ''
-    Notes: str = ''
-    Extra: str = ''
+    ETA: str = ""
+    Notes: str = ""
+    Extra: str = ""
     _metadata: dict[str, Any] = field(default_factory=dict, init=False, repr=False)
