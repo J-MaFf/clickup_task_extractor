@@ -89,7 +89,7 @@ def get_ai_summary(
         return field_block
 
     max_retries = 3
-    base_delay = 30  # Increased base delay to 30 seconds for rate limiting
+    initial_delay = 1  # Start with 1 second for exponential backoff
 
     for attempt in range(max_retries + 1):
         try:
@@ -151,25 +151,31 @@ Focus on the current state and what you have done or need to do. Be specific and
             )
 
             if is_rate_limit:
-                # Extract retry delay from error message if available
-                retry_delay = base_delay
+                # Calculate exponential backoff: 1s, 2s, 4s, 8s, 16s, 32s...
+                exponential_delay = initial_delay * (2 ** attempt)
+
+                # Try to extract retry delay from API error message if available
+                api_retry_delay = None
                 try:
                     # Try to parse the retry delay from the error message
                     if "retryDelay" in error_str:
                         # Look for patterns like '"retryDelay": "20s"'
                         delay_match = re.search(r'"retryDelay":\s*"(\d+)s"', error_str)
                         if delay_match:
-                            retry_delay = int(delay_match.group(1))
+                            api_retry_delay = int(delay_match.group(1))
                         else:
                             # Fallback: extract quota value and calculate delay
                             quota_match = re.search(r'"quotaValue":\s*"(\d+)"', error_str)
                             if quota_match:
                                 quota_value = int(quota_match.group(1))
                                 # Calculate delay based on quota (60 seconds / quota = delay per request)
-                                retry_delay = max(60 // quota_value, base_delay)
+                                api_retry_delay = 60 // quota_value if quota_value > 0 else None
                 except (ValueError, AttributeError):
-                    # If parsing fails, use exponential backoff
-                    retry_delay = base_delay * (2 ** attempt)
+                    pass
+
+                # Use the maximum of exponential backoff or API-provided delay
+                # This respects the API's constraints while using exponential backoff as baseline
+                retry_delay = max(exponential_delay, api_retry_delay or exponential_delay)
 
                 if attempt < max_retries:
                     # Pause main progress bars if callback is provided
