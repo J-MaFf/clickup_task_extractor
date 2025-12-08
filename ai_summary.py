@@ -206,8 +206,6 @@ def _handle_rate_limit_wait(
         print(f"Rate limit hit. Waiting {retry_delay}s before retry...")
 
     time.sleep(retry_delay)
-        time.sleep(retry_delay)
-        print("Retry ready - attempting again...")
 
 
 def get_ai_summary(
