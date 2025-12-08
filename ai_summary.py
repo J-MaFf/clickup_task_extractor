@@ -184,7 +184,7 @@ def _handle_rate_limit_wait(
     progress_pause_callback: Callable[[], None] | None = None,
 ) -> None:
     """
-    Handle wait period during rate limit, showing progress to user.
+    Handle wait period during rate limit with simple sleep (no progress bar).
 
     Args:
         attempt: Current attempt number (0-indexed)
@@ -198,36 +198,14 @@ def _handle_rate_limit_wait(
     if progress_pause_callback:
         progress_pause_callback()
 
-    if (
-        RICH_AVAILABLE
-        and _console
-        and Progress
-        and TextColumn
-        and BarColumn
-        and TimeRemainingColumn
-    ):
+    if RICH_AVAILABLE and _console:
         _console.print(
-            f"⏳ [yellow]Rate limit hit. Waiting {retry_delay}s before retry (attempt {attempt + 1}/{max_retries})...[/yellow]"
+            f"⏳ [dim]Rate limit hit. Waiting {retry_delay}s before retry...[/dim]"
         )
-
-        with Progress(
-            TextColumn("[bold blue]⏱️  Rate limit wait"),
-            BarColumn(bar_width=40),
-            TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
-            TimeRemainingColumn(),
-            console=_console,
-            transient=True,
-        ) as progress:
-            task = progress.add_task("Waiting...", total=retry_delay)
-            for _ in range(retry_delay):
-                time.sleep(1)
-                progress.update(task, advance=1)
-
-        _console.print("✅ [green]Retry ready - attempting again...[/green]")
     else:
-        print(
-            f"Rate limit hit. Waiting {retry_delay}s before retry (attempt {attempt + 1}/{max_retries})..."
-        )
+        print(f"Rate limit hit. Waiting {retry_delay}s before retry...")
+
+    time.sleep(retry_delay)
         time.sleep(retry_delay)
         print("Retry ready - attempting again...")
 
@@ -286,9 +264,6 @@ def get_ai_summary(
     # Try with retries and exponential backoff
     max_retries = 2
     initial_delay = 1
-
-    if RICH_AVAILABLE and _console:
-        _console.print(f"🤖 [dim]Generating AI summary using {GEMINI_MODEL}[/dim]")
 
     for attempt in range(max_retries + 1):
         summary, is_rate_limit = _try_ai_summary(task_name, field_block, gemini_api_key)
