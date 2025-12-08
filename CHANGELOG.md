@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### ✨ Features & Enhancements
+
+- **Tiered Model Switching for AI Summaries**: Implemented intelligent model fallback strategy for Google Gemini API rate limiting. When the primary model (`gemini-2.5-flash-lite`, 500 RPD) hits rate limits, the system automatically switches to `gemini-2.5-pro` (1,500 RPD separate quota bucket) for continued operation with higher quality summaries. Falls back to `gemini-2.0-flash` as emergency alternative. Each tier has its own quota bucket, allowing up to 3x additional capacity when primary is exhausted.
+- **Dynamic Model Tier Management**: Refactored `ai_summary.py` with new `MODEL_TIERS` configuration list and helper functions (`_try_ai_summary_with_model`, `_handle_rate_limit_wait`) for clean separation of concerns. Users are notified which model tier generated their summary via Rich console output.
+- **Improved Rate Limit Detection**: Enhanced detection to catch multiple rate limit error patterns including HTTP 429 status codes, RESOURCE_EXHAUSTED errors, and 'quota'/'rate limit' keywords in error messages (case-insensitive). This ensures exponential backoff retry logic triggers for all quota-related errors regardless of message format.
+- **Enhanced Rate Limit Handling**: Improved exponential backoff logic and progress bar display during rate limit waits. System attempts same model up to 2 times with exponential backoff before switching tiers, providing better user feedback throughout the process.
+
 ## [1.02] - 2025-11-18
 
 ### ✨ Features & Enhancements
