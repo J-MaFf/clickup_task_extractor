@@ -52,8 +52,9 @@ from api_client import ClickUpAPIClient
 from extractor import ClickUpTaskExtractor
 from mappers import get_yes_no_input, get_choice_input
 
-# Initialize Rich console
-console = Console()
+# Initialize Rich console with proper encoding for cross-platform compatibility
+# This ensures proper rendering on Windows, macOS, and Linux
+console = Console(force_terminal=None, legacy_windows=False)
 
 # Setup enhanced logging with Rich
 from logger_config import setup_logging

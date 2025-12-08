@@ -44,8 +44,9 @@ from mappers import get_yes_no_input, get_date_range, extract_images, LocationMa
 # Get the directory of this script for output path resolution
 script_dir = os.path.dirname(os.path.abspath(__file__))
 
-# Initialize Rich console
-console = Console()
+# Initialize Rich console with proper encoding for cross-platform compatibility
+# This ensures proper rendering on Windows, macOS, and Linux
+console = Console(force_terminal=None, legacy_windows=False)
 
 # Type aliases for clarity
 TaskList: TypeAlias = list[TaskRecord]
