@@ -277,6 +277,75 @@ class TestRateLimitingAndRetry(unittest.TestCase):
         self.assertIn('Name: Task', result)
         self.assertIn('Status: Open', result)
 
+    @patch('ai_summary.time.sleep')
+    @patch('ai_summary.GenerativeModel')
+    @patch('ai_summary.configure')
+    def test_quota_exceeded_error_triggers_retry(self, mock_configure, mock_model_class, mock_sleep):
+        """Test quota exceeded error in different format triggers retry."""
+        mock_model = Mock()
+        mock_response = Mock()
+        mock_response.text = 'Success'
+
+        # This error format includes "quota" but not "RESOURCE_EXHAUSTED"
+        error_msg = '429 You exceeded your current quota. Please check your quota'
+        mock_model.generate_content.side_effect = [
+            Exception(error_msg),
+            mock_response
+        ]
+        mock_model_class.return_value = mock_model
+
+        field_entries = [('Name', 'Task')]
+        result = get_ai_summary('Test Task', field_entries, 'api_key')
+
+        self.assertEqual(result, 'Success.')
+        mock_sleep.assert_called()  # Verify retry happened
+
+    @patch('ai_summary.time.sleep')
+    @patch('ai_summary.GenerativeModel')
+    @patch('ai_summary.configure')
+    def test_rate_limit_keyword_error_triggers_retry(self, mock_configure, mock_model_class, mock_sleep):
+        """Test 'rate limit' keyword in error triggers retry."""
+        mock_model = Mock()
+        mock_response = Mock()
+        mock_response.text = 'Success'
+
+        # Error with "rate limit" keyword instead of "quota"
+        error_msg = 'Rate limit exceeded for API endpoint'
+        mock_model.generate_content.side_effect = [
+            Exception(error_msg),
+            mock_response
+        ]
+        mock_model_class.return_value = mock_model
+
+        field_entries = [('Name', 'Task')]
+        result = get_ai_summary('Test Task', field_entries, 'api_key')
+
+        self.assertEqual(result, 'Success.')
+        mock_sleep.assert_called()  # Verify retry happened
+
+    @patch('ai_summary.time.sleep')
+    @patch('ai_summary.GenerativeModel')
+    @patch('ai_summary.configure')
+    def test_quota_error_with_uppercase_keyword(self, mock_configure, mock_model_class, mock_sleep):
+        """Test uppercase QUOTA keyword is detected (case-insensitive)."""
+        mock_model = Mock()
+        mock_response = Mock()
+        mock_response.text = 'Success'
+
+        # Error with uppercase QUOTA
+        error_msg = 'Request failed: QUOTA_EXCEEDED status'
+        mock_model.generate_content.side_effect = [
+            Exception(error_msg),
+            mock_response
+        ]
+        mock_model_class.return_value = mock_model
+
+        field_entries = [('Name', 'Task')]
+        result = get_ai_summary('Test Task', field_entries, 'api_key')
+
+        self.assertEqual(result, 'Success.')
+        mock_sleep.assert_called()  # Verify retry happened
+
 
 class TestPromptConstruction(unittest.TestCase):
     """Tests for AI prompt construction."""
