@@ -250,7 +250,8 @@ clickup_task_extractor/
 Optional Google Gemini AI integration provides:
 
 - Intelligent 1-2 sentence task summaries
-- Automatic rate limiting and retry logic
+- Automatic rate limiting and retry logic with tiered model fallback
+- Daily quota exhaustion detection to prevent wasted API calls
 - Graceful fallback to original content if AI fails
 
 Enable AI summaries:
@@ -280,16 +281,41 @@ The AI integration uses a **tiered model strategy** to handle rate limits gracef
 - 500 requests/day
 - Stable alternative if Tier 2 unavailable
 
-**Behavior**:
+**Rate Limit Handling**:
 
-- Automatically switches to the next tier when rate limit is detected via:
-  - HTTP 429 status codes
-  - RESOURCE_EXHAUSTED errors from Google API
-  - 'quota' or 'rate limit' keywords in error messages (case-insensitive)
+The system automatically switches to the next tier when rate limit is detected via:
+- HTTP 429 status codes
+- RESOURCE_EXHAUSTED errors from Google API
+- 'quota' or 'rate limit' keywords in error messages (case-insensitive)
+- Per-minute (RPM) quota detection for fine-grained control
+- Per-day (RPD) quota detection for daily limit tracking
+
+Additional features:
 - Shows progress bar while waiting for quota to reset
-- Falls back to original task fields if all tiers exhausted
-- Logs which model tier was used for transparency
 - Applies exponential backoff (2^attempt seconds) for transient errors before switching tiers
+- Logs which model tier was used for transparency
+- Falls back to original task fields if all tiers exhausted
+
+### Daily Quota (RPD) Exhaustion
+
+When all model tiers exhaust their daily quota (usually around midnight Pacific time):
+
+1. System detects "requests per day" or "RPD" errors
+2. Sets a global `_daily_quota_exhausted` flag
+3. **Skips AI summaries for remaining tasks without making API calls**
+4. Displays: `[⊘] Daily quota exhausted - skipping AI summary for: Task Name`
+5. Returns to original task content automatically
+
+This prevents repeated failed API attempts throughout the rest of the day when daily limits are exhausted. The quota limit resets at midnight Pacific time for free tier accounts.
+
+**Manual Reset (For Testing)**:
+
+If you need to manually reset the daily quota state:
+
+```python
+from ai_summary import _reset_daily_quota_state
+_reset_daily_quota_state()
+```
 
 ## 🛠️ Requirements
 
