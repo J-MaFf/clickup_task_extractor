@@ -183,25 +183,18 @@ class TestRateLimitingAndRetry(unittest.TestCase):
     """Tests for rate limiting and retry logic."""
 
     @patch('ai_summary.types')
-    @patch('ai_summary.Progress')
-    @patch('ai_summary.time.sleep')
     @patch('ai_summary.GenerativeModel')
     @patch('ai_summary.configure')
-    @patch('ai_summary._console')
-    def test_rate_limit_retry_succeeds(self, mock_console, mock_configure, mock_model_class, mock_sleep, mock_progress, mock_types):
-        """Test successful retry after rate limit."""
+    def test_rate_limit_retry_succeeds(self, mock_configure, mock_model_class, mock_types):
+        """Test successful summary generation when first model tier hits rate limit and second tier succeeds."""
         mock_model = Mock()
 
-        # Mock Progress context manager
-        mock_progress_instance = MagicMock()
-        mock_progress.return_value.__enter__.return_value = mock_progress_instance
-
-        # First call raises rate limit, second succeeds
+        # First call (tier 1 - flash-lite) raises rate limit, second call (tier 2 - pro) succeeds
         mock_response = Mock()
-        mock_response.text = 'Success after retry'
+        mock_response.text = 'Success after tier switch'
 
         mock_model.generate_content.side_effect = [
-            Exception('429 RESOURCE_EXHAUSTED retryDelay: "30s"'),
+            Exception('429 RESOURCE_EXHAUSTED'),
             mock_response
         ]
         mock_model_class.return_value = mock_model
@@ -209,9 +202,10 @@ class TestRateLimitingAndRetry(unittest.TestCase):
         field_entries = [('Name', 'Task')]
         result = get_ai_summary('Test Task', field_entries, 'api_key')
 
-        self.assertEqual(result, 'Success after retry.')
-        # Should have slept for rate limit (or used progress bar)
-        self.assertTrue(mock_sleep.called or mock_progress.called)
+        # Should succeed on second tier (gemini-2.5-pro)
+        self.assertEqual(result, 'Success after tier switch.')
+        # GenerativeModel should be called twice: once for each tier
+        self.assertEqual(mock_model_class.call_count, 2)
 
     @patch('ai_summary.types')
     @patch('ai_summary.Progress')
@@ -298,13 +292,14 @@ class TestRateLimitingAndRetry(unittest.TestCase):
         result = get_ai_summary('Test Task', field_entries, 'api_key')
 
         self.assertEqual(result, 'Success.')
-        mock_sleep.assert_called()  # Verify retry happened
+        # GenerativeModel should be called twice: once for each tier
+        self.assertEqual(mock_model_class.call_count, 2)
 
-    @patch('ai_summary.time.sleep')
+    @patch('ai_summary.types')
     @patch('ai_summary.GenerativeModel')
     @patch('ai_summary.configure')
-    def test_rate_limit_keyword_error_triggers_retry(self, mock_configure, mock_model_class, mock_sleep):
-        """Test 'rate limit' keyword in error triggers retry."""
+    def test_rate_limit_keyword_error_triggers_tier_switch(self, mock_configure, mock_model_class, mock_types):
+        """Test 'rate limit' keyword in error triggers switch to next model tier."""
         mock_model = Mock()
         mock_response = Mock()
         mock_response.text = 'Success'
@@ -321,13 +316,14 @@ class TestRateLimitingAndRetry(unittest.TestCase):
         result = get_ai_summary('Test Task', field_entries, 'api_key')
 
         self.assertEqual(result, 'Success.')
-        mock_sleep.assert_called()  # Verify retry happened
+        # GenerativeModel should be called twice: once for each tier
+        self.assertEqual(mock_model_class.call_count, 2)
 
-    @patch('ai_summary.time.sleep')
+    @patch('ai_summary.types')
     @patch('ai_summary.GenerativeModel')
     @patch('ai_summary.configure')
-    def test_quota_error_with_uppercase_keyword(self, mock_configure, mock_model_class, mock_sleep):
-        """Test uppercase QUOTA keyword is detected (case-insensitive)."""
+    def test_quota_error_with_uppercase_keyword(self, mock_configure, mock_model_class, mock_types):
+        """Test uppercase QUOTA keyword is detected (case-insensitive) and triggers tier switch."""
         mock_model = Mock()
         mock_response = Mock()
         mock_response.text = 'Success'
@@ -344,10 +340,8 @@ class TestRateLimitingAndRetry(unittest.TestCase):
         result = get_ai_summary('Test Task', field_entries, 'api_key')
 
         self.assertEqual(result, 'Success.')
-        mock_sleep.assert_called()  # Verify retry happened
-
-
-class TestPromptConstruction(unittest.TestCase):
+        # GenerativeModel should be called twice: once for each tier
+        self.assertEqual(mock_model_class.call_count, 2)
     """Tests for AI prompt construction."""
 
     @patch('ai_summary.types')
@@ -391,7 +385,7 @@ class TestPromptConstruction(unittest.TestCase):
     @patch('ai_summary.GenerativeModel')
     @patch('ai_summary.configure')
     def test_uses_correct_model(self, mock_configure, mock_model_class, mock_types):
-        """Test uses correct Gemini model."""
+        """Test uses correct Gemini model (tier 1: gemini-2.5-flash-lite)."""
         mock_model = Mock()
         mock_response = Mock()
         mock_response.text = 'Summary'
@@ -401,8 +395,8 @@ class TestPromptConstruction(unittest.TestCase):
         field_entries = [('Name', 'Task')]
         get_ai_summary('Task', field_entries, 'api_key')
 
-        # Verify GenerativeModel was called with correct model
-        mock_model_class.assert_called_once_with('gemini-flash-lite-latest')
+        # Verify GenerativeModel was called with tier 1 model
+        mock_model_class.assert_called_once_with('gemini-2.5-flash-lite')
 
     @patch('ai_summary.types')
     @patch('ai_summary.GenerativeModel')
