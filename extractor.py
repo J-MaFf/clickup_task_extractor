@@ -993,15 +993,22 @@ class ClickUpTaskExtractor:
                     if "libgobject" in error_msg or "gtk" in error_msg:
                         console.print(
                             Panel(
-                                "[red]❌ GTK3 Runtime Library Missing[/red]\n\n"
-                                "[bold]On Windows:[/bold] Install GTK3 runtime with:\n"
-                                "  [cyan]winget install Gnome.Project.Gtk3[/cyan]\n\n"
-                                "[bold]On macOS:[/bold] Install with Homebrew:\n"
-                                "  [cyan]brew install gtk+3[/cyan]\n\n"
-                                "[bold]On Linux:[/bold] Install with your package manager:\n"
-                                "  [cyan]sudo apt-get install libgtk-3-0[/cyan] (Debian/Ubuntu)\n"
-                                "  [cyan]sudo dnf install gtk3[/cyan] (Fedora)\n\n"
-                                f"[dim]Full error: {e}[/dim]",
+                                "[red]❌ Pango/GTK Runtime Library Missing[/red]\n\n"
+                                "[bold]On Windows (Recommended):[/bold]\n"
+                                "1. Install MSYS2 from https://www.msys2.org/\n"
+                                "2. Open MSYS2 command prompt and run:\n"
+                                "   [cyan]pacman -S mingw-w64-x86_64-pango[/cyan]\n"
+                                "3. Keep the MSYS2 environment path set\n\n"
+                                "[bold]Alternative on Windows:[/bold]\n"
+                                "Set the DLL directory environment variable:\n"
+                                "   [cyan]set WEASYPRINT_DLL_DIRECTORIES=<path_to_dlls>[/cyan]\n\n"
+                                "[bold]On macOS:[/bold]\n"
+                                "  [cyan]brew install pango[/cyan]\n\n"
+                                "[bold]On Linux:[/bold]\n"
+                                "  [cyan]sudo apt-get install libpango-1.0-0[/cyan] (Debian/Ubuntu)\n"
+                                "  [cyan]sudo dnf install pango[/cyan] (Fedora)\n\n"
+                                f"[dim]Reference: https://doc.courtbouillon.org/weasyprint/stable/first_steps.html\n"
+                                f"Full error: {e}[/dim]",
                                 title="PDF Generation Failed",
                                 style="red",
                             )
