@@ -207,7 +207,9 @@ class ClickUpTaskExtractor:
             with Progress(
                 SpinnerColumn(),
                 TextColumn(
-                    "[progress.description]{task.description}", expand=False, no_wrap=True
+                    "[progress.description]{task.description}",
+                    no_wrap=False,
+                    justify="left",
                 ),
                 BarColumn(complete_style="green", finished_style="bold green"),
                 TaskProgressColumn(
