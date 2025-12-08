@@ -76,8 +76,8 @@ class TestSetupLogging(unittest.TestCase):
 
         logger = setup_logging(use_rich=True)
 
-        # Should create Console and RichHandler
-        mock_console_class.assert_called_once_with(stderr=False)
+        # Should create Console and RichHandler with proper cross-platform encoding
+        mock_console_class.assert_called_once_with(stderr=False, force_terminal=None, legacy_windows=False)
         mock_rich_handler_class.assert_called_once()
 
         # Check handler was configured
@@ -283,8 +283,8 @@ class TestRichHandlerConfiguration(unittest.TestCase):
 
         setup_logging(use_rich=True)
 
-        # Console should be created with stderr=False
-        mock_console_class.assert_called_once_with(stderr=False)
+        # Console should be created with stderr=False and cross-platform parameters
+        mock_console_class.assert_called_once_with(stderr=False, force_terminal=None, legacy_windows=False)
 
 
 class TestLogLevels(unittest.TestCase):
