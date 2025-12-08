@@ -988,7 +988,7 @@ class ClickUpTaskExtractor:
                 except Exception as e:
                     progress.remove_task(pdf_task)
                     error_msg = str(e).lower()
-                    
+
                     # Check for GTK3 runtime error
                     if "libgobject" in error_msg or "gtk" in error_msg:
                         console.print(
