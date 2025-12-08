@@ -140,8 +140,15 @@ Focus on the current state and what you have done or need to do. Be specific and
         except Exception as e:
             error_str = str(e)
 
-            # Check if this is a rate limit error
-            if "429" in error_str and "RESOURCE_EXHAUSTED" in error_str:
+            # Check if this is a rate limit error (429 or quota exceeded)
+            is_rate_limit = (
+                "429" in error_str or
+                "RESOURCE_EXHAUSTED" in error_str or
+                "quota" in error_str.lower() or
+                "rate limit" in error_str.lower()
+            )
+
+            if is_rate_limit:
                 # Extract retry delay from error message if available
                 retry_delay = base_delay
                 try:
