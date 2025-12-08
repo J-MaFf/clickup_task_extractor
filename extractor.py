@@ -173,9 +173,9 @@ class ClickUpTaskExtractor:
         try:
             with Progress(
                 SpinnerColumn(),
-                TextColumn("[progress.description]{task.description}"),
+                TextColumn("[progress.description]{task.description}", justify="left"),
                 BarColumn(complete_style="green", finished_style="bold green"),
-                TaskProgressColumn(),
+                TaskProgressColumn(text_format="[progress.percentage]{task.percentage:>3.0f}%"),
                 console=console,
                 transient=True
             ) as progress:
