@@ -77,18 +77,21 @@ For users who prefer not to install Python, pre-built executables are available:
 The executable version does **not** include the 1Password SDK (due to bundling limitations). You have three options:
 
 1. **Environment Variable** (Recommended):
+
    ```bash
    set CLICKUP_API_KEY=your_api_key_here
    ClickUpTaskExtractor.exe
    ```
 
 2. **Command Line Argument**:
+
    ```bash
    ClickUpTaskExtractor.exe --api-key your_api_key_here
    ```
 
 3. **1Password CLI** (Advanced):
    Install the [1Password CLI](https://developer.1password.com/docs/cli/get-started/) and ensure it's in your PATH:
+
    ```bash
    # The executable will automatically try to use 'op read' command
    ClickUpTaskExtractor.exe
@@ -168,14 +171,16 @@ Each prompt provides clear options and defaults, making it easy to configure the
 
 ### Authentication Methods (Priority Order)
 
-#### For Python Users:
+#### For Python Users
+
 1. **Command Line Argument**: `--api-key YOUR_KEY`
 2. **Environment Variable**: `CLICKUP_API_KEY=YOUR_KEY`
 3. **1Password SDK**: Requires `OP_SERVICE_ACCOUNT_TOKEN` environment variable
 4. **1Password CLI**: Uses `op read` command
 5. **Manual Prompt**: Rich console input as the final fallback
 
-#### For Executable (EXE) Users:
+#### For Executable (EXE) Users
+
 1. **Command Line Argument**: `--api-key YOUR_KEY`
 2. **Environment Variable**: `CLICKUP_API_KEY=YOUR_KEY`
 3. **1Password CLI**: Uses `op read` command (SDK not available in EXE)
@@ -189,6 +194,7 @@ Store secrets in 1Password for reuse:
 - Gemini API key: `op://Home Server/nftoo3gsi3wpx7z5bdmcsvr7p4/credential`
 
 For Python users with 1Password SDK:
+
 ```bash
 export OP_SERVICE_ACCOUNT_TOKEN=your_service_account_token
 ```
@@ -215,7 +221,7 @@ clickup_task_extractor/
 - **`ClickUpConfig` & `TaskRecord`**: Enum-backed config (string-friendly fallbacks) plus an export dataclass whose `_metadata` stores raw task content for AI summaries.
 - **`ClickUpTaskExtractor`**: Walks workspace → space → lists → tasks, caches custom fields, filters by status/date, and uses `export_file()` for all I/O.
 - **`LocationMapper` utilities**: Map dropdown IDs via id → orderindex → name priority, extract images, and provide consistent yes/no prompts.
-- **`ai_summary.get_ai_summary`**: Talks to `gemini-2.5-flash-lite`, parses retry hints, and falls back to original text if the SDK or key is missing.
+- **`ai_summary.get_ai_summary`**: Talks to Google Gemini with **tiered model strategy**: tries `gemini-2.5-flash-lite` (500 RPD) first, switches to `gemini-2.5-pro` (1,500 RPD separate bucket) on rate limit, then `gemini-2.0-flash` as fallback. Parses retry hints, shows progress bars during waits, and falls back to original text if SDK or key is missing.
 - **`logger_config.setup_logging`**: Installs Rich tracebacks, emits to stdout, and optionally writes to disk.
 
 ## 📊 Output Examples
@@ -253,11 +259,37 @@ Enable AI summaries:
 python main.py --ai-summary --gemini-api-key YOUR_KEY
 ```
 
-Implementation details:
+### Model Tiering & Rate Limiting
 
-- Uses `gemini-2.5-flash-lite` via the official `google-generativeai` SDK.
-- Retries up to three times on 429s, parsing `retryDelay` hints when available and showing Rich progress while waiting.
-- Falls back to raw subject/description/resolution text when the SDK is missing or the key is unavailable.
+The AI integration uses a **tiered model strategy** to handle rate limits gracefully:
+
+**Tier 1 (Primary)**: `gemini-2.5-flash-lite`
+
+- 500 requests/day (free tier)
+- Fastest and most cost-effective
+- Best for routine task summarization
+
+**Tier 2 (Fallback)**: `gemini-2.5-pro`
+
+- 1,500 requests/day (separate quota bucket)
+- Better quality reasoning
+- Activated when Tier 1 hits rate limits
+
+**Tier 3 (Emergency)**: `gemini-2.0-flash`
+
+- 500 requests/day
+- Stable alternative if Tier 2 unavailable
+
+**Behavior**:
+
+- Automatically switches to the next tier when rate limit is detected via:
+  - HTTP 429 status codes
+  - RESOURCE_EXHAUSTED errors from Google API
+  - 'quota' or 'rate limit' keywords in error messages (case-insensitive)
+- Shows progress bar while waiting for quota to reset
+- Falls back to original task fields if all tiers exhausted
+- Logs which model tier was used for transparency
+- Applies exponential backoff (2^attempt seconds) for transient errors before switching tiers
 
 ## 🛠️ Requirements
 
@@ -286,23 +318,25 @@ Implementation details:
 If you see errors like "1Password SDK not available" or "op command not found" when using the executable:
 
 1. **Using Environment Variables (Easiest)**:
+
    ```bash
    # Windows Command Prompt
    set CLICKUP_API_KEY=your_api_key_here
    ClickUpTaskExtractor.exe
-   
+
    # Windows PowerShell
    $env:CLICKUP_API_KEY="your_api_key_here"
    .\ClickUpTaskExtractor.exe
    ```
 
 2. **Using Command Line Argument**:
+
    ```bash
    ClickUpTaskExtractor.exe --api-key your_api_key_here
    ```
 
 3. **Using 1Password CLI** (if you prefer 1Password):
-   - Install 1Password CLI from: https://developer.1password.com/docs/cli/get-started/
+   - Install 1Password CLI from: <https://developer.1password.com/docs/cli/get-started/>
    - Ensure `op` command is in your PATH
    - The executable will automatically use it
 
