@@ -987,7 +987,27 @@ class ClickUpTaskExtractor:
                     console.print(f"[yellow]⚠️  PDF export skipped.[/yellow]")
                 except Exception as e:
                     progress.remove_task(pdf_task)
-                    console.print(f"[red]❌ Error generating PDF: {e}[/red]")
+                    error_msg = str(e).lower()
+                    
+                    # Check for GTK3 runtime error
+                    if "libgobject" in error_msg or "gtk" in error_msg:
+                        console.print(
+                            Panel(
+                                "[red]❌ GTK3 Runtime Library Missing[/red]\n\n"
+                                "[bold]On Windows:[/bold] Install GTK3 runtime with:\n"
+                                "  [cyan]winget install Gnome.Project.Gtk3[/cyan]\n\n"
+                                "[bold]On macOS:[/bold] Install with Homebrew:\n"
+                                "  [cyan]brew install gtk+3[/cyan]\n\n"
+                                "[bold]On Linux:[/bold] Install with your package manager:\n"
+                                "  [cyan]sudo apt-get install libgtk-3-0[/cyan] (Debian/Ubuntu)\n"
+                                "  [cyan]sudo dnf install gtk3[/cyan] (Fedora)\n\n"
+                                f"[dim]Full error: {e}[/dim]",
+                                title="PDF Generation Failed",
+                                style="red",
+                            )
+                        )
+                    else:
+                        console.print(f"[red]❌ Error generating PDF: {e}[/red]")
 
         # Final success message
         console.print(
