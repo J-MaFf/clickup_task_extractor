@@ -9,7 +9,7 @@
   - `auth.py`: Multi-fallback API key retrieval (CLI → env → 1Password SDK/CLI → prompt).
   - `api_client.py`: Protocol-based ClickUp API client, custom exceptions.
   - `extractor.py`: `ClickUpTaskExtractor` (main logic), context-managed export, interactive selection.
-  - `ai_summary.py`: Optional Google Gemini AI summaries, with fallback and rate limiting.
+  - `ai_summary.py`: Optional Google Gemini AI summaries with **tiered model fallback on rate limits**, exponential backoff, and field-level fallback when API unavailable or errors occur.
   - `mappers.py`: Custom field mapping (`LocationMapper`), date filtering.
   - `logger_config.py`: Logging setup for debug and file output.
 - **Output:**
@@ -22,7 +22,7 @@
 - **Context manager for export:** All file I/O via `export_file()` context manager in `extractor.py`.
 - **1Password auth chain:** API key retrieval order: CLI arg → env var → 1Password SDK → CLI → prompt.
 - **Rich UI:** All user interaction (progress, tables, selection) uses Rich; see `extractor.py` and `ai_summary.py`.
-- **AI summaries:** Enable with `--ai-summary` and Gemini key; fallback to original content if AI fails.
+- **AI summaries:** Enable with `--ai-summary` and Gemini key; automatically switches between model tiers on rate limits (Tier 1: `gemini-2.5-flash-lite` → Tier 2: `gemini-2.5-pro` → Tier 3: `gemini-2.0-flash`). Falls back to original content if all tiers exhausted.
 - **Date formatting:** Use `format_datetime` in `config.py` for all output; removes leading zeros, cross-platform.
 - **Custom field mapping:** Use `LocationMapper` in `mappers.py` (id → orderindex → name fallback).
 - **Error handling:** Always raise specific exceptions (e.g., `APIError`), never bare except.
@@ -76,7 +76,7 @@
 ## UX and utilities
 - File output always uses the `export_file` context manager (creates parent dirs, handles IO errors) and `get_export_fields()` to define CSV/HTML column order.
 - `mappers.py` supplies Rich-friendly prompts (`get_yes_no_input`), date filters via `get_date_range`, screenshot scraping with `extract_images`, and `LocationMapper.map_location` (id → orderindex → name fallback) for custom fields.
-- `ai_summary.get_ai_summary` talks to Google Gemini (`gemini-2.5-flash-lite`), keeps retries with exponential/backoff parsing, and falls back to raw subject/description/resolution text when the SDK or key is missing.
+- `ai_summary.get_ai_summary` talks to Google Gemini with **tiered model strategy**: tries `gemini-2.5-flash-lite` (500 RPD) first, switches to `gemini-2.5-pro` (1,500 RPD separate bucket) on rate limit, then `gemini-2.0-flash` as emergency fallback. Detects rate limits via HTTP 429, RESOURCE_EXHAUSTED errors, and 'quota'/'rate limit' keywords (case-insensitive). Uses exponential backoff for same-model retries (2 retries) before switching tiers. Falls back to raw task content when all tiers exhausted.
 - `logger_config.setup_logging` installs Rich tracebacks and returns the shared `"clickup_extractor"` logger; pass `use_rich=False` for plain logging or supply `log_file` for file output.
 
 ## Developer workflow
@@ -91,3 +91,4 @@
 - New output format: add an `OutputFormat` enum value, expose it in CLI choices, and extend `ClickUpTaskExtractor.export()`/render helpers while still using `export_file`.
 - Extra API filtering or mapping: hook into `_fetch_and_process_tasks`, reuse `LocationMapper` and `get_date_range`, and surface errors through Rich panels rather than bare prints.
 - **Image extraction**: Extracts images from task descriptions using regex patterns for various formats.
+- **AI model tiers**: Modify `MODEL_TIERS` in `ai_summary.py` to adjust fallback strategy. Each tier should have separate quotas for rate-limit resilience. Test with `--ai-summary --gemini-api-key <key>` to verify tier switching on rate limits.
