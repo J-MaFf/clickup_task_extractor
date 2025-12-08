@@ -144,7 +144,9 @@ Focus on the current state and what you have done or need to do. Be specific and
             is_rate_limit = (
                 "429" in error_str or
                 "RESOURCE_EXHAUSTED" in error_str or
-                "quota" in error_str.lower() or
+                "quota exceeded" in error_str.lower() or
+                "exceeded your quota" in error_str.lower() or
+                "quota limit" in error_str.lower() or
                 "rate limit" in error_str.lower()
             )
 
