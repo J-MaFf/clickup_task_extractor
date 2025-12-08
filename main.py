@@ -82,12 +82,11 @@ def main():
     header_text.append(f" v{__version__}", style="dim blue")
     header_text.append(" [TASKS]", style="dim blue")
 
-    console.print(Panel(
-        header_text,
-        subtitle="Extract, process, and export ClickUp tasks with style!",
-        style="blue",
-        border_style="bright_blue"
-    ))
+    console.print("")
+    console.print("[blue]+" + "-" * 77 + "+[/blue]")
+    console.print(f"[blue]|[/blue] {str(header_text)}")
+    console.print("[blue]+" + "=" * 35 + " Extract, process, and export ClickUp tasks with style! " + "=" * 35 + "+[/blue]")
+    console.print("")
 
     parser = argparse.ArgumentParser(
         description=f"ClickUp Task Extractor v{__version__} - {__description__}\n\nExtract and export ClickUp tasks to HTML (default), Markdown, PDF, or CSV. Default workspace: KMS.\nAPI key 1Password reference: op://Home Server/ClickUp personal API token/credential\nRequires OP_SERVICE_ACCOUNT_TOKEN for 1Password SDK authentication.",
@@ -113,40 +112,38 @@ def main():
         # Try to get API key from 1Password with fallback
         is_frozen = getattr(sys, 'frozen', False)
         if is_frozen:
-            console.print(Panel(
-                "[yellow]🔐 Attempting to load API key from 1Password CLI...[/yellow]\n"
-                "[dim]Reference: op://Home Server/ClickUp personal API token/credential[/dim]\n"
-                "[dim]Note: Executable version uses 1Password CLI only (SDK not available)[/dim]",
-                title="Authentication",
-                style="yellow"
-            ))
+            console.print("")
+            console.print("[yellow]" + "=" * 57 + "[/yellow]")
+            console.print("[yellow]Authentication[/yellow]")
+            console.print("[yellow]🔐 Attempting to load API key from 1Password CLI...[/yellow]")
+            console.print("[dim]Reference: op://Home Server/ClickUp personal API token/credential[/dim]")
+            console.print("[dim]Note: Executable version uses 1Password CLI only (SDK not available)[/dim]")
+            console.print("[yellow]" + "=" * 57 + "[/yellow]\n")
         else:
-            console.print(Panel(
-                "[yellow]🔐 Attempting to load API key from 1Password...[/yellow]\n"
-                "[dim]Reference: op://Home Server/ClickUp personal API token/credential[/dim]",
-                title="Authentication",
-                style="yellow"
-            ))
+            console.print("")
+            console.print("[yellow]" + "=" * 57 + "[/yellow]")
+            console.print("[yellow]Authentication[/yellow]")
+            console.print("[yellow]🔐 Attempting to load API key from 1Password...[/yellow]")
+            console.print("[dim]Reference: op://Home Server/ClickUp personal API token/credential[/dim]")
+            console.print("[yellow]" + "=" * 57 + "[/yellow]\n")
         secret_reference = 'op://Home Server/ClickUp personal API token/credential'
         api_key = load_secret_with_fallback(secret_reference, "ClickUp API key")
         if not api_key:
             if is_frozen:
-                console.print(Panel(
-                    "[red][FAIL] Could not load API key from 1Password.[/red]\n\n"
-                    "[yellow]For executable users, we recommend:[/yellow]\n"
-                    "  • Set environment variable: [cyan]CLICKUP_API_KEY=your_key[/cyan]\n"
-                    "  • Or use command line: [cyan]--api-key your_key[/cyan]\n"
-                    "  • Or install 1Password CLI: [cyan]https://developer.1password.com/docs/cli/[/cyan]",
-                    title="Authentication Failed",
-                    style="red"
-                ))
+                console.print("[red]" + "=" * 57 + "[/red]")
+                console.print("[red]Authentication Failed[/red]")
+                console.print("[red][FAIL] Could not load API key from 1Password.[/red]\n")
+                console.print("[yellow]For executable users, we recommend:[/yellow]")
+                console.print("  * Set environment variable: [cyan]CLICKUP_API_KEY=your_key[/cyan]")
+                console.print("  * Or use command line: [cyan]--api-key your_key[/cyan]")
+                console.print("  * Or install 1Password CLI: [cyan]https://developer.1password.com/docs/cli/[/cyan]")
+                console.print("[red]" + "=" * 57 + "[/red]\n")
             else:
-                console.print(Panel(
-                    "[red][FAIL] Could not load API key from 1Password.[/red]\n"
-                    "[dim]Please provide via --api-key or CLICKUP_API_KEY environment variable.[/dim]",
-                    title="Authentication Failed",
-                    style="red"
-                ))
+                console.print("[red]" + "=" * 57 + "[/red]")
+                console.print("[red]Authentication Failed[/red]")
+                console.print("[red][FAIL] Could not load API key from 1Password.[/red]")
+                console.print("[dim]Please provide via --api-key or CLICKUP_API_KEY environment variable.[/dim]")
+                console.print("[red]" + "=" * 57 + "[/red]\n")
 
     # If still no API key, prompt for manual input
     if not api_key:
