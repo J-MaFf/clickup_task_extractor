@@ -277,6 +277,99 @@ class TestRateLimitingAndRetry(unittest.TestCase):
         self.assertIn('Name: Task', result)
         self.assertIn('Status: Open', result)
 
+    @patch('ai_summary.types')
+    @patch('ai_summary.Progress')
+    @patch('ai_summary.time.sleep')
+    @patch('ai_summary.GenerativeModel')
+    @patch('ai_summary.configure')
+    @patch('ai_summary._console')
+    def test_quota_exceeded_error_triggers_retry(self, mock_console, mock_configure, mock_model_class, mock_sleep, mock_progress, mock_types):
+        """Test that 'quota exceeded' error is detected as rate limit and triggers retry."""
+        mock_model = Mock()
+
+        # Mock Progress context manager
+        mock_progress_instance = MagicMock()
+        mock_progress.return_value.__enter__.return_value = mock_progress_instance
+
+        # First call raises quota error, second succeeds
+        mock_response = Mock()
+        mock_response.text = 'Success after quota retry'
+
+        mock_model.generate_content.side_effect = [
+            Exception('429 You exceeded your current quota, please check your plan and billing details'),
+            mock_response
+        ]
+        mock_model_class.return_value = mock_model
+
+        field_entries = [('Name', 'Task')]
+        result = get_ai_summary('Test Task', field_entries, 'api_key')
+
+        self.assertEqual(result, 'Success after quota retry.')
+        # Should have retried
+        self.assertTrue(mock_sleep.called or mock_progress.called)
+
+    @patch('ai_summary.types')
+    @patch('ai_summary.Progress')
+    @patch('ai_summary.time.sleep')
+    @patch('ai_summary.GenerativeModel')
+    @patch('ai_summary.configure')
+    @patch('ai_summary._console')
+    def test_rate_limit_keyword_error_triggers_retry(self, mock_console, mock_configure, mock_model_class, mock_sleep, mock_progress, mock_types):
+        """Test that 'rate limit' error keyword is detected and triggers retry."""
+        mock_model = Mock()
+
+        # Mock Progress context manager
+        mock_progress_instance = MagicMock()
+        mock_progress.return_value.__enter__.return_value = mock_progress_instance
+
+        # First call raises rate limit error, second succeeds
+        mock_response = Mock()
+        mock_response.text = 'Success after rate limit retry'
+
+        mock_model.generate_content.side_effect = [
+            Exception('Rate limit exceeded. Please try again later.'),
+            mock_response
+        ]
+        mock_model_class.return_value = mock_model
+
+        field_entries = [('Name', 'Task')]
+        result = get_ai_summary('Test Task', field_entries, 'api_key')
+
+        self.assertEqual(result, 'Success after rate limit retry.')
+        # Should have retried
+        self.assertTrue(mock_sleep.called or mock_progress.called)
+
+    @patch('ai_summary.types')
+    @patch('ai_summary.Progress')
+    @patch('ai_summary.time.sleep')
+    @patch('ai_summary.GenerativeModel')
+    @patch('ai_summary.configure')
+    @patch('ai_summary._console')
+    def test_quota_error_with_uppercase_keyword(self, mock_console, mock_configure, mock_model_class, mock_sleep, mock_progress, mock_types):
+        """Test that 'QUOTA' (uppercase) error is still detected as rate limit."""
+        mock_model = Mock()
+
+        # Mock Progress context manager
+        mock_progress_instance = MagicMock()
+        mock_progress.return_value.__enter__.return_value = mock_progress_instance
+
+        # First call raises QUOTA error (uppercase), second succeeds
+        mock_response = Mock()
+        mock_response.text = 'Success after QUOTA error'
+
+        mock_model.generate_content.side_effect = [
+            Exception('API Error: QUOTA exceeded for this user'),
+            mock_response
+        ]
+        mock_model_class.return_value = mock_model
+
+        field_entries = [('Name', 'Task')]
+        result = get_ai_summary('Test Task', field_entries, 'api_key')
+
+        self.assertEqual(result, 'Success after QUOTA error.')
+        # Should have retried
+        self.assertTrue(mock_sleep.called or mock_progress.called)
+
 
 class TestPromptConstruction(unittest.TestCase):
     """Tests for AI prompt construction."""
