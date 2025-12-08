@@ -284,6 +284,7 @@ The AI integration uses a **tiered model strategy** to handle rate limits gracef
 **Rate Limit Handling**:
 
 The system automatically switches to the next tier when rate limit is detected via:
+
 - HTTP 429 status codes
 - RESOURCE_EXHAUSTED errors from Google API
 - 'quota' or 'rate limit' keywords in error messages (case-insensitive)
@@ -291,6 +292,7 @@ The system automatically switches to the next tier when rate limit is detected v
 - Per-day (RPD) quota detection for daily limit tracking
 
 Additional features:
+
 - Shows progress bar while waiting for quota to reset
 - Applies exponential backoff (2^attempt seconds) for transient errors before switching tiers
 - Logs which model tier was used for transparency
