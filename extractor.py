@@ -24,6 +24,7 @@ import sys
 # Rich imports for beautiful console output
 try:
     from rich.console import Console
+    from rich.table import Table, Column
     from rich.progress import (
         Progress,
         SpinnerColumn,
@@ -31,7 +32,6 @@ try:
         BarColumn,
         TaskProgressColumn,
     )
-    from rich.table import Table
     from rich.panel import Panel
     from rich.text import Text
     from rich import print as rprint
@@ -208,8 +208,7 @@ class ClickUpTaskExtractor:
                 SpinnerColumn(),
                 TextColumn(
                     "[progress.description]{task.description}",
-                    no_wrap=False,
-                    justify="left",
+                    table_column=Column(ratio=1),
                 ),
                 BarColumn(complete_style="green", finished_style="bold green"),
                 TaskProgressColumn(
@@ -217,8 +216,7 @@ class ClickUpTaskExtractor:
                 ),
                 console=console,
                 transient=True,
-                redirect_stdout=False,
-                redirect_stderr=False,
+                expand=True,
             ) as progress:
                 # Store progress context for use in callbacks (e.g., during AI summary rate limit waits)
                 self._progress_context = progress
