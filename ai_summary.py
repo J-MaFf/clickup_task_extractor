@@ -23,14 +23,15 @@ MODEL_TIERS = [
     "gemini-2.0-flash",       # 500 RPD, stable alternative
 ]
 
-# Rich console imports - create singleton instance
+# Rich console imports - create singleton instance with proper encoding for Windows
 try:
     from rich.console import Console
     from rich.progress import Progress, TimeRemainingColumn, BarColumn, TextColumn
     from rich.status import Status
 
-    # Create a singleton console instance to avoid repeated imports
-    _console = Console()
+    # Create a singleton console instance with proper configuration for cross-platform compatibility
+    # This ensures proper rendering on Windows, macOS, and Linux
+    _console = Console(force_terminal=None, legacy_windows=False)
     RICH_AVAILABLE = True
 except ImportError:
     _console = None
@@ -44,6 +45,11 @@ except ImportError:
 # Type aliases for clarity
 SummaryResult: TypeAlias = str
 
+# Global state for tracking daily quota exhaustion across all models
+# This prevents retrying when all model tiers are exhausted for the day (RPD limit)
+_daily_quota_exhausted = False
+_daily_quota_error_message = ""
+
 # Google GenAI SDK imports
 try:
     from google.generativeai.client import configure  # type: ignore
@@ -53,6 +59,39 @@ except ImportError:
     configure = None
     GenerativeModel = None
     types = None
+
+
+def _is_daily_quota_error(error_str: str) -> bool:
+    """
+    Detect if error indicates daily quota (RPD) exhaustion.
+
+    Daily quota errors typically contain:
+    - "Requests per day" or "RPD" keywords
+    - "quota" + "day" or "daily"
+    - Explicit daily/quota exhaustion messages
+
+    Args:
+        error_str: Error message string
+
+    Returns:
+        True if this is a daily quota error, False otherwise
+    """
+    error_lower = error_str.lower()
+
+    return (
+        "requests per day" in error_lower or
+        "rpd" in error_lower or
+        ("quota" in error_lower and "day" in error_lower) or
+        ("quota" in error_lower and "daily" in error_lower) or
+        ("quota" in error_lower and "exceed" in error_lower and "today" in error_lower)
+    )
+
+
+def _reset_daily_quota_state() -> None:
+    """Reset daily quota exhaustion state (for testing or manual reset)."""
+    global _daily_quota_exhausted, _daily_quota_error_message
+    _daily_quota_exhausted = False
+    _daily_quota_error_message = ""
 
 
 def _normalize_field_entries(field_entries: Sequence[tuple[str, str]] | Mapping[str, str]) -> list[tuple[str, str]]:
@@ -118,16 +157,55 @@ Focus on the current state and what you have done or need to do. Be specific and
             return None, False
 
     except Exception as e:
+        global _daily_quota_exhausted, _daily_quota_error_message
+
         error_str = str(e)
+        error_str_lower = error_str.lower()
+
+        # Check for daily quota exhaustion (RPD limit)
+        if _is_daily_quota_error(error_str):
+            _daily_quota_exhausted = True
+            _daily_quota_error_message = error_str[:150]
+
+            if RICH_AVAILABLE and _console:
+                _console.print(f"\u26a0️ [red]Daily quota exhausted on {model_name}: {error_str[:100]}[/red]")
+                _console.print(f"[red]AI summaries will be disabled for the rest of the day (RPD limit reached)[/red]")
+            else:
+                print(f"Daily quota exhausted on {model_name}: {error_str[:100]}")
+                print(f"AI summaries will be disabled for the rest of the day (RPD limit reached)")
+
+            return None, True  # Treat as rate limit to trigger tier switching
+
+        # Comprehensive rate limit detection:
+        # - HTTP 429 status code
+        # - RESOURCE_EXHAUSTED exception
+        # - quota-related messages ("quota", "rate limit")
+        # - Google API specific error types ("overload", "unavailable")
+        # - Per-minute quota messages
         is_rate_limit = (
             "429" in error_str or
             "RESOURCE_EXHAUSTED" in error_str or
-            "quota" in error_str.lower() or
-            "rate limit" in error_str.lower()
+            "quota" in error_str_lower or
+            "rate limit" in error_str_lower or
+            "rate_limit" in error_str_lower or
+            "overload" in error_str_lower or
+            "unavailable" in error_str_lower or
+            "too_many_requests" in error_str_lower or
+            "limit_exceeded" in error_str_lower or
+            "requests per minute" in error_str_lower or
+            "rpm" in error_str_lower
         )
+
+        # Log the error for debugging
+        if RICH_AVAILABLE and _console:
+            if is_rate_limit:
+                _console.print(f"\u23f3 [yellow]Rate limit on {model_name}: {error_str[:100]}[/yellow]")
+            else:
+                _console.print(f"\u274c [red]Error with {model_name}: {error_str[:100]}[/red]")
+        else:
+            print(f"Error: {error_str}")
+
         return None, is_rate_limit
-
-
 def _handle_rate_limit_wait(
     task_name: str,
     attempt: int,
@@ -183,6 +261,7 @@ def get_ai_summary(
     """
     Generate a concise 1-2 sentence summary about the current status of the task using Google Gemini AI.
     Automatically handles rate limiting by switching to higher-quota model tiers.
+    Disables AI summaries if daily quota (RPD) is exhausted.
 
     Args:
         task_name: Name of the task
@@ -193,6 +272,14 @@ def get_ai_summary(
     Returns:
         AI-generated summary or original content if AI fails
     """
+    global _daily_quota_exhausted
+
+    # Check if daily quota is exhausted - disable AI summaries for rest of day
+    if _daily_quota_exhausted:
+        if RICH_AVAILABLE and _console:
+            _console.print(f"[dim][⊘] Daily quota exhausted - skipping AI summary for: {task_name}[/dim]")
+        return None  # Return None to signal quota exhaustion (caller will skip this task)
+
     normalized_entries = _normalize_field_entries(field_entries)
     field_block = "\n".join(f"{label}: {value}" for label, value in normalized_entries if label)
 
@@ -213,6 +300,9 @@ def get_ai_summary(
     for model_tier_idx, model_name in enumerate(MODEL_TIERS):
         max_retries = 2  # Retry same model up to 2 times with exponential backoff
         initial_delay = 1
+
+        if RICH_AVAILABLE and _console:
+            _console.print(f"🤖 [dim]Attempting model tier {model_tier_idx + 1}/{len(MODEL_TIERS)}: {model_name}[/dim]")
 
         for attempt in range(max_retries + 1):
             summary, is_rate_limit = _try_ai_summary_with_model(
@@ -245,11 +335,19 @@ def get_ai_summary(
                     continue
 
                 else:
-                    # All tiers and retries exhausted
-                    if RICH_AVAILABLE and _console:
-                        _console.print(f"❌ [red]Rate limit error on all model tiers. Using fallback content.[/red]")
+                    # All tiers and retries exhausted - check if it's a daily quota issue
+                    if _daily_quota_exhausted:
+                        if RICH_AVAILABLE and _console:
+                            _console.print('[red]Daily quota (RPD) exhausted for all models. AI summaries disabled for rest of day.[/red]')
+                            _console.print(f'[dim]Error: {_daily_quota_error_message}[/dim]')
+                        else:
+                            print('Daily quota (RPD) exhausted for all models. AI summaries disabled for rest of day.')
+                            print(f'Error: {_daily_quota_error_message}')
                     else:
-                        print(f"Rate limit error on all model tiers. Using fallback content.")
+                        if RICH_AVAILABLE and _console:
+                            _console.print('[red]Rate limit error on all model tiers. Using fallback content.[/red]')
+                        else:
+                            print('Rate limit error on all model tiers. Using fallback content.')
                     return field_block
 
             else:
