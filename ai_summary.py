@@ -13,8 +13,8 @@ import re
 import time
 from typing import Callable, Mapping, Sequence, TypeAlias
 
-# Use Gemini Flash-Latest for AI summaries (paid tier)
-GEMINI_MODEL = "gemini-2.5-flash-latest"
+# Use Gemini Flash-Lite-Latest for AI summaries (paid tier)
+GEMINI_MODEL = "gemini-flash-lite-latest"
 
 # Rich console imports - create singleton instance with proper encoding for Windows
 try:
@@ -73,17 +73,17 @@ def _is_rate_limit_error(error_str: str) -> bool:
     error_lower = error_str.lower()
 
     return (
-        "429" in error_str or
-        "RESOURCE_EXHAUSTED" in error_str or
-        "quota" in error_lower or
-        "rate limit" in error_lower or
-        "rate_limit" in error_lower or
-        "overload" in error_lower or
-        "unavailable" in error_lower or
-        "too_many_requests" in error_lower or
-        "limit_exceeded" in error_lower or
-        "requests per minute" in error_lower or
-        "rpm" in error_lower
+        "429" in error_str
+        or "RESOURCE_EXHAUSTED" in error_str
+        or "quota" in error_lower
+        or "rate limit" in error_lower
+        or "rate_limit" in error_lower
+        or "overload" in error_lower
+        or "unavailable" in error_lower
+        or "too_many_requests" in error_lower
+        or "limit_exceeded" in error_lower
+        or "requests per minute" in error_lower
+        or "rpm" in error_lower
     )
 
 
@@ -94,7 +94,9 @@ def _reset_api_state() -> None:
     _last_error_message = ""
 
 
-def _normalize_field_entries(field_entries: Sequence[tuple[str, str]] | Mapping[str, str]) -> list[tuple[str, str]]:
+def _normalize_field_entries(
+    field_entries: Sequence[tuple[str, str]] | Mapping[str, str],
+) -> list[tuple[str, str]]:
     """Normalize field entries into an ordered list of label/value pairs."""
     if isinstance(field_entries, Mapping):
         return [(str(label), str(value)) for label, value in field_entries.items()]
@@ -102,9 +104,7 @@ def _normalize_field_entries(field_entries: Sequence[tuple[str, str]] | Mapping[
 
 
 def _try_ai_summary(
-    task_name: str,
-    field_block: str,
-    gemini_api_key: str
+    task_name: str, field_block: str, gemini_api_key: str
 ) -> tuple[str | None, bool]:
     """
     Attempt to generate AI summary using Gemini Flash-Latest.
@@ -136,22 +136,23 @@ Focus on the current state and what you have done or need to do. Be specific and
             max_output_tokens=150,
         )
 
-        response = model.generate_content(
-            prompt,
-            generation_config=config
-        )
+        response = model.generate_content(prompt, generation_config=config)
 
-        if response and hasattr(response, 'text') and response.text:
+        if response and hasattr(response, "text") and response.text:
             summary = response.text.strip()
-            summary = summary.replace('\n', ' ').strip()
-            if not summary.endswith('.'):
-                summary += '.'
+            summary = summary.replace("\n", " ").strip()
+            if not summary.endswith("."):
+                summary += "."
             return summary, False
         else:
             if RICH_AVAILABLE and _console:
-                _console.print(f"⚠️ [yellow]Warning: No text response from Gemini API for task: {task_name}[/yellow]")
+                _console.print(
+                    f"⚠️ [yellow]Warning: No text response from Gemini API for task: {task_name}[/yellow]"
+                )
             else:
-                print(f"Warning: No text response from Gemini API for task: {task_name}")
+                print(
+                    f"Warning: No text response from Gemini API for task: {task_name}"
+                )
             return None, False
 
     except Exception as e:
@@ -174,11 +175,13 @@ Focus on the current state and what you have done or need to do. Be specific and
                 print(f"Error: {error_str}")
 
         return None, is_rate_limit
+
+
 def _handle_rate_limit_wait(
     attempt: int,
     max_retries: int,
     initial_delay: int,
-    progress_pause_callback: Callable[[], None] | None = None
+    progress_pause_callback: Callable[[], None] | None = None,
 ) -> None:
     """
     Handle wait period during rate limit, showing progress to user.
@@ -189,14 +192,23 @@ def _handle_rate_limit_wait(
         initial_delay: Base delay in seconds
         progress_pause_callback: Optional callback to pause main progress bars
     """
-    exponential_delay = initial_delay * (2 ** attempt)
+    exponential_delay = initial_delay * (2**attempt)
     retry_delay = exponential_delay
 
     if progress_pause_callback:
         progress_pause_callback()
 
-    if RICH_AVAILABLE and _console and Progress and TextColumn and BarColumn and TimeRemainingColumn:
-        _console.print(f"⏳ [yellow]Rate limit hit. Waiting {retry_delay}s before retry (attempt {attempt + 1}/{max_retries})...[/yellow]")
+    if (
+        RICH_AVAILABLE
+        and _console
+        and Progress
+        and TextColumn
+        and BarColumn
+        and TimeRemainingColumn
+    ):
+        _console.print(
+            f"⏳ [yellow]Rate limit hit. Waiting {retry_delay}s before retry (attempt {attempt + 1}/{max_retries})...[/yellow]"
+        )
 
         with Progress(
             TextColumn("[bold blue]⏱️  Rate limit wait"),
@@ -204,7 +216,7 @@ def _handle_rate_limit_wait(
             TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
             TimeRemainingColumn(),
             console=_console,
-            transient=True
+            transient=True,
         ) as progress:
             task = progress.add_task("Waiting...", total=retry_delay)
             for _ in range(retry_delay):
@@ -213,7 +225,9 @@ def _handle_rate_limit_wait(
 
         _console.print("✅ [green]Retry ready - attempting again...[/green]")
     else:
-        print(f"Rate limit hit. Waiting {retry_delay}s before retry (attempt {attempt + 1}/{max_retries})...")
+        print(
+            f"Rate limit hit. Waiting {retry_delay}s before retry (attempt {attempt + 1}/{max_retries})..."
+        )
         time.sleep(retry_delay)
         print("Retry ready - attempting again...")
 
@@ -222,7 +236,7 @@ def get_ai_summary(
     task_name: str,
     field_entries: Sequence[tuple[str, str]] | Mapping[str, str],
     gemini_api_key: str,
-    progress_pause_callback: Callable[[], None] | None = None
+    progress_pause_callback: Callable[[], None] | None = None,
 ) -> SummaryResult:
     """
     Generate a concise 1-2 sentence summary about the current status of the task using Google Gemini Flash-Latest.
@@ -242,11 +256,15 @@ def get_ai_summary(
     # Check if API is currently unavailable due to rate limiting
     if not _api_available:
         if RICH_AVAILABLE and _console:
-            _console.print(f"[dim][⊘] API rate limited - skipping AI summary for: {task_name}[/dim]")
+            _console.print(
+                f"[dim][⊘] API rate limited - skipping AI summary for: {task_name}[/dim]"
+            )
         return None  # Return None to signal API unavailability (caller will skip this task)
 
     normalized_entries = _normalize_field_entries(field_entries)
-    field_block = "\n".join(f"{label}: {value}" for label, value in normalized_entries if label)
+    field_block = "\n".join(
+        f"{label}: {value}" for label, value in normalized_entries if label
+    )
 
     if not field_block:
         return "No content available for summary."
@@ -256,9 +274,13 @@ def get_ai_summary(
 
     if GenerativeModel is None or configure is None or types is None:
         if RICH_AVAILABLE and _console:
-            _console.print("[yellow]Warning: Google GenAI SDK not available - install with: pip install google-generativeai[/yellow]")
+            _console.print(
+                "[yellow]Warning: Google GenAI SDK not available - install with: pip install google-generativeai[/yellow]"
+            )
         else:
-            print("Warning: Google GenAI SDK not available - install with: pip install google-generativeai")
+            print(
+                "Warning: Google GenAI SDK not available - install with: pip install google-generativeai"
+            )
         return field_block
 
     # Try with retries and exponential backoff
@@ -279,20 +301,28 @@ def get_ai_summary(
         if is_rate_limit:
             if attempt < max_retries:
                 # Retry with exponential backoff
-                _handle_rate_limit_wait(attempt, max_retries, initial_delay, progress_pause_callback)
+                _handle_rate_limit_wait(
+                    attempt, max_retries, initial_delay, progress_pause_callback
+                )
                 continue
             else:
                 # All retries exhausted
                 _api_available = False
                 if RICH_AVAILABLE and _console:
-                    _console.print('[red]Rate limit - AI summaries will be skipped for this extraction.[/red]')
+                    _console.print(
+                        "[red]Rate limit - AI summaries will be skipped for this extraction.[/red]"
+                    )
                 else:
-                    print('Rate limit - AI summaries will be skipped for this extraction.')
+                    print(
+                        "Rate limit - AI summaries will be skipped for this extraction."
+                    )
                 return field_block
         else:
             # Non-retryable error
             if RICH_AVAILABLE and _console:
-                _console.print(f"⚠️ [yellow]Unable to generate summary. Using fallback content.[/yellow]")
+                _console.print(
+                    f"⚠️ [yellow]Unable to generate summary. Using fallback content.[/yellow]"
+                )
             else:
                 print(f"Unable to generate summary. Using fallback content.")
             return field_block
