@@ -1,5 +1,25 @@
 # Copilot Instructions: ClickUp Task Extractor
 
+## MCP Tools Usage
+
+This project leverages MCP (Model Context Protocol) tools for enhanced development workflows:
+
+### **Memory Graph (`mcp_memory_*` tools)**
+- **Persistent Knowledge Graph**: Maintains project context across sessions
+- **Automatic Usage**: Copilot proactively searches and reads the graph during conversations
+- **On-Demand Updates**: Observes milestones and updates entities without explicit requests
+- **How to Use**:
+  - Knowledge is automatically consulted for context (no action needed)
+  - Significant task completions, architectural decisions, and discoveries are logged automatically
+  - Explicitly request updates only for specific information you want recorded
+  - Access via `mcp_memory_search_nodes`, `mcp_memory_open_nodes`, `mcp_memory_add_observations`
+
+### **Sequential Thinking (`mcp_sequentialthi_sequentialthinking`)**
+- **Complex Problem Solving**: Invoked automatically for intricate multi-step decisions
+- **When Used**: Breaking down architectural changes, planning major refactors, debugging complex issues
+- **Transparency**: Explicitly request with `#mcp_sequentialthi_sequentialthinking` to see detailed reasoning
+- **No Manual Calls Needed**: Copilot judges when reasoning depth is necessary
+
 ## Architecture & Data Flow
 
 - **Entry Point:**
@@ -62,7 +82,7 @@
 - Build with: `.venv\Scripts\pyinstaller.exe ClickUpTaskExtractor.spec --distpath .\dist\v<version>`
 - Requires PyInstaller 6.16+: `pip install pyinstaller`
 - Output: Single-file executable with all dependencies bundled (~42 MB)
-- On Windows, PDF export requires GTK3 runtime: `winget install Gnome.Project.Gtk3`
+- **PDF Export**: Currently uses WeasyPrint. Migration to fpdf2 (pure Python, no system dependencies) planned in issue #63 to eliminate GTK3 runtime requirements
 
 # Copilot Instructions: ClickUp Task Extractor
 
@@ -93,3 +113,4 @@
 - Extra API filtering or mapping: hook into `_fetch_and_process_tasks`, reuse `LocationMapper` and `get_date_range`, and surface errors through Rich panels rather than bare prints.
 - **Image extraction**: Extracts images from task descriptions using regex patterns for various formats.
 - **AI model tiers**: Modify `MODEL_TIERS` in `ai_summary.py` to adjust fallback strategy. Each tier should have separate quotas for rate-limit resilience. Test with `--ai-summary --gemini-api-key <key>` to verify tier switching on rate limits.
+- **PDF export migration**: Issue #63 tracks migration from WeasyPrint to fpdf2. When implemented, update `extractor.py` PDF export method and replace `weasyprint>=60.0` with `fpdf2>=2.7.0` in `requirements.txt`. Remove GTK3-specific error handling and simplify imports.

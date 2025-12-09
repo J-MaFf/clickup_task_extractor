@@ -43,26 +43,14 @@ A powerful, cross-platform Python application for extracting, processing, and ex
    pip install -r requirements.txt
    ```
 
-3. **(Windows, for PDF export)** Install WeasyPrint runtime libraries (Cairo, Pango, etc.). The simplest option is the GTK3 bundle:
-
-   ```powershell
-   winget install Gnome.Project.Gtk3
-   ```
-
-   > Alternatively, download the GTK3 Runtime installer from [tschoonj/GTK-for-Windows-Runtime-Environment-Installer](https://github.com/tschoonj/GTK-for-Windows-Runtime-Environment-Installer/releases) and let it add the DLLs to your PATH.
-
-4. **Install WeasyPrint inside the virtual environment** (if you plan to export PDFs):
-
-   ```bash
-   python -m pip install weasyprint
-   ```
-
-5. **Set up your ClickUp API key** (choose one method):
+3. **Set up your ClickUp API key** (choose one method):
    - Command line: `python main.py --api-key YOUR_API_KEY`
    - Environment variable: `export CLICKUP_API_KEY=YOUR_API_KEY`
    - 1Password: Store in 1Password with reference `op://Home Server/ClickUp personal API token/credential`
 
 > 💡 The CLI auto-relaunches inside `.venv/` when present, so activating the virtualenv manually is optional as long as dependencies live there.
+
+> 📝 **Note**: PDF export is currently supported via WeasyPrint. A migration to fpdf2 (pure Python, no system dependencies required) is planned in [issue #63](https://github.com/J-MaFf/clickup_task_extractor/issues/63) to eliminate the need for external runtime libraries.
 
 ### Using the Executable
 
@@ -332,6 +320,19 @@ _reset_daily_quota_state()
 - `google-generativeai>=0.8.0` - AI-powered task summaries
 
 ## 🐛 Troubleshooting
+
+### PDF Export Issues
+
+**WeasyPrint GTK3 Dependencies:**
+
+Current PDF export uses WeasyPrint which requires system-level GTK3 runtime libraries. This is being addressed in [issue #63](https://github.com/J-MaFf/clickup_task_extractor/issues/63) with a planned migration to fpdf2 (pure Python, no system dependencies).
+
+For now, if you encounter PDF generation errors:
+
+1. Verify dependencies are installed: `pip install -r requirements.txt`
+2. On Windows, the GTK3 runtime may be required (though support for this will be removed in the fpdf2 migration)
+
+**Future**: Once issue #63 is resolved, PDF export will work without any system dependencies.
 
 ### Common Issues
 
