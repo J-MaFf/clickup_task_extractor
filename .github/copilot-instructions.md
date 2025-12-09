@@ -61,6 +61,24 @@ This project leverages MCP (Model Context Protocol) tools for enhanced developme
 - **Dependencies:** Install with `pip install -r requirements.txt` (see `requirements.txt`).
 - **Virtualenv:** Auto-detected; ensure `.venv/` is active for cross-platform compatibility.
 
+## Testing & Validation
+
+**Script-Based Testing (Preferred):**
+- For quick tests or validations, create a Python script file using `create_file` tool
+- Run scripts with: `.\.venv\Scripts\python.exe script_name.py`
+- This approach avoids PowerShell parsing issues and provides better error handling
+- Clean up temporary scripts after use
+
+**Unit Tests:**
+- Run full test suite: `.\.venv\Scripts\python.exe -m pytest tests/ -v`
+- Run specific test: `.\.venv\Scripts\python.exe -m pytest tests/test_extractor.py::ClassName::test_method -v`
+- Run with coverage: `.\.venv\Scripts\python.exe -m pytest tests/ --cov=. --cov-report=html`
+
+**Manual Testing:**
+- For complex logic validation, create temporary test scripts in the workspace
+- Use the script file approach rather than inline terminal commands
+- This provides clearer output and easier debugging
+
 ## Integration Points
 
 - **ClickUp API v2**: All data via ClickUp API, robust error handling in `api_client.py`.
