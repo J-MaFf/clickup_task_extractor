@@ -761,7 +761,13 @@ class ClickUpTaskExtractor:
             add_ai_field("Task Description", default_description)
 
             # Generate AI summary or use original notes
-            if self.config.enable_ai_summary and self.config.gemini_api_key:
+            # Skip AI generation during initial processing if interactive mode is enabled
+            # AI summaries will be generated after user selection in interactive mode
+            if (
+                self.config.enable_ai_summary
+                and self.config.gemini_api_key
+                and not self.config.interactive_selection
+            ):
                 from ai_summary import get_ai_summary
 
                 notes = get_ai_summary(
@@ -1096,8 +1102,8 @@ class ClickUpTaskExtractor:
             row_values = []
             for field in export_fields:
                 value = str(getattr(t, field) or "")
-                # Escape pipe characters in markdown table cells
-                value = value.replace("|", "\\|").replace("\n", "<br>")
+                # Escape pipe characters and convert newlines to markdown line breaks (two trailing spaces)
+                value = value.replace("|", "\\|").replace("\n", "  \n")
                 row_values.append(value)
             table += "| " + " | ".join(row_values) + " |\n"
 
