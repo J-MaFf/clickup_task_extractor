@@ -59,6 +59,7 @@ from api_client import (
 )
 from ai_summary import get_ai_summary
 from mappers import get_yes_no_input, get_date_range, extract_images, LocationMapper
+from eta_calculator import calculate_eta
 
 # Get the directory of this script for output path resolution
 script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -641,7 +642,7 @@ class ClickUpTaskExtractor:
             # Get task status
             status = task_detail.get("status", {}).get("status", "Unknown")
 
-            # Get due date
+            # Get due date or calculate ETA
             due_date = task_detail.get("due_date")
             eta = ""
             if due_date:
@@ -650,6 +651,10 @@ class ClickUpTaskExtractor:
                     eta = format_datetime(due_dt, DISPLAY_FORMAT)
                 except (ValueError, OSError):
                     eta = "Invalid Date"
+            else:
+                # No due date - we'll calculate ETA after gathering all context
+                # This will be done later after extracting custom fields
+                eta = None  # Marker to calculate later
 
             # Company is the list name (like original code)
             company = list_item.get("name", "")
@@ -784,6 +789,20 @@ class ClickUpTaskExtractor:
             res_img = extract_images(cf.get("Resolution", {}).get("value", ""))
             task_img = extract_images(task_detail.get("description", ""))
             extra = " | ".join([i for i in [desc_img, res_img, task_img] if i])
+
+            # Calculate ETA if not already set from due_date
+            if eta is None:
+                # Calculate ETA based on task context
+                eta = calculate_eta(
+                    task_name=task_name,
+                    priority=priority,
+                    status=status,
+                    description=custom_description or default_description,
+                    subject=subject_value if subject_value else "",
+                    resolution=resolution_value if resolution_value else "",
+                    gemini_api_key=self.config.gemini_api_key,
+                    enable_ai=self.config.enable_ai_summary,
+                )
 
             # Create task record (matching original structure)
             task_record = TaskRecord(
