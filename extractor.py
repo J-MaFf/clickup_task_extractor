@@ -973,12 +973,20 @@ class ClickUpTaskExtractor:
                 pdf_path = output_dir / f"{base_filename}.pdf"
 
                 try:
-                    # Import weasyprint here to provide better error messages
-                    from weasyprint import HTML
+                    # Import fpdf2 for pure-Python PDF generation
+                    from fpdf import FPDF
 
-                    # Generate HTML first, then convert to PDF
+                    # Ensure output directory exists
+                    pdf_path.parent.mkdir(parents=True, exist_ok=True)
+
+                    # Generate HTML first, then convert to PDF using fpdf2
                     html_content = self.render_html(tasks)
-                    HTML(string=html_content).write_pdf(str(pdf_path))
+                    
+                    # Create PDF and parse HTML
+                    pdf = FPDF()
+                    pdf.add_page()
+                    pdf.write_html(html_content)
+                    pdf.output(str(pdf_path))
 
                     progress.remove_task(pdf_task)
                     console.print(
@@ -988,39 +996,13 @@ class ClickUpTaskExtractor:
                 except ImportError:
                     progress.remove_task(pdf_task)
                     console.print(
-                        f"[red]❌ Error: weasyprint not installed. Install with: pip install weasyprint[/red]"
+                        f"[red]❌ Error: fpdf2 not installed. Install with: pip install fpdf2[/red]"
                     )
                     console.print(f"[yellow]⚠️  PDF export skipped.[/yellow]")
                 except Exception as e:
                     progress.remove_task(pdf_task)
-                    error_msg = str(e).lower()
-
-                    # Check for GTK3 runtime error
-                    if "libgobject" in error_msg or "gtk" in error_msg:
-                        console.print(
-                            Panel(
-                                "[red]❌ Pango/GTK Runtime Library Missing[/red]\n\n"
-                                "[bold]On Windows (Recommended):[/bold]\n"
-                                "1. Install MSYS2 from https://www.msys2.org/\n"
-                                "2. Open MSYS2 command prompt and run:\n"
-                                "   [cyan]pacman -S mingw-w64-x86_64-pango[/cyan]\n"
-                                "3. Keep the MSYS2 environment path set\n\n"
-                                "[bold]Alternative on Windows:[/bold]\n"
-                                "Set the DLL directory environment variable:\n"
-                                "   [cyan]set WEASYPRINT_DLL_DIRECTORIES=<path_to_dlls>[/cyan]\n\n"
-                                "[bold]On macOS:[/bold]\n"
-                                "  [cyan]brew install pango[/cyan]\n\n"
-                                "[bold]On Linux:[/bold]\n"
-                                "  [cyan]sudo apt-get install libpango-1.0-0[/cyan] (Debian/Ubuntu)\n"
-                                "  [cyan]sudo dnf install pango[/cyan] (Fedora)\n\n"
-                                f"[dim]Reference: https://doc.courtbouillon.org/weasyprint/stable/first_steps.html\n"
-                                f"Full error: {e}[/dim]",
-                                title="PDF Generation Failed",
-                                style="red",
-                            )
-                        )
-                    else:
-                        console.print(f"[red]❌ Error generating PDF: {e}[/red]")
+                    console.print(f"[red]❌ Error generating PDF: {e}[/red]")
+                    console.print(f"[yellow]⚠️  PDF export failed. Please check the HTML output format works correctly.[/yellow]")
 
         # Final success message
         console.print(
