@@ -1,21 +1,38 @@
-# Ignore output directory and all its contents
-output/
+# General
+.DS_Store
+Thumbs.db
+*.log
 
-# Ignore Python cache files
+# Dependencies
+node_modules/
+
+# IDE
+.vscode/extensions.json
+.vscode/*.log
+.vscode/clickup_task_extractor.code-workspace
+
+# Environment
+.env
+.env.local
+*.pem
+
+# OS
+*.swp
+*.swo
+*~
+
+# Python
 __pycache__/
 *.pyc
 *.pyo
 
-# Ignore PyInstaller artifacts
+# Project-specific
+output/
+test_outputs/
 build/
 dist/
 *.spec
-
-# Ignore symlinked prompt file (system-specific path)
 .github/Python.prompt.md
 
-# Ignore VS code workspace file
-.vscode/clickup_task_extractor.code-workspace
-
-# Ignore test output files
-test_outputs/
+# Note: knowledge-graph.jsonl is intentionally NOT ignored
+# It will be tracked in Git for backup and sync purposes
