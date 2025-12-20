@@ -172,8 +172,10 @@ class ExportBehaviourTests(unittest.TestCase):
 
             extractor.export([self.task])
 
-            self.assertTrue(output_path.exists())
-            content = output_path.read_text(encoding="utf-8")
+            # Note: Exporter always outputs to clickup_task_extractor/output/ directory
+            actual_path = Path("output") / "tasks.csv"
+            self.assertTrue(actual_path.exists())
+            content = actual_path.read_text(encoding="utf-8")
             self.assertIn("Task,Company,Branch,Priority,Status,ETA,Notes,Extra", content.splitlines()[0])
             self.assertIn("Task A", content)
 
@@ -189,7 +191,8 @@ class ExportBehaviourTests(unittest.TestCase):
 
             extractor.export([self.task])
 
-            html_path = output_path.with_suffix(".html")
+            # Note: Exporter always outputs to clickup_task_extractor/output/ directory
+            html_path = Path("output") / "report.html"
             self.assertTrue(html_path.exists())
             html_content = html_path.read_text(encoding="utf-8")
             self.assertIn("Weekly Task List", html_content)
@@ -323,7 +326,9 @@ class TaskExportSortingTests(unittest.TestCase):
                 extractor.export(tasks)
 
             # Read the CSV and verify order
-            with open(config.output_path, "r") as f:
+            # Note: Exporter always outputs to clickup_task_extractor/output/ directory
+            csv_path = Path("output") / "test.csv"
+            with open(csv_path, "r") as f:
                 import csv
                 reader = csv.DictReader(f)
                 rows = list(reader)
