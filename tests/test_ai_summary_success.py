@@ -15,11 +15,15 @@ import unittest
 from unittest.mock import patch, Mock, MagicMock
 import time
 
-from ai_summary import get_ai_summary, _normalize_field_entries
+from ai_summary import get_ai_summary, _normalize_field_entries, _reset_api_state
 
 
 class TestNormalizeFieldEntries(unittest.TestCase):
     """Tests for the _normalize_field_entries helper function."""
+
+    def setUp(self):
+        """Reset API state before each test."""
+        _reset_api_state()
 
     def test_normalize_sequence_of_tuples(self):
         """Test normalizing sequence of tuples."""
@@ -49,6 +53,10 @@ class TestNormalizeFieldEntries(unittest.TestCase):
 
 class TestGetAISummaryFallback(unittest.TestCase):
     """Tests for get_ai_summary fallback behavior."""
+
+    def setUp(self):
+        """Reset API state before each test."""
+        _reset_api_state()
 
     def test_empty_field_entries_returns_message(self):
         """Test empty field entries returns placeholder message."""
@@ -86,6 +94,10 @@ class TestGetAISummaryFallback(unittest.TestCase):
 
 class TestGetAISummarySuccess(unittest.TestCase):
     """Tests for successful AI summary generation."""
+
+    def setUp(self):
+        """Reset API state before each test."""
+        _reset_api_state()
 
     @patch('ai_summary.types')
     @patch('ai_summary.GenerativeModel')
@@ -181,6 +193,10 @@ class TestGetAISummarySuccess(unittest.TestCase):
 
 class TestRateLimitingAndRetry(unittest.TestCase):
     """Tests for rate limiting and retry logic."""
+
+    def setUp(self):
+        """Reset API state before each test."""
+        _reset_api_state()
 
     @patch('ai_summary.types')
     @patch('ai_summary.GenerativeModel')
