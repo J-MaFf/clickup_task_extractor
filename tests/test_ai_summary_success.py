@@ -287,10 +287,11 @@ class TestRateLimitingAndRetry(unittest.TestCase):
         self.assertIn('Name: Task', result)
         self.assertIn('Status: Open', result)
 
+    @patch('ai_summary.types')
     @patch('ai_summary.time.sleep')
     @patch('ai_summary.GenerativeModel')
     @patch('ai_summary.configure')
-    def test_quota_exceeded_error_triggers_retry(self, mock_configure, mock_model_class, mock_sleep):
+    def test_quota_exceeded_error_triggers_retry(self, mock_configure, mock_model_class, mock_sleep, mock_types):
         """Test quota exceeded error in different format triggers retry."""
         mock_model = Mock()
         mock_response = Mock()
@@ -401,7 +402,7 @@ class TestRateLimitingAndRetry(unittest.TestCase):
     @patch('ai_summary.GenerativeModel')
     @patch('ai_summary.configure')
     def test_uses_correct_model(self, mock_configure, mock_model_class, mock_types):
-        """Test uses correct Gemini model (tier 1: gemini-2.5-flash-lite)."""
+        """Test uses correct Gemini model (gemini-flash-lite-latest)."""
         mock_model = Mock()
         mock_response = Mock()
         mock_response.text = 'Summary'
@@ -411,8 +412,8 @@ class TestRateLimitingAndRetry(unittest.TestCase):
         field_entries = [('Name', 'Task')]
         get_ai_summary('Task', field_entries, 'api_key')
 
-        # Verify GenerativeModel was called with tier 1 model
-        mock_model_class.assert_called_once_with('gemini-2.5-flash-lite')
+        # Verify GenerativeModel was called with the correct model
+        mock_model_class.assert_called_once_with('gemini-flash-lite-latest')
 
     @patch('ai_summary.types')
     @patch('ai_summary.GenerativeModel')
