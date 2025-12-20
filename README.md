@@ -50,7 +50,7 @@ A powerful, cross-platform Python application for extracting, processing, and ex
 
 > 💡 The CLI auto-relaunches inside `.venv/` when present, so activating the virtualenv manually is optional as long as dependencies live there.
 
-> 📝 **Note**: PDF export is currently supported via WeasyPrint. A migration to fpdf2 (pure Python, no system dependencies required) is planned in [issue #63](https://github.com/J-MaFf/clickup_task_extractor/issues/63) to eliminate the need for external runtime libraries.
+> 📝 **Note**: PDF export now uses fpdf2, a pure-Python library with no external system dependencies. No GTK3 or Pango runtime libraries are required.
 
 ### Using the Executable
 
