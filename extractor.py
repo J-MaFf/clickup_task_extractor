@@ -907,11 +907,18 @@ class ClickUpTaskExtractor:
 
         console.print(f"\n[bold blue]📤 Exporting {len(tasks)} tasks...[/bold blue]")
 
-        # Ensure all output files go to clickup_task_extractor/output directory
-        # Extract the base filename without extension from the config path
+        # Determine output directory and base filename
+        # If config.output_path is absolute or contains directory components, use it directly (for tests)
+        # Otherwise, default to clickup_task_extractor/output directory (for production)
         output_path = Path(self.config.output_path)
-        base_filename = output_path.stem  # Get filename without extension
-        output_dir = Path(script_dir) / "output"  # clickup_task_extractor/output
+        if output_path.is_absolute() or output_path.parent != Path("."):
+            # Use the full path as specified (e.g., /tmp/tmpXXX/tasks.csv)
+            base_filename = output_path.stem
+            output_dir = output_path.parent
+        else:
+            # Simple filename with no directory component - use default output/ directory
+            base_filename = output_path.stem
+            output_dir = Path(script_dir) / "output"
 
         with Progress(
             SpinnerColumn(),
