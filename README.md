@@ -12,6 +12,10 @@ A powerful, cross-platform Python application for extracting, processing, and ex
 - 🔐 **Secure Authentication**: Multiple authentication methods including 1Password integration
 - 🎨 **Beautiful UI**: Rich console interfaces with progress bars, panels, and styled output
 - 🤖 **AI Summaries**: Optional Google Gemini AI integration for intelligent task summaries
+- 📅 **Automated ETA Calculation**: Intelligent ETA population for tasks without due dates
+  - Uses existing due dates when available
+  - AI-powered ETA estimation based on task context
+  - Fallback calculation using priority and status
 - 📊 **Multiple Export Formats**: CSV, HTML, Markdown, PDF, or combined formats with professional styling
 - 🔍 **Interactive Mode**: Review and select tasks before export with user-friendly prompts
 - 📄 **Interactive Format Selection**: Choose output format at runtime via intuitive prompt
