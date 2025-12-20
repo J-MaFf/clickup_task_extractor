@@ -1025,8 +1025,33 @@ class ClickUpTaskExtractor:
         Returns:
             Complete HTML document as string
         """
-        # Simple HTML table, styled
-        head = """<!DOCTYPE html><html><head><meta charset="utf-8"><title>Weekly Task List</title><style>body{font-family:Arial,sans-serif;margin:20px;}table{border-collapse:collapse;width:100%;margin-top:20px;}th,td{border:1px solid #ddd;padding:12px;text-align:left;vertical-align:top;}th{background-color:#f2f2f2;font-weight:bold;}tr:nth-child(even){background-color:#f9f9f9;}.task-name{font-weight:bold;color:#2c5aa0;}.priority-high{color:#d73502;font-weight:bold;}.priority-normal{color:#0c7b93;}.priority-low{color:#6aa84f;}.notes{max-width:400px;white-space:pre-wrap;line-height:1.4;font-size:0.9em;}.status{padding:4px 8px;border-radius:4px;font-size:0.8em;font-weight:bold;}.status-open{background-color:#e8f4fd;color:#1f4e79;}.status-in-progress{background-color:#fff2cc;color:#7f6000;}.status-review{background-color:#f4cccc;color:#660000;}h1{color:#2c5aa0;}.summary{margin-bottom:20px;padding:15px;background-color:#f0f8ff;border-left:4px solid #2c5aa0;}</style></head><body>"""
+        # Simple HTML table, styled with proper structure for fpdf2 compatibility
+        head = """<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8" />
+<title>Weekly Task List</title>
+<style>
+body{font-family:Arial,sans-serif;margin:20px;}
+table{border-collapse:collapse;width:100%;margin-top:20px;}
+th,td{border:1px solid #ddd;padding:12px;text-align:left;vertical-align:top;}
+th{background-color:#f2f2f2;font-weight:bold;}
+tr:nth-child(even){background-color:#f9f9f9;}
+.task-name{font-weight:bold;color:#2c5aa0;}
+.priority-high{color:#d73502;font-weight:bold;}
+.priority-normal{color:#0c7b93;}
+.priority-low{color:#6aa84f;}
+.notes{max-width:400px;white-space:pre-wrap;line-height:1.4;font-size:0.9em;}
+.status{padding:4px 8px;border-radius:4px;font-size:0.8em;font-weight:bold;}
+.status-open{background-color:#e8f4fd;color:#1f4e79;}
+.status-in-progress{background-color:#fff2cc;color:#7f6000;}
+.status-review{background-color:#f4cccc;color:#660000;}
+h1{color:#2c5aa0;}
+.summary{margin-bottom:20px;padding:15px;background-color:#f0f8ff;border-left:4px solid #2c5aa0;}
+</style>
+</head>
+<body>
+"""
         summary = f'<h1>Weekly Task List</h1><div class="summary"><strong>Generated:</strong> {format_datetime(datetime.now(), DISPLAY_FORMAT)}<br><strong>Total Tasks:</strong> {len(tasks)}<br><strong>Workspace:</strong> {html.escape(self.config.workspace_name)} / {html.escape(self.config.space_name)}</div>'
 
         # Get export fields (excluding internal fields like _metadata)
