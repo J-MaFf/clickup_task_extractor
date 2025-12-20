@@ -221,12 +221,12 @@ class ClickUpTaskExtractor:
                 # Store progress context for use in callbacks (e.g., during AI summary rate limit waits)
                 self._progress_context = progress
 
-                # Create a pause callback that stops refreshing the progress display
+                # Create a pause/resume callback for rate limit waits
                 # This is used by get_ai_summary to hide progress bars during rate limit waits
                 def pause_progress_for_rate_limit() -> None:
                     """Pause progress display to avoid visual conflicts during rate limit waits."""
                     if self._progress_context:
-                        # Stop updating the progress display
+                        # Stop updating the progress display during rate limit wait
                         self._progress_context.stop()
 
                 self._pause_progress_callback = pause_progress_for_rate_limit

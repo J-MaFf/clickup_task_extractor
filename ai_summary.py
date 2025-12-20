@@ -163,14 +163,12 @@ Focus on the current state and what you have done or need to do. Be specific and
         _last_error_message = error_str[:150]
 
         if is_rate_limit:
-            _api_available = False
-            if RICH_AVAILABLE and _console:
-                _console.print(f"\u23f3 [yellow]Rate limit: {error_str[:100]}[/yellow]")
-            else:
-                print(f"Rate limit: {error_str}")
+            # Don't set _api_available = False here - let get_ai_summary() handle it after retries
+            # This allows retries to proceed without skipping
+            pass
         else:
             if RICH_AVAILABLE and _console:
-                _console.print(f"\u274c [red]Error: {error_str[:100]}[/red]")
+                _console.print(f"❌ [red]Error: {error_str[:100]}[/red]")
             else:
                 print(f"Error: {error_str}")
 
@@ -185,6 +183,7 @@ def _handle_rate_limit_wait(
 ) -> None:
     """
     Handle wait period during rate limit with simple sleep (no progress bar).
+    Pauses progress bars during wait, then resumes them after.
 
     Args:
         attempt: Current attempt number (0-indexed)
@@ -195,17 +194,25 @@ def _handle_rate_limit_wait(
     exponential_delay = initial_delay * (2**attempt)
     retry_delay = exponential_delay
 
+    # Pause progress bars during rate limit wait
     if progress_pause_callback:
         progress_pause_callback()
 
+    # Only print once per wait period (not repeatedly)
     if RICH_AVAILABLE and _console:
         _console.print(
-            f"⏳ [dim]Rate limit hit. Waiting {retry_delay}s before retry...[/dim]"
+            f"⏳ [yellow]Rate limit hit. Waiting {retry_delay}s before retry (attempt {attempt + 1}/{max_retries + 1})...[/yellow]"
         )
     else:
-        print(f"Rate limit hit. Waiting {retry_delay}s before retry...")
+        print(f"Rate limit hit. Waiting {retry_delay}s before retry (attempt {attempt + 1}/{max_retries + 1})...")
 
     time.sleep(retry_delay)
+
+    # Print completion message
+    if RICH_AVAILABLE and _console:
+        _console.print(f"✅ [green]Wait complete - retrying API call...[/green]")
+    else:
+        print("Wait complete - retrying API call...")
 
 
 def get_ai_summary(
