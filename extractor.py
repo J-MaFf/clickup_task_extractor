@@ -267,7 +267,7 @@ class ClickUpTaskExtractor:
                     )
                     if not team_id:
                         console.print("[red]Team ID is required[/red]")
-                        return
+                        sys.exit(1)
 
                 # If team wasn't fetched from /team endpoint, create a minimal team object with workspace name
                 if team is None:
@@ -293,7 +293,7 @@ class ClickUpTaskExtractor:
                             style="red",
                         )
                     )
-                    return
+                    sys.exit(1)
                 console.print(
                     f"✅ [green]Space found:[/green] [bold]{space['name']}[/bold]"
                 )
