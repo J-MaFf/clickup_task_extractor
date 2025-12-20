@@ -43,26 +43,14 @@ A powerful, cross-platform Python application for extracting, processing, and ex
    pip install -r requirements.txt
    ```
 
-3. **(Windows, for PDF export)** Install WeasyPrint runtime libraries (Cairo, Pango, etc.). The simplest option is the GTK3 bundle:
-
-   ```powershell
-   winget install Gnome.Project.Gtk3
-   ```
-
-   > Alternatively, download the GTK3 Runtime installer from [tschoonj/GTK-for-Windows-Runtime-Environment-Installer](https://github.com/tschoonj/GTK-for-Windows-Runtime-Environment-Installer/releases) and let it add the DLLs to your PATH.
-
-4. **Install WeasyPrint inside the virtual environment** (if you plan to export PDFs):
-
-   ```bash
-   python -m pip install weasyprint
-   ```
-
-5. **Set up your ClickUp API key** (choose one method):
+3. **Set up your ClickUp API key** (choose one method):
    - Command line: `python main.py --api-key YOUR_API_KEY`
    - Environment variable: `export CLICKUP_API_KEY=YOUR_API_KEY`
    - 1Password: Store in 1Password with reference `op://Home Server/ClickUp personal API token/credential`
 
 > 💡 The CLI auto-relaunches inside `.venv/` when present, so activating the virtualenv manually is optional as long as dependencies live there.
+
+> 📝 **Note**: PDF export is currently supported via WeasyPrint. A migration to fpdf2 (pure Python, no system dependencies required) is planned in [issue #63](https://github.com/J-MaFf/clickup_task_extractor/issues/63) to eliminate the need for external runtime libraries.
 
 ### Using the Executable
 
@@ -77,18 +65,21 @@ For users who prefer not to install Python, pre-built executables are available:
 The executable version does **not** include the 1Password SDK (due to bundling limitations). You have three options:
 
 1. **Environment Variable** (Recommended):
+
    ```bash
    set CLICKUP_API_KEY=your_api_key_here
    ClickUpTaskExtractor.exe
    ```
 
 2. **Command Line Argument**:
+
    ```bash
    ClickUpTaskExtractor.exe --api-key your_api_key_here
    ```
 
 3. **1Password CLI** (Advanced):
    Install the [1Password CLI](https://developer.1password.com/docs/cli/get-started/) and ensure it's in your PATH:
+
    ```bash
    # The executable will automatically try to use 'op read' command
    ClickUpTaskExtractor.exe
@@ -168,14 +159,16 @@ Each prompt provides clear options and defaults, making it easy to configure the
 
 ### Authentication Methods (Priority Order)
 
-#### For Python Users:
+#### For Python Users
+
 1. **Command Line Argument**: `--api-key YOUR_KEY`
 2. **Environment Variable**: `CLICKUP_API_KEY=YOUR_KEY`
 3. **1Password SDK**: Requires `OP_SERVICE_ACCOUNT_TOKEN` environment variable
 4. **1Password CLI**: Uses `op read` command
 5. **Manual Prompt**: Rich console input as the final fallback
 
-#### For Executable (EXE) Users:
+#### For Executable (EXE) Users
+
 1. **Command Line Argument**: `--api-key YOUR_KEY`
 2. **Environment Variable**: `CLICKUP_API_KEY=YOUR_KEY`
 3. **1Password CLI**: Uses `op read` command (SDK not available in EXE)
@@ -189,6 +182,7 @@ Store secrets in 1Password for reuse:
 - Gemini API key: `op://Home Server/nftoo3gsi3wpx7z5bdmcsvr7p4/credential`
 
 For Python users with 1Password SDK:
+
 ```bash
 export OP_SERVICE_ACCOUNT_TOKEN=your_service_account_token
 ```
@@ -215,7 +209,7 @@ clickup_task_extractor/
 - **`ClickUpConfig` & `TaskRecord`**: Enum-backed config (string-friendly fallbacks) plus an export dataclass whose `_metadata` stores raw task content for AI summaries.
 - **`ClickUpTaskExtractor`**: Walks workspace → space → lists → tasks, caches custom fields, filters by status/date, and uses `export_file()` for all I/O.
 - **`LocationMapper` utilities**: Map dropdown IDs via id → orderindex → name priority, extract images, and provide consistent yes/no prompts.
-- **`ai_summary.get_ai_summary`**: Talks to `gemini-2.5-flash-lite`, parses retry hints, and falls back to original text if the SDK or key is missing.
+- **`ai_summary.get_ai_summary`**: Talks to Google Gemini with **tiered model strategy**: tries `gemini-2.5-flash-lite` (500 RPD) first, switches to `gemini-2.5-pro` (1,500 RPD separate bucket) on rate limit, then `gemini-2.0-flash` as fallback. Parses retry hints, shows progress bars during waits, and falls back to original text if SDK or key is missing.
 - **`logger_config.setup_logging`**: Installs Rich tracebacks, emits to stdout, and optionally writes to disk.
 
 ## 📊 Output Examples
@@ -244,7 +238,8 @@ clickup_task_extractor/
 Optional Google Gemini AI integration provides:
 
 - Intelligent 1-2 sentence task summaries
-- Automatic rate limiting and retry logic
+- Automatic rate limiting and retry logic with tiered model fallback
+- Daily quota exhaustion detection to prevent wasted API calls
 - Graceful fallback to original content if AI fails
 
 Enable AI summaries:
@@ -253,11 +248,64 @@ Enable AI summaries:
 python main.py --ai-summary --gemini-api-key YOUR_KEY
 ```
 
-Implementation details:
+### Model Tiering & Rate Limiting
 
-- Uses `gemini-2.5-flash-lite` via the official `google-generativeai` SDK.
-- Retries up to three times on 429s, parsing `retryDelay` hints when available and showing Rich progress while waiting.
-- Falls back to raw subject/description/resolution text when the SDK is missing or the key is unavailable.
+The AI integration uses a **tiered model strategy** to handle rate limits gracefully:
+
+**Tier 1 (Primary)**: `gemini-2.5-flash-lite`
+
+- 500 requests/day (free tier)
+- Fastest and most cost-effective
+- Best for routine task summarization
+
+**Tier 2 (Fallback)**: `gemini-2.5-pro`
+
+- 1,500 requests/day (separate quota bucket)
+- Better quality reasoning
+- Activated when Tier 1 hits rate limits
+
+**Tier 3 (Emergency)**: `gemini-2.0-flash`
+
+- 500 requests/day
+- Stable alternative if Tier 2 unavailable
+
+**Rate Limit Handling**:
+
+The system automatically switches to the next tier when rate limit is detected via:
+
+- HTTP 429 status codes
+- RESOURCE_EXHAUSTED errors from Google API
+- 'quota' or 'rate limit' keywords in error messages (case-insensitive)
+- Per-minute (RPM) quota detection for fine-grained control
+- Per-day (RPD) quota detection for daily limit tracking
+
+Additional features:
+
+- Shows progress bar while waiting for quota to reset
+- Applies exponential backoff (2^attempt seconds) for transient errors before switching tiers
+- Logs which model tier was used for transparency
+- Falls back to original task fields if all tiers exhausted
+
+### Daily Quota (RPD) Exhaustion
+
+When all model tiers exhaust their daily quota (usually around midnight Pacific time):
+
+1. System detects "requests per day" or "RPD" errors
+2. Sets a global `_daily_quota_exhausted` flag
+3. **Skips AI summaries for remaining tasks without making API calls**
+4. Displays: `[⊘] Daily quota exhausted - skipping AI summary for: Task Name`
+5. Returns to original task content automatically
+
+This prevents repeated failed API attempts throughout the rest of the day when daily limits are exhausted. The quota limit resets at midnight Pacific time for free tier accounts.
+
+**Manual Reset (For Testing)**:
+
+If you need to manually reset the daily quota state:
+
+```python
+from ai_summary import _reset_daily_quota_state
+_reset_daily_quota_state()
+```
 
 ## 🛠️ Requirements
 
@@ -273,6 +321,19 @@ Implementation details:
 
 ## 🐛 Troubleshooting
 
+### PDF Export Issues
+
+**WeasyPrint GTK3 Dependencies:**
+
+Current PDF export uses WeasyPrint which requires system-level GTK3 runtime libraries. This is being addressed in [issue #63](https://github.com/J-MaFf/clickup_task_extractor/issues/63) with a planned migration to fpdf2 (pure Python, no system dependencies).
+
+For now, if you encounter PDF generation errors:
+
+1. Verify dependencies are installed: `pip install -r requirements.txt`
+2. On Windows, the GTK3 runtime may be required (though support for this will be removed in the fpdf2 migration)
+
+**Future**: Once issue #63 is resolved, PDF export will work without any system dependencies.
+
 ### Common Issues
 
 **Authentication Errors:**
@@ -286,23 +347,25 @@ Implementation details:
 If you see errors like "1Password SDK not available" or "op command not found" when using the executable:
 
 1. **Using Environment Variables (Easiest)**:
+
    ```bash
    # Windows Command Prompt
    set CLICKUP_API_KEY=your_api_key_here
    ClickUpTaskExtractor.exe
-   
+
    # Windows PowerShell
    $env:CLICKUP_API_KEY="your_api_key_here"
    .\ClickUpTaskExtractor.exe
    ```
 
 2. **Using Command Line Argument**:
+
    ```bash
    ClickUpTaskExtractor.exe --api-key your_api_key_here
    ```
 
 3. **Using 1Password CLI** (if you prefer 1Password):
-   - Install 1Password CLI from: https://developer.1password.com/docs/cli/get-started/
+   - Install 1Password CLI from: <https://developer.1password.com/docs/cli/get-started/>
    - Ensure `op` command is in your PATH
    - The executable will automatically use it
 

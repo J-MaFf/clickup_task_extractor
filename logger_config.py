@@ -67,8 +67,12 @@ def setup_logging(
     # Console handler with Rich integration
     if console_output:
         if use_rich and RICH_AVAILABLE and RichHandler and Console:
-            # Use Rich handler for beautiful console output
-            rich_console = Console(stderr=False)  # Use stdout instead of stderr
+            # Use Rich handler for beautiful console output with proper encoding for cross-platform compatibility
+            rich_console = Console(
+                stderr=False,  # Use stdout instead of stderr
+                force_terminal=None,
+                legacy_windows=False  # Ensure proper Unicode support on Windows
+            )
             console_handler = RichHandler(
                 console=rich_console,
                 show_time=False,  # Rich handles time formatting

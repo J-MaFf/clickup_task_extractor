@@ -1,0 +1,12 @@
+{
+  "recommendations": [
+    "ms-python.python",
+    "ms-python.vscode-pylance",
+    "ms-python.debugpy",
+    "charliermarsh.ruff",
+    "eamodio.gitlens",
+    "ms-vscode.wordcount",
+    "github.copilot",
+    "github.copilot-chat"
+  ]
+}

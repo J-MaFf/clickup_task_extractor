@@ -1,5 +1,25 @@
 # Copilot Instructions: ClickUp Task Extractor
 
+## MCP Tools Usage
+
+This project leverages MCP (Model Context Protocol) tools for enhanced development workflows:
+
+### **Memory Graph (`mcp_memory_*` tools)**
+- **Persistent Knowledge Graph**: Maintains project context across sessions
+- **Automatic Usage**: Copilot proactively searches and reads the graph during conversations
+- **On-Demand Updates**: Observes milestones and updates entities without explicit requests
+- **How to Use**:
+  - Knowledge is automatically consulted for context (no action needed)
+  - Significant task completions, architectural decisions, and discoveries are logged automatically
+  - Explicitly request updates only for specific information you want recorded
+  - Access via `mcp_memory_search_nodes`, `mcp_memory_open_nodes`, `mcp_memory_add_observations`
+
+### **Sequential Thinking (`mcp_sequentialthi_sequentialthinking`)**
+- **Complex Problem Solving**: Invoked automatically for intricate multi-step decisions
+- **When Used**: Breaking down architectural changes, planning major refactors, debugging complex issues
+- **Transparency**: Explicitly request with `#mcp_sequentialthi_sequentialthinking` to see detailed reasoning
+- **No Manual Calls Needed**: Copilot judges when reasoning depth is necessary
+
 ## Architecture & Data Flow
 
 - **Entry Point:**
@@ -9,7 +29,7 @@
   - `auth.py`: Multi-fallback API key retrieval (CLI → env → 1Password SDK/CLI → prompt).
   - `api_client.py`: Protocol-based ClickUp API client, custom exceptions.
   - `extractor.py`: `ClickUpTaskExtractor` (main logic), context-managed export, interactive selection.
-  - `ai_summary.py`: Optional Google Gemini AI summaries, with fallback and rate limiting.
+  - `ai_summary.py`: Optional Google Gemini AI summaries with **tiered model fallback on rate limits**, exponential backoff, and field-level fallback when API unavailable or errors occur.
   - `mappers.py`: Custom field mapping (`LocationMapper`), date filtering.
   - `logger_config.py`: Logging setup for debug and file output.
 - **Output:**
@@ -22,7 +42,7 @@
 - **Context manager for export:** All file I/O via `export_file()` context manager in `extractor.py`.
 - **1Password auth chain:** API key retrieval order: CLI arg → env var → 1Password SDK → CLI → prompt.
 - **Rich UI:** All user interaction (progress, tables, selection) uses Rich; see `extractor.py` and `ai_summary.py`.
-- **AI summaries:** Enable with `--ai-summary` and Gemini key; fallback to original content if AI fails.
+- **AI summaries:** Enable with `--ai-summary` and Gemini key; automatically switches between model tiers on rate limits (Tier 1: `gemini-2.5-flash-lite` → Tier 2: `gemini-2.5-pro` → Tier 3: `gemini-2.0-flash`). Falls back to original content if all tiers exhausted.
 - **Date formatting:** Use `format_datetime` in `config.py` for all output; removes leading zeros, cross-platform.
 - **Custom field mapping:** Use `LocationMapper` in `mappers.py` (id → orderindex → name fallback).
 - **Error handling:** Always raise specific exceptions (e.g., `APIError`), never bare except.
@@ -40,6 +60,24 @@
 - **Debug:** Use `logger_config.setup_logging()`; set log level to DEBUG for troubleshooting.
 - **Dependencies:** Install with `pip install -r requirements.txt` (see `requirements.txt`).
 - **Virtualenv:** Auto-detected; ensure `.venv/` is active for cross-platform compatibility.
+
+## Testing & Validation
+
+**Script-Based Testing (Preferred):**
+- For quick tests or validations, create a Python script file using `create_file` tool
+- Run scripts with: `.\.venv\Scripts\python.exe script_name.py`
+- This approach avoids PowerShell parsing issues and provides better error handling
+- Clean up temporary scripts after use
+
+**Unit Tests:**
+- Run full test suite: `.\.venv\Scripts\python.exe -m pytest tests/ -v`
+- Run specific test: `.\.venv\Scripts\python.exe -m pytest tests/test_extractor.py::ClassName::test_method -v`
+- Run with coverage: `.\.venv\Scripts\python.exe -m pytest tests/ --cov=. --cov-report=html`
+
+**Manual Testing:**
+- For complex logic validation, create temporary test scripts in the workspace
+- Use the script file approach rather than inline terminal commands
+- This provides clearer output and easier debugging
 
 ## Integration Points
 
@@ -62,7 +100,7 @@
 - Build with: `.venv\Scripts\pyinstaller.exe ClickUpTaskExtractor.spec --distpath .\dist\v<version>`
 - Requires PyInstaller 6.16+: `pip install pyinstaller`
 - Output: Single-file executable with all dependencies bundled (~42 MB)
-- On Windows, PDF export requires GTK3 runtime: `winget install Gnome.Project.Gtk3`
+- **PDF Export**: Currently uses WeasyPrint. Migration to fpdf2 (pure Python, no system dependencies) planned in issue #63 to eliminate GTK3 runtime requirements
 
 # Copilot Instructions: ClickUp Task Extractor
 
@@ -76,8 +114,9 @@
 ## UX and utilities
 - File output always uses the `export_file` context manager (creates parent dirs, handles IO errors) and `get_export_fields()` to define CSV/HTML column order.
 - `mappers.py` supplies Rich-friendly prompts (`get_yes_no_input`), date filters via `get_date_range`, screenshot scraping with `extract_images`, and `LocationMapper.map_location` (id → orderindex → name fallback) for custom fields.
-- `ai_summary.get_ai_summary` talks to Google Gemini (`gemini-2.5-flash-lite`), keeps retries with exponential/backoff parsing, and falls back to raw subject/description/resolution text when the SDK or key is missing.
-- `logger_config.setup_logging` installs Rich tracebacks and returns the shared `"clickup_extractor"` logger; pass `use_rich=False` for plain logging or supply `log_file` for file output.
+- `ai_summary.get_ai_summary` talks to Google Gemini with **tiered model strategy**: tries `gemini-2.5-flash-lite` (500 RPD) first, switches to `gemini-2.5-pro` (1,500 RPD separate bucket) on rate limit, then `gemini-2.0-flash` as emergency fallback. Detects rate limits via HTTP 429, RESOURCE_EXHAUSTED errors, 'quota'/'rate limit' keywords (case-insensitive), and per-minute/per-day quota patterns. **Daily quota detection** via `_is_daily_quota_error()` sets global `_daily_quota_exhausted` flag to skip AI summaries for rest of day. Uses exponential backoff for same-model retries (2 retries) before switching tiers. Falls back to raw task content when all tiers exhausted or daily quota exceeded.
+- **Daily quota exhaustion handling**: When `_daily_quota_exhausted` is set, `get_ai_summary` returns None immediately without API calls. Detected by `_is_daily_quota_error()` which matches "requests per day", "RPD", and "quota" + "day"/"daily" patterns. Reset with `_reset_daily_quota_state()` for testing.
+- `logger_config.setup_logging` installs Rich tracebacks and returns the shared `"clickup_extractor"` logger; pass `use_rich=False` for plain logging or supply `log_file` for file output. Console initialization uses `force_terminal=None, legacy_windows=False` for cross-platform Unicode support.
 
 ## Developer workflow
 - Requirements live in `requirements.txt`; core deps are `requests`, `rich`, `weasyprint` (PDF), with optional `onepassword-sdk` and `google-generativeai`—guard imports accordingly.
@@ -91,3 +130,5 @@
 - New output format: add an `OutputFormat` enum value, expose it in CLI choices, and extend `ClickUpTaskExtractor.export()`/render helpers while still using `export_file`.
 - Extra API filtering or mapping: hook into `_fetch_and_process_tasks`, reuse `LocationMapper` and `get_date_range`, and surface errors through Rich panels rather than bare prints.
 - **Image extraction**: Extracts images from task descriptions using regex patterns for various formats.
+- **AI model tiers**: Modify `MODEL_TIERS` in `ai_summary.py` to adjust fallback strategy. Each tier should have separate quotas for rate-limit resilience. Test with `--ai-summary --gemini-api-key <key>` to verify tier switching on rate limits.
+- **PDF export migration**: Issue #63 tracks migration from WeasyPrint to fpdf2. When implemented, update `extractor.py` PDF export method and replace `weasyprint>=60.0` with `fpdf2>=2.7.0` in `requirements.txt`. Remove GTK3-specific error handling and simplify imports.
