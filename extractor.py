@@ -973,12 +973,20 @@ class ClickUpTaskExtractor:
                 pdf_path = output_dir / f"{base_filename}.pdf"
 
                 try:
-                    # Import weasyprint here to provide better error messages
-                    from weasyprint import HTML
+                    # Import fpdf2 for pure-Python PDF generation
+                    from fpdf import FPDF
 
-                    # Generate HTML first, then convert to PDF
+                    # Ensure output directory exists
+                    pdf_path.parent.mkdir(parents=True, exist_ok=True)
+
+                    # Generate HTML first, then convert to PDF using fpdf2
                     html_content = self.render_html(tasks)
-                    HTML(string=html_content).write_pdf(str(pdf_path))
+                    
+                    # Create PDF and parse HTML
+                    pdf = FPDF()
+                    pdf.add_page()
+                    pdf.write_html(html_content)
+                    pdf.output(str(pdf_path))
 
                     progress.remove_task(pdf_task)
                     console.print(
@@ -988,39 +996,13 @@ class ClickUpTaskExtractor:
                 except ImportError:
                     progress.remove_task(pdf_task)
                     console.print(
-                        f"[red]❌ Error: weasyprint not installed. Install with: pip install weasyprint[/red]"
+                        f"[red]❌ Error: fpdf2 not installed. Install with: pip install fpdf2[/red]"
                     )
                     console.print(f"[yellow]⚠️  PDF export skipped.[/yellow]")
                 except Exception as e:
                     progress.remove_task(pdf_task)
-                    error_msg = str(e).lower()
-
-                    # Check for GTK3 runtime error
-                    if "libgobject" in error_msg or "gtk" in error_msg:
-                        console.print(
-                            Panel(
-                                "[red]❌ Pango/GTK Runtime Library Missing[/red]\n\n"
-                                "[bold]On Windows (Recommended):[/bold]\n"
-                                "1. Install MSYS2 from https://www.msys2.org/\n"
-                                "2. Open MSYS2 command prompt and run:\n"
-                                "   [cyan]pacman -S mingw-w64-x86_64-pango[/cyan]\n"
-                                "3. Keep the MSYS2 environment path set\n\n"
-                                "[bold]Alternative on Windows:[/bold]\n"
-                                "Set the DLL directory environment variable:\n"
-                                "   [cyan]set WEASYPRINT_DLL_DIRECTORIES=<path_to_dlls>[/cyan]\n\n"
-                                "[bold]On macOS:[/bold]\n"
-                                "  [cyan]brew install pango[/cyan]\n\n"
-                                "[bold]On Linux:[/bold]\n"
-                                "  [cyan]sudo apt-get install libpango-1.0-0[/cyan] (Debian/Ubuntu)\n"
-                                "  [cyan]sudo dnf install pango[/cyan] (Fedora)\n\n"
-                                f"[dim]Reference: https://doc.courtbouillon.org/weasyprint/stable/first_steps.html\n"
-                                f"Full error: {e}[/dim]",
-                                title="PDF Generation Failed",
-                                style="red",
-                            )
-                        )
-                    else:
-                        console.print(f"[red]❌ Error generating PDF: {e}[/red]")
+                    console.print(f"[red]❌ Error generating PDF: {e}[/red]")
+                    console.print(f"[yellow]⚠️  PDF export failed. Please check the HTML output format works correctly.[/yellow]")
 
         # Final success message
         console.print(
@@ -1043,8 +1025,33 @@ class ClickUpTaskExtractor:
         Returns:
             Complete HTML document as string
         """
-        # Simple HTML table, styled
-        head = """<!DOCTYPE html><html><head><meta charset="utf-8"><title>Weekly Task List</title><style>body{font-family:Arial,sans-serif;margin:20px;}table{border-collapse:collapse;width:100%;margin-top:20px;}th,td{border:1px solid #ddd;padding:12px;text-align:left;vertical-align:top;}th{background-color:#f2f2f2;font-weight:bold;}tr:nth-child(even){background-color:#f9f9f9;}.task-name{font-weight:bold;color:#2c5aa0;}.priority-high{color:#d73502;font-weight:bold;}.priority-normal{color:#0c7b93;}.priority-low{color:#6aa84f;}.notes{max-width:400px;white-space:pre-wrap;line-height:1.4;font-size:0.9em;}.status{padding:4px 8px;border-radius:4px;font-size:0.8em;font-weight:bold;}.status-open{background-color:#e8f4fd;color:#1f4e79;}.status-in-progress{background-color:#fff2cc;color:#7f6000;}.status-review{background-color:#f4cccc;color:#660000;}h1{color:#2c5aa0;}.summary{margin-bottom:20px;padding:15px;background-color:#f0f8ff;border-left:4px solid #2c5aa0;}</style></head><body>"""
+        # Simple HTML table, styled with proper structure for fpdf2 compatibility
+        head = """<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8" />
+<title>Weekly Task List</title>
+<style>
+body{font-family:Arial,sans-serif;margin:20px;}
+table{border-collapse:collapse;width:100%;margin-top:20px;}
+th,td{border:1px solid #ddd;padding:12px;text-align:left;vertical-align:top;}
+th{background-color:#f2f2f2;font-weight:bold;}
+tr:nth-child(even){background-color:#f9f9f9;}
+.task-name{font-weight:bold;color:#2c5aa0;}
+.priority-high{color:#d73502;font-weight:bold;}
+.priority-normal{color:#0c7b93;}
+.priority-low{color:#6aa84f;}
+.notes{max-width:400px;white-space:pre-wrap;line-height:1.4;font-size:0.9em;}
+.status{padding:4px 8px;border-radius:4px;font-size:0.8em;font-weight:bold;}
+.status-open{background-color:#e8f4fd;color:#1f4e79;}
+.status-in-progress{background-color:#fff2cc;color:#7f6000;}
+.status-review{background-color:#f4cccc;color:#660000;}
+h1{color:#2c5aa0;}
+.summary{margin-bottom:20px;padding:15px;background-color:#f0f8ff;border-left:4px solid #2c5aa0;}
+</style>
+</head>
+<body>
+"""
         summary = f'<h1>Weekly Task List</h1><div class="summary"><strong>Generated:</strong> {format_datetime(datetime.now(), DISPLAY_FORMAT)}<br><strong>Total Tasks:</strong> {len(tasks)}<br><strong>Workspace:</strong> {html.escape(self.config.workspace_name)} / {html.escape(self.config.space_name)}</div>'
 
         # Get export fields (excluding internal fields like _metadata)
