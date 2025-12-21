@@ -28,10 +28,13 @@ OnePasswordClient = None
 try:
     # Only import if not running as PyInstaller executable
     import sys
-    if not getattr(sys, 'frozen', False):
+
+    if not getattr(sys, "frozen", False):
         from onepassword.client import Client as OnePasswordClient
     else:
-        logger.info("Running as executable - 1Password SDK disabled, using CLI fallback only")
+        logger.info(
+            "Running as executable - 1Password SDK disabled, using CLI fallback only"
+        )
 except ImportError:
     pass  # Will use CLI fallback
 
@@ -48,7 +51,8 @@ def load_secret_with_fallback(secret_reference: str, secret_name: str) -> Secret
         The secret string if successful, None if failed
     """
     import sys
-    is_frozen = getattr(sys, 'frozen', False)
+
+    is_frozen = getattr(sys, "frozen", False)
 
     # Try 1Password SDK first (only available for Python, not EXE)
     try:
@@ -58,44 +62,56 @@ def load_secret_with_fallback(secret_reference: str, secret_name: str) -> Secret
     except (ImportError, ValueError) as e:
         # SDK not available or not configured - this is expected for most users
         if is_frozen:
-            logger.info(f"1Password SDK not available in executable - trying 1Password CLI for {secret_name}...")
+            logger.info(
+                f"1Password SDK not available in executable - trying 1Password CLI for {secret_name}..."
+            )
         else:
-            logger.debug(f"1Password SDK not available for {secret_name} (will try CLI): {e}")
+            logger.debug(
+                f"1Password SDK not available for {secret_name} (will try CLI): {e}"
+            )
             logger.info(f"Falling back to 1Password CLI for {secret_name}...")
 
         # Fallback to 1Password CLI
         try:
             # First, try without specifying account
             result = subprocess.run(
-                ['op', 'read', secret_reference],
+                ["op", "read", secret_reference],
                 capture_output=True,
                 text=True,
-                timeout=10
+                timeout=10,
             )
 
             if result.returncode == 0:
                 secret = result.stdout.strip()
                 logger.info(f"✅ {secret_name} loaded from 1Password CLI.")
                 return secret
-            elif 'multiple accounts' in result.stderr.lower():
+            elif "multiple accounts" in result.stderr.lower():
                 # Multiple accounts error - try with personal account
-                logger.debug("Multiple 1Password accounts detected, trying personal account (my.1password.com)...")
+                logger.debug(
+                    "Multiple 1Password accounts detected, trying personal account (my.1password.com)..."
+                )
                 result = subprocess.run(
-                    ['op', 'read', secret_reference, '--account', 'my.1password.com'],
+                    ["op", "read", secret_reference, "--account", "my.1password.com"],
                     capture_output=True,
                     text=True,
-                    timeout=10
+                    timeout=10,
                 )
                 if result.returncode == 0:
                     secret = result.stdout.strip()
-                    logger.info(f"✅ {secret_name} loaded from 1Password CLI (personal account).")
+                    logger.info(
+                        f"✅ {secret_name} loaded from 1Password CLI (personal account)."
+                    )
                     return secret
                 else:
-                    logger.error(f"❌ 1Password CLI failed with personal account for {secret_name}: {result.stderr.strip()}")
+                    logger.error(
+                        f"❌ 1Password CLI failed with personal account for {secret_name}: {result.stderr.strip()}"
+                    )
                     return None
             else:
                 # Different error
-                logger.error(f"❌ 1Password CLI failed for {secret_name}: {result.stderr.strip()}")
+                logger.error(
+                    f"❌ 1Password CLI failed for {secret_name}: {result.stderr.strip()}"
+                )
                 return None
         except FileNotFoundError:
             # CLI not installed
@@ -113,10 +129,14 @@ def load_secret_with_fallback(secret_reference: str, secret_name: str) -> Secret
                 )
             return None
         except subprocess.TimeoutExpired:
-            logger.error(f"❌ 1Password CLI timed out while reading {secret_name}. Check your 1Password setup.")
+            logger.error(
+                f"❌ 1Password CLI timed out while reading {secret_name}. Check your 1Password setup."
+            )
             return None
         except Exception as cli_error:
-            logger.error(f"❌ Could not read {secret_name} from 1Password CLI: {cli_error}")
+            logger.error(
+                f"❌ Could not read {secret_name} from 1Password CLI: {cli_error}"
+            )
             if is_frozen:
                 logger.info(
                     "💡 Tip: For executables, use environment variables (e.g., CLICKUP_API_KEY) "
@@ -128,7 +148,9 @@ def load_secret_with_fallback(secret_reference: str, secret_name: str) -> Secret
         return None
 
 
-def get_secret_from_1password(secret_reference: str, secret_type: str = "API key") -> SecretValue:
+def get_secret_from_1password(
+    secret_reference: str, secret_type: str = "API key"
+) -> SecretValue:
     """
     Retrieve a secret from 1Password using the SDK.
 
@@ -143,30 +165,39 @@ def get_secret_from_1password(secret_reference: str, secret_type: str = "API key
         Various exceptions for different failure modes (network, auth, not found, etc.)
     """
     if OnePasswordClient is None:
-        raise ImportError("1Password SDK not available. Install with: pip install onepassword-sdk")
+        raise ImportError(
+            "1Password SDK not available. Install with: pip install onepassword-sdk"
+        )
 
     # Get service account token from environment
-    service_token = os.environ.get('OP_SERVICE_ACCOUNT_TOKEN')
+    service_token = os.environ.get("OP_SERVICE_ACCOUNT_TOKEN")
     if not service_token:
-        raise ValueError("OP_SERVICE_ACCOUNT_TOKEN environment variable not set. Required for 1Password SDK authentication.")
+        raise ValueError(
+            "OP_SERVICE_ACCOUNT_TOKEN environment variable not set. Required for 1Password SDK authentication."
+        )
 
     try:
+
         async def _get_secret():
             # Ensure OnePasswordClient is not None before using it
             if OnePasswordClient is None:
-                raise ImportError("1Password SDK not available. Install with: pip install onepassword-sdk")
+                raise ImportError(
+                    "1Password SDK not available. Install with: pip install onepassword-sdk"
+                )
             # Authenticate with 1Password using service account token
             client = await OnePasswordClient.authenticate(
                 auth=service_token,
                 integration_name="ClickUp Task Extractor",
-                integration_version="1.0.0"
+                integration_version="1.0.0",
             )
 
             # Resolve the secret reference to get the secret
             secret = await client.secrets.resolve(secret_reference)
 
             if not secret:
-                raise ValueError(f"Secret reference '{secret_reference}' resolved to empty value")
+                raise ValueError(
+                    f"Secret reference '{secret_reference}' resolved to empty value"
+                )
 
             return secret.strip()
 
@@ -175,7 +206,9 @@ def get_secret_from_1password(secret_reference: str, secret_type: str = "API key
 
     except Exception as e:
         # Re-raise with more context
-        error_msg = f"Failed to retrieve {secret_type} from 1Password: {type(e).__name__}: {e}"
+        error_msg = (
+            f"Failed to retrieve {secret_type} from 1Password: {type(e).__name__}: {e}"
+        )
         raise RuntimeError(error_msg) from e
 
 
