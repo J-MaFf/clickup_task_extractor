@@ -13,7 +13,7 @@ import os
 import sys
 import csv
 import html
-from datetime import datetime
+from datetime import datetime, timezone
 from dataclasses import asdict
 from typing import TypeAlias
 from contextlib import contextmanager
@@ -59,6 +59,7 @@ from api_client import (
 )
 from ai_summary import get_ai_summary
 from mappers import get_yes_no_input, get_date_range, extract_images, LocationMapper
+from eta_calculator import calculate_eta
 
 # Get the directory of this script for output path resolution
 script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -405,9 +406,11 @@ class ClickUpTaskExtractor:
                             task_name = name[:30] + ("..." if len(name) > 30 else "")
 
                             # Update per-list progress description with current task
+                            # Only show AI indicator if AI will actually be generated (not in interactive mode)
                             if (
                                 self.config.enable_ai_summary
                                 and self.config.gemini_api_key
+                                and not self.config.interactive_selection
                             ):
                                 progress.update(
                                     current_list_task,
@@ -487,91 +490,102 @@ class ClickUpTaskExtractor:
                 )
                 all_tasks = self.interactive_include(all_tasks)
 
-                # After task selection in interactive mode, ask about AI summary if not already set
-                if all_tasks and not self.config.enable_ai_summary:
-                    console.print(
-                        Panel(
-                            f"[bold blue]🤖 AI Summary Available[/bold blue]\n"
-                            f"You have selected [bold cyan]{len(all_tasks)}[/bold cyan] task(s) for export.\n"
-                            f"AI summary can generate concise 1-2 sentence summaries using Google Gemini.",
-                            title="AI Enhancement",
-                            style="blue",
-                        )
-                    )
-                    if get_yes_no_input(
-                        "Would you like to enable AI summaries for the selected tasks? (y/n): ",
-                        default_on_interrupt=False,
-                    ):
-                        # Try to load Gemini API key
-                        gemini_key_loaded = False
-                        if self.load_gemini_key_func:
-                            if self.load_gemini_key_func():
-                                gemini_key_loaded = True
-                                console.print(
-                                    "✅ [green]Gemini API key loaded from 1Password.[/green]"
-                                )
-
-                        if not gemini_key_loaded:
-                            gemini_key = console.input(
-                                "[bold cyan]🔑 Enter Gemini API Key (or press Enter to skip): [/bold cyan]"
-                            ).strip()
-                            if gemini_key:
-                                self.config.gemini_api_key = gemini_key
-                                gemini_key_loaded = True
-                                console.print(
-                                    "✅ [green]Manual Gemini API key entered.[/green]"
-                                )
-                            else:
-                                console.print(
-                                    "ℹ️ [yellow]Proceeding without AI summary.[/yellow]"
-                                )
-
-                        if gemini_key_loaded and self.config.gemini_api_key:
-                            self.config.enable_ai_summary = True
-                            # Regenerate notes with AI for selected tasks
-                            console.print(
-                                Panel(
-                                    f"[bold green]🧠 Generating AI summaries for {len(all_tasks)} selected tasks...[/bold green]",
-                                    title="AI Processing",
-                                    style="green",
-                                )
-                            )
-                            for i, task in enumerate(all_tasks, 1):
-                                console.print(
-                                    f"  [dim]Processing task {i}/{len(all_tasks)}:[/dim] [bold]{task.Task}[/bold]"
-                                )
-                                if hasattr(task, "_metadata") and task._metadata:
-                                    metadata = task._metadata
-                                    raw_fields = metadata.get("ai_fields")
-                                    task_name = metadata.get("task_name", task.Task)
-                                    if raw_fields:
-                                        if isinstance(raw_fields, dict):
-                                            ai_fields = list(raw_fields.items())
-                                        else:
-                                            ai_fields = list(raw_fields)
-                                        ai_notes = get_ai_summary(
-                                            task_name,
-                                            ai_fields,
-                                            self.config.gemini_api_key,
-                                            progress_pause_callback=self._pause_progress_callback,
-                                        )
-                                    else:
-                                        fallback_fields = [
-                                            ("Notes", task.Notes or "(not provided)")
-                                        ]
-                                        ai_notes = get_ai_summary(
-                                            task_name,
-                                            fallback_fields,
-                                            self.config.gemini_api_key,
-                                            progress_pause_callback=self._pause_progress_callback,
-                                        )
-                                    task.Notes = ai_notes
-                            console.print(
-                                "✅ [bold green]AI summaries generated for all selected tasks.[/bold green]"
-                            )
-                    else:
+                # After task selection in interactive mode, handle AI summary generation
+                if all_tasks:
+                    # Check if we need to prompt for AI summary or if it's already enabled
+                    should_generate_ai = False
+                    
+                    if self.config.enable_ai_summary and self.config.gemini_api_key:
+                        # AI summary was enabled via CLI flags - generate for selected tasks
+                        should_generate_ai = True
+                    elif not self.config.enable_ai_summary:
+                        # AI summary not enabled - ask the user
                         console.print(
-                            "ℹ️ [yellow]Proceeding without AI summary.[/yellow]"
+                            Panel(
+                                f"[bold blue]🤖 AI Summary Available[/bold blue]\n"
+                                f"You have selected [bold cyan]{len(all_tasks)}[/bold cyan] task(s) for export.\n"
+                                f"AI summary can generate concise 1-2 sentence summaries using Google Gemini.",
+                                title="AI Enhancement",
+                                style="blue",
+                            )
+                        )
+                        if get_yes_no_input(
+                            "Would you like to enable AI summaries for the selected tasks? (y/n): ",
+                            default_on_interrupt=False,
+                        ):
+                            # Try to load Gemini API key
+                            gemini_key_loaded = False
+                            if self.load_gemini_key_func:
+                                if self.load_gemini_key_func():
+                                    gemini_key_loaded = True
+                                    console.print(
+                                        "✅ [green]Gemini API key loaded from 1Password.[/green]"
+                                    )
+
+                            if not gemini_key_loaded:
+                                gemini_key = console.input(
+                                    "[bold cyan]🔑 Enter Gemini API Key (or press Enter to skip): [/bold cyan]"
+                                ).strip()
+                                if gemini_key:
+                                    self.config.gemini_api_key = gemini_key
+                                    gemini_key_loaded = True
+                                    console.print(
+                                        "✅ [green]Manual Gemini API key entered.[/green]"
+                                    )
+                                else:
+                                    console.print(
+                                        "ℹ️ [yellow]Proceeding without AI summary.[/yellow]"
+                                    )
+
+                            if gemini_key_loaded and self.config.gemini_api_key:
+                                self.config.enable_ai_summary = True
+                                should_generate_ai = True
+                        else:
+                            console.print(
+                                "ℹ️ [yellow]Proceeding without AI summary.[/yellow]"
+                            )
+                    
+                    # Generate AI summaries for selected tasks if enabled
+                    if should_generate_ai:
+                        console.print(
+                            Panel(
+                                f"[bold green]🧠 Generating AI summaries for {len(all_tasks)} selected tasks...[/bold green]",
+                                title="AI Processing",
+                                style="green",
+                            )
+                        )
+                        for i, task in enumerate(all_tasks, 1):
+                            console.print(
+                                f"  [dim]Processing task {i}/{len(all_tasks)}:[/dim] [bold]{task.Task}[/bold]"
+                            )
+                            if hasattr(task, "_metadata") and task._metadata:
+                                metadata = task._metadata
+                                raw_fields = metadata.get("ai_fields")
+                                task_name = metadata.get("task_name", task.Task)
+                                if raw_fields:
+                                    if isinstance(raw_fields, dict):
+                                        ai_fields = list(raw_fields.items())
+                                    else:
+                                        ai_fields = list(raw_fields)
+                                    ai_notes = get_ai_summary(
+                                        task_name,
+                                        ai_fields,
+                                        self.config.gemini_api_key,
+                                        progress_pause_callback=self._pause_progress_callback,
+                                    )
+                                else:
+                                    fallback_fields = [
+                                        ("Notes", task.Notes or "(not provided)")
+                                    ]
+                                    ai_notes = get_ai_summary(
+                                        task_name,
+                                        fallback_fields,
+                                        self.config.gemini_api_key,
+                                        progress_pause_callback=self._pause_progress_callback,
+                                    )
+                                task.Notes = ai_notes
+                        console.print(
+                            "✅ [bold green]AI summaries generated for all selected tasks.[/bold green]"
                         )
 
             elif self.config.interactive_selection and not all_tasks:
@@ -641,15 +655,19 @@ class ClickUpTaskExtractor:
             # Get task status
             status = task_detail.get("status", {}).get("status", "Unknown")
 
-            # Get due date
+            # Get due date or calculate ETA
             due_date = task_detail.get("due_date")
             eta = ""
             if due_date:
                 try:
-                    due_dt = datetime.fromtimestamp(int(due_date) / 1000)
+                    due_dt = datetime.fromtimestamp(int(due_date) / 1000, tz=timezone.utc)
                     eta = format_datetime(due_dt, DISPLAY_FORMAT)
                 except (ValueError, OSError):
                     eta = "Invalid Date"
+            else:
+                # No due date - we'll calculate ETA after gathering all context
+                # This will be done later after extracting custom fields
+                eta = None  # Marker to calculate later
 
             # Company is the list name (like original code)
             company = list_item.get("name", "")
@@ -768,8 +786,6 @@ class ClickUpTaskExtractor:
                 and self.config.gemini_api_key
                 and not self.config.interactive_selection
             ):
-                from ai_summary import get_ai_summary
-
                 notes = get_ai_summary(
                     task_detail.get("name", ""),
                     ai_field_items,
@@ -784,6 +800,20 @@ class ClickUpTaskExtractor:
             res_img = extract_images(cf.get("Resolution", {}).get("value", ""))
             task_img = extract_images(task_detail.get("description", ""))
             extra = " | ".join([i for i in [desc_img, res_img, task_img] if i])
+
+            # Calculate ETA if not already set from due_date
+            if eta is None:
+                # Calculate ETA based on task context
+                eta = calculate_eta(
+                    task_name=task_name,
+                    priority=priority,
+                    status=status,
+                    description=custom_description or default_description,
+                    subject=subject_value if subject_value else "",
+                    resolution=resolution_value if resolution_value else "",
+                    gemini_api_key=self.config.gemini_api_key,
+                    enable_ai=self.config.enable_ai_summary,
+                )
 
             # Create task record (matching original structure)
             task_record = TaskRecord(
@@ -981,7 +1011,7 @@ class ClickUpTaskExtractor:
 
                     # Generate HTML first, then convert to PDF using fpdf2
                     html_content = self.render_html(tasks)
-                    
+
                     # Create PDF and parse HTML
                     pdf = FPDF()
                     pdf.add_page()
