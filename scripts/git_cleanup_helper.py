@@ -67,40 +67,42 @@ def main():
     """Main cleanup logic."""
     dry_run = "--dry-run" in sys.argv
     force = "--force" in sys.argv
-    
+
     current = get_current_branch()
     all_branches = get_all_branches()
-    
+
     to_delete = []
-    
+
     for branch in all_branches:
         # Skip current branch
         if branch == current:
             continue
-        
+
         # Skip main
         if branch in ("main", "master", "develop"):
             continue
-        
+
         # Check if branch is merged and has no remote tracking
         is_merged = is_branch_merged(branch)
         has_tracking = has_remote_tracking(branch)
-        
+
         if is_merged and not has_tracking:
             to_delete.append(branch)
-    
+
     if not to_delete:
-        print("✅ No stale branches found. All branches are up to date or tracking remotes.")
+        print(
+            "✅ No stale branches found. All branches are up to date or tracking remotes."
+        )
         return 0
-    
+
     print(f"Found {len(to_delete)} stale branch(es) to delete:")
     for branch in to_delete:
         print(f"  - {branch}")
-    
+
     if dry_run:
         print("\n(--dry-run mode: no branches deleted)")
         return 0
-    
+
     deleted = 0
     for branch in to_delete:
         if delete_branch(branch, force=force):
@@ -108,13 +110,13 @@ def main():
             deleted += 1
         else:
             print(f"❌ Failed to delete {branch}")
-    
+
     print(f"\nDeleted {deleted}/{len(to_delete)} branches")
-    
+
     # Clean up remote tracking refs
     print("\nCleaning up remote tracking references...")
     subprocess.run(["git", "remote", "prune", "origin"])
-    
+
     return 0 if deleted == len(to_delete) else 1
 
 
