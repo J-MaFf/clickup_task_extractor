@@ -335,6 +335,18 @@ class FetchProcessTasksTests(unittest.TestCase):
 class TaskExportSortingTests(unittest.TestCase):
     """Test that tasks are properly sorted during export."""
 
+    def setUp(self) -> None:
+        """Clean up any existing test output files before each test."""
+        test_csv = Path("output") / "test.csv"
+        if test_csv.exists():
+            test_csv.unlink()
+
+    def tearDown(self) -> None:
+        """Clean up test output files after each test."""
+        test_csv = Path("output") / "test.csv"
+        if test_csv.exists():
+            test_csv.unlink()
+
     def test_export_sorts_tasks_by_priority_then_name(self):
         """Test that export method sorts tasks before rendering."""
         # Create unsorted tasks
