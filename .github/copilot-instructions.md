@@ -5,6 +5,7 @@
 This project leverages MCP (Model Context Protocol) tools for enhanced development workflows:
 
 ### **Memory Graph (`mcp_memory_*` tools)**
+
 - **Persistent Knowledge Graph**: Maintains project context across sessions
 - **Automatic Usage**: Copilot proactively searches and reads the graph during conversations
 - **On-Demand Updates**: Observes milestones and updates entities without explicit requests
@@ -15,6 +16,7 @@ This project leverages MCP (Model Context Protocol) tools for enhanced developme
   - Access via `mcp_memory_search_nodes`, `mcp_memory_open_nodes`, `mcp_memory_add_observations`
 
 ### **Sequential Thinking (`mcp_sequentialthi_sequentialthinking`)**
+
 - **Complex Problem Solving**: Invoked automatically for intricate multi-step decisions
 - **When Used**: Breaking down architectural changes, planning major refactors, debugging complex issues
 - **Transparency**: Explicitly request with `#mcp_sequentialthi_sequentialthinking` to see detailed reasoning
@@ -40,14 +42,15 @@ This project leverages MCP (Model Context Protocol) tools for enhanced developme
 - **Enum config:** All config uses enums (e.g., `OutputFormat.HTML`), but string fallback is supported for CLI/backward compatibility.
 - **Protocol-based API client:** Use `APIClient` protocol for dependency injection/testing; see `api_client.py`.
 - **Context manager for export:** All file I/O via `export_file()` context manager in `extractor.py`.
-- **1Password auth chain:** API key retrieval order: CLI arg → env var → 1Password SDK → CLI → prompt.
+- **1Password auth chain:** API key retrieval order: CLI arg → env var → 1Password SDK (async) → 1Password CLI (with subprocess.run) → prompt. SDK uses OnePasswordClient async auth; CLI uses subprocess.run with capture_output=True, text=True, 10s timeout. CLI detects "multiple accounts" error and automatically retries with `--account my.1password.com` flag. All code in `auth.py` with proper error handling for FileNotFoundError, TimeoutExpired, and generic exceptions. Returns None on any error without raising exceptions to main flow.
 - **Rich UI:** All user interaction (progress, tables, selection) uses Rich; see `extractor.py` and `ai_summary.py`.
-- **AI summaries:** Enable with `--ai-summary` and Gemini key; automatically switches between model tiers on rate limits (Tier 1: `gemini-2.5-flash-lite` → Tier 2: `gemini-2.5-pro` → Tier 3: `gemini-2.0-flash`). Falls back to original content if all tiers exhausted.
+- **AI summaries:** Enable with `--ai-summary` and Gemini key; automatically switches between model tiers on rate limits (Tier 1: `gemini-2.5-flash-lite` → Tier 2: `gemini-2.5-pro` → Tier 3: `gemini-2.0-flash`). Falls back to original content if all tiers exhausted. Implements daily quota detection via `_is_daily_quota_error()` and `_daily_quota_exhausted` flag for performance.
 - **Date formatting:** Use `format_datetime` in `config.py` for all output; removes leading zeros, cross-platform.
 - **Custom field mapping:** Use `LocationMapper` in `mappers.py` (id → orderindex → name fallback).
-- **Error handling:** Always raise specific exceptions (e.g., `APIError`), never bare except.
+- **Error handling:** Always raise specific exceptions (e.g., `APIError`), never bare except. 1Password fallback returns None instead of raising.
 - **Type hints:** Use modern Python type hints everywhere (`list[str]`, `str | None`).
 - **No external DB:** All output is local files; no persistent storage.
+- **Subprocess best practices:** Always use subprocess.run(capture_output=True, text=True) instead of check_output() for better error capture and cross-platform compatibility. Include timeout parameter to prevent hangs. Mock tests must use MagicMock with returncode, stdout, stderr attributes.
 
 ## Developer Workflows
 
@@ -64,17 +67,20 @@ This project leverages MCP (Model Context Protocol) tools for enhanced developme
 ## Testing & Validation
 
 **Script-Based Testing (Preferred):**
+
 - For quick tests or validations, create a Python script file using `create_file` tool
 - Run scripts with: `.\.venv\Scripts\python.exe script_name.py`
 - This approach avoids PowerShell parsing issues and provides better error handling
 - Clean up temporary scripts after use
 
 **Unit Tests:**
+
 - Run full test suite: `.\.venv\Scripts\python.exe -m pytest tests/ -v`
 - Run specific test: `.\.venv\Scripts\python.exe -m pytest tests/test_extractor.py::ClassName::test_method -v`
 - Run with coverage: `.\.venv\Scripts\python.exe -m pytest tests/ --cov=. --cov-report=html`
 
 **Manual Testing:**
+
 - For complex logic validation, create temporary test scripts in the workspace
 - Use the script file approach rather than inline terminal commands
 - This provides clearer output and easier debugging
@@ -105,6 +111,7 @@ This project leverages MCP (Model Context Protocol) tools for enhanced developme
 # Copilot Instructions: ClickUp Task Extractor
 
 ## Architecture quick map
+
 - `main.py` is the CLI entry: re-launches inside `.venv`, builds `ClickUpConfig`, and drives the auth fallback (CLI → env → 1Password SDK via `OP_SERVICE_ACCOUNT_TOKEN` → `op read` → manual prompt). It also seeds Rich prompts for interactive mode and AI summary.
 - `extractor.ClickUpTaskExtractor` runs the workflow (workspace → spaces → lists → tasks) with Rich progress bars, uses `TaskRecord._metadata` to store raw task content for later AI notes, and honors default status exclusions from `ClickUpConfig.exclude_statuses`.
 - `config.py` holds enums (`OutputFormat`, `DateFilter`, `TaskPriority`), the `ClickUpConfig` dataclass, and `format_datetime`/`default_output_path` which strip leading zeros for cross-platform filenames.
@@ -112,6 +119,7 @@ This project leverages MCP (Model Context Protocol) tools for enhanced developme
 - `auth.py` centralizes secret loading and logging; prefer `load_secret_with_fallback` instead of touching 1Password directly.
 
 ## UX and utilities
+
 - File output always uses the `export_file` context manager (creates parent dirs, handles IO errors) and `get_export_fields()` to define CSV/HTML column order.
 - `mappers.py` supplies Rich-friendly prompts (`get_yes_no_input`), date filters via `get_date_range`, screenshot scraping with `extract_images`, and `LocationMapper.map_location` (id → orderindex → name fallback) for custom fields.
 - `ai_summary.get_ai_summary` talks to Google Gemini with **tiered model strategy**: tries `gemini-2.5-flash-lite` (500 RPD) first, switches to `gemini-2.5-pro` (1,500 RPD separate bucket) on rate limit, then `gemini-2.0-flash` as emergency fallback. Detects rate limits via HTTP 429, RESOURCE_EXHAUSTED errors, 'quota'/'rate limit' keywords (case-insensitive), and per-minute/per-day quota patterns. **Daily quota detection** via `_is_daily_quota_error()` sets global `_daily_quota_exhausted` flag to skip AI summaries for rest of day. Uses exponential backoff for same-model retries (2 retries) before switching tiers. Falls back to raw task content when all tiers exhausted or daily quota exceeded.
@@ -119,6 +127,7 @@ This project leverages MCP (Model Context Protocol) tools for enhanced developme
 - `logger_config.setup_logging` installs Rich tracebacks and returns the shared `"clickup_extractor"` logger; pass `use_rich=False` for plain logging or supply `log_file` for file output. Console initialization uses `force_terminal=None, legacy_windows=False` for cross-platform Unicode support.
 
 ## Developer workflow
+
 - Requirements live in `requirements.txt`; core deps are `requests`, `rich`, `weasyprint` (PDF), with optional `onepassword-sdk` and `google-generativeai`—guard imports accordingly.
 - Typical runs: `python main.py` (HTML export, workspace `KMS`, space `Kikkoman`), or override with `--output-format {CSV|HTML|Markdown|PDF|Both}`, `--interactive`, `--include-completed`, `--date-filter {AllOpen|ThisWeek|LastWeek}`, and `--ai-summary/--gemini-api-key`.
 - The extractor writes to `output/` using the timestamped path from `config.default_output_path()`; exporters adjust the extension per selected format.
@@ -126,6 +135,7 @@ This project leverages MCP (Model Context Protocol) tools for enhanced developme
 - Release builds: Create a `release/v<version>` branch, commit version changes, tag with `v<version>`, and build exe with PyInstaller spec pointing to `dist/v<version>`.
 
 ## Extension playbook
+
 - Add fields: extend `TaskRecord`, update any renderers that iterate `get_export_fields()`, and make sure `_metadata` keeps AI payloads if needed.
 - New output format: add an `OutputFormat` enum value, expose it in CLI choices, and extend `ClickUpTaskExtractor.export()`/render helpers while still using `export_file`.
 - Extra API filtering or mapping: hook into `_fetch_and_process_tasks`, reuse `LocationMapper` and `get_date_range`, and surface errors through Rich panels rather than bare prints.
