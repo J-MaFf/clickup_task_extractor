@@ -13,7 +13,7 @@ import os
 import sys
 import csv
 import html
-from datetime import datetime
+from datetime import datetime, timezone
 from dataclasses import asdict
 from typing import TypeAlias
 from contextlib import contextmanager
@@ -647,7 +647,7 @@ class ClickUpTaskExtractor:
             eta = ""
             if due_date:
                 try:
-                    due_dt = datetime.fromtimestamp(int(due_date) / 1000)
+                    due_dt = datetime.fromtimestamp(int(due_date) / 1000, tz=timezone.utc)
                     eta = format_datetime(due_dt, DISPLAY_FORMAT)
                 except (ValueError, OSError):
                     eta = "Invalid Date"
@@ -1007,7 +1007,7 @@ class ClickUpTaskExtractor:
 
                     # Generate HTML first, then convert to PDF using fpdf2
                     html_content = self.render_html(tasks)
-                    
+
                     # Create PDF and parse HTML
                     pdf = FPDF()
                     pdf.add_page()
