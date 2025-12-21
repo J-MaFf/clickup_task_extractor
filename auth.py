@@ -66,9 +66,12 @@ def load_secret_with_fallback(secret_reference: str, secret_name: str) -> Secret
         # Fallback to 1Password CLI
         try:
             # First, try without specifying account
-            result = subprocess.run([
-                'op', 'read', secret_reference
-            ], capture_output=True, text=True)
+            result = subprocess.run(
+                ['op', 'read', secret_reference],
+                capture_output=True,
+                text=True,
+                timeout=10
+            )
 
             if result.returncode == 0:
                 secret = result.stdout.strip()
@@ -77,21 +80,25 @@ def load_secret_with_fallback(secret_reference: str, secret_name: str) -> Secret
             elif 'multiple accounts' in result.stderr.lower():
                 # Multiple accounts error - try with personal account
                 logger.debug("Multiple 1Password accounts detected, trying personal account (my.1password.com)...")
-                result = subprocess.run([
-                    'op', 'read', secret_reference, '--account', 'my.1password.com'
-                ], capture_output=True, text=True)
-
+                result = subprocess.run(
+                    ['op', 'read', secret_reference, '--account', 'my.1password.com'],
+                    capture_output=True,
+                    text=True,
+                    timeout=10
+                )
                 if result.returncode == 0:
                     secret = result.stdout.strip()
                     logger.info(f"✅ {secret_name} loaded from 1Password CLI (personal account).")
                     return secret
                 else:
-                    raise subprocess.CalledProcessError(result.returncode, result.args, result.stderr)
+                    logger.error(f"❌ 1Password CLI failed with personal account for {secret_name}: {result.stderr.strip()}")
+                    return None
             else:
-                # Other error
-                raise subprocess.CalledProcessError(result.returncode, result.args, result.stderr)
+                # Different error
+                logger.error(f"❌ 1Password CLI failed for {secret_name}: {result.stderr.strip()}")
+                return None
         except FileNotFoundError:
-            # CLI not installed - provide helpful error message
+            # CLI not installed
             if is_frozen:
                 logger.error(
                     f"❌ 1Password CLI not found. When using the executable, you have two options:\n"
@@ -105,14 +112,8 @@ def load_secret_with_fallback(secret_reference: str, secret_name: str) -> Secret
                     f"   Or use environment variables/command line arguments instead."
                 )
             return None
-        except subprocess.CalledProcessError as cli_error:
-            # CLI command failed (auth error, not found, etc.)
-            logger.error(f"❌ 1Password CLI authentication failed for {secret_name}: {cli_error}")
-            if is_frozen:
-                logger.info(
-                    "💡 Tip: For executables, environment variables (e.g., CLICKUP_API_KEY) "
-                    "or --api-key argument are simpler alternatives to 1Password."
-                )
+        except subprocess.TimeoutExpired:
+            logger.error(f"❌ 1Password CLI timed out while reading {secret_name}. Check your 1Password setup.")
             return None
         except Exception as cli_error:
             logger.error(f"❌ Could not read {secret_name} from 1Password CLI: {cli_error}")
