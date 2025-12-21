@@ -288,7 +288,7 @@ class TestAsyncSecretRetrieval(unittest.TestCase):
             result = get_secret_from_1password("op://vault/item/field")
             # If we got here, the async logic worked
             self.assertIsNotNone(result)
-        except RuntimeError as e:
+        except RuntimeError:
             # This is expected if the mock isn't perfect
             # The important thing is we're testing the error handling
             pass

@@ -101,15 +101,15 @@ def load_secret_with_fallback(secret_reference: str, secret_name: str) -> Secret
             # CLI not installed
             if is_frozen:
                 logger.error(
-                    f"❌ 1Password CLI not found. When using the executable, you have two options:\n"
-                    f"   1. Install 1Password CLI from: https://developer.1password.com/docs/cli/get-started/\n"
-                    f"   2. Use environment variables (e.g., CLICKUP_API_KEY) or --api-key argument"
+                    "❌ 1Password CLI not found. When using the executable, you have two options:\n"
+                    "   1. Install 1Password CLI from: https://developer.1password.com/docs/cli/get-started/\n"
+                    "   2. Use environment variables (e.g., CLICKUP_API_KEY) or --api-key argument"
                 )
             else:
                 logger.error(
-                    f"❌ 1Password CLI ('op' command) not found.\n"
-                    f"   Install from: https://developer.1password.com/docs/cli/get-started/\n"
-                    f"   Or use environment variables/command line arguments instead."
+                    "❌ 1Password CLI ('op' command) not found.\n"
+                    "   Install from: https://developer.1password.com/docs/cli/get-started/\n"
+                    "   Or use environment variables/command line arguments instead."
                 )
             return None
         except subprocess.TimeoutExpired:
