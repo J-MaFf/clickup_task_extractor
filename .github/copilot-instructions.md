@@ -190,3 +190,9 @@ Environment variables, migrations, breaking changes, or special instructions.
 ```
 
 Include related issue references: `Closes #71, #77` (at end of description)
+
+### PR Metadata Requirements
+Always ensure the following metadata is set on every PR:
+- **Labels**: Assign relevant labels (e.g., `enhancement`, `bug`, `documentation`, `refactor`, `testing`)
+- **Assignees**: Assign to yourself (J-MaFf)
+- **Issues**: Link all related issues in the PR description and GitHub's linked issues feature
