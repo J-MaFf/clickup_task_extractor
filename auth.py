@@ -49,27 +49,47 @@ def load_secret_with_fallback(secret_reference: str, secret_name: str) -> Secret
     """
     import sys
     is_frozen = getattr(sys, 'frozen', False)
-    
+
     # Try 1Password SDK first (only available for Python, not EXE)
     try:
         secret = get_secret_from_1password(secret_reference, secret_name)
         logger.info(f"✅ {secret_name} loaded from 1Password SDK.")
         return secret
-    except ImportError as e:
-        # SDK not available - this is expected for EXE builds
+    except (ImportError, ValueError) as e:
+        # SDK not available or not configured - this is expected for most users
         if is_frozen:
             logger.info(f"1Password SDK not available in executable - trying 1Password CLI for {secret_name}...")
         else:
-            logger.warning(f"1Password SDK not available for {secret_name}: {e}")
+            logger.debug(f"1Password SDK not available for {secret_name} (will try CLI): {e}")
             logger.info(f"Falling back to 1Password CLI for {secret_name}...")
-        
+
         # Fallback to 1Password CLI
         try:
-            secret = subprocess.check_output([
+            # First, try without specifying account
+            result = subprocess.run([
                 'op', 'read', secret_reference
-            ], encoding='utf-8').strip()
-            logger.info(f"✅ {secret_name} loaded from 1Password CLI.")
-            return secret
+            ], capture_output=True, text=True)
+
+            if result.returncode == 0:
+                secret = result.stdout.strip()
+                logger.info(f"✅ {secret_name} loaded from 1Password CLI.")
+                return secret
+            elif 'multiple accounts' in result.stderr.lower():
+                # Multiple accounts error - try with personal account
+                logger.debug("Multiple 1Password accounts detected, trying personal account (my.1password.com)...")
+                result = subprocess.run([
+                    'op', 'read', secret_reference, '--account', 'my.1password.com'
+                ], capture_output=True, text=True)
+
+                if result.returncode == 0:
+                    secret = result.stdout.strip()
+                    logger.info(f"✅ {secret_name} loaded from 1Password CLI (personal account).")
+                    return secret
+                else:
+                    raise subprocess.CalledProcessError(result.returncode, result.args, result.stderr)
+            else:
+                # Other error
+                raise subprocess.CalledProcessError(result.returncode, result.args, result.stderr)
         except FileNotFoundError:
             # CLI not installed - provide helpful error message
             if is_frozen:
