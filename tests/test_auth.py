@@ -43,7 +43,8 @@ class TestLoadSecretWithFallback(unittest.TestCase):
         result = load_secret_with_fallback('op://vault/item/field', 'Test Secret')
 
         self.assertEqual(result, 'secret_from_cli')
-        mock_logger.warning.assert_called()
+        # SDK unavailability is logged at debug level, not warning
+        mock_logger.debug.assert_called()
         mock_logger.info.assert_any_call('Falling back to 1Password CLI for Test Secret...')
         mock_logger.info.assert_any_call('✅ Test Secret loaded from 1Password CLI.')
 
@@ -86,9 +87,11 @@ class TestLoadSecretWithFallback(unittest.TestCase):
 
         load_secret_with_fallback('op://vault/item/credential', 'API Key')
 
+        # Updated to match actual code which includes stderr=subprocess.PIPE
         mock_subprocess.assert_called_once_with(
             ['op', 'read', 'op://vault/item/credential'],
-            encoding='utf-8'
+            encoding='utf-8',
+            stderr=-1  # subprocess.PIPE constant
         )
 
     @patch('auth.subprocess.check_output')
@@ -301,9 +304,9 @@ class TestLoggingBehavior(unittest.TestCase):
 
         load_secret_with_fallback('op://vault/item/field', 'Secret Name')
 
-        # Check warning for SDK unavailability
-        warning_calls = [call[0][0] for call in mock_logger.warning.call_args_list]
-        self.assertTrue(any('SDK not available' in call for call in warning_calls))
+        # Check debug for SDK unavailability (changed from warning to debug)
+        debug_calls = [call[0][0] for call in mock_logger.debug.call_args_list]
+        self.assertTrue(any('SDK not available' in call for call in debug_calls))
 
         # Check info for CLI fallback
         info_calls = [call[0][0] for call in mock_logger.info.call_args_list]
