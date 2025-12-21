@@ -146,6 +146,41 @@ class ClickUpTaskExtractorProcessTaskTests(unittest.TestCase):
         self.assertEqual(len(fields_arg), 13)
         self.assertEqual(fields_arg[0], ("Name", "Custom Task Name"))
 
+    def test_process_task_with_due_date(self) -> None:
+        """Test that tasks with due dates use the due date as ETA."""
+        # Add due_date to task_detail
+        self.task_detail["due_date"] = "1735689600000"  # Jan 1, 2025 00:00:00
+        task = {"id": self.task_id, "name": "Task with due date"}
+        list_item = {"name": "Support"}
+
+        record = self.extractor._process_task(task, [], list_item)
+
+        self.assertIsNotNone(record)
+        record = cast(TaskRecord, record)
+        # ETA should be formatted due date
+        self.assertIn("1/1/2025", record.ETA)
+
+    def test_process_task_without_due_date_calculates_eta(self) -> None:
+        """Test that tasks without due dates get calculated ETA."""
+        # Ensure no due_date
+        self.task_detail.pop("due_date", None)
+        task = {"id": self.task_id, "name": "Task without due date"}
+        list_item = {"name": "Support"}
+
+        record = self.extractor._process_task(task, [], list_item)
+
+        self.assertIsNotNone(record)
+        record = cast(TaskRecord, record)
+        # ETA should be calculated and not empty
+        self.assertIsNotNone(record.ETA)
+        self.assertNotEqual(record.ETA, "")
+        # Should be a date in MM/DD/YYYY format
+        from datetime import datetime
+        try:
+            datetime.strptime(record.ETA, "%m/%d/%Y")
+        except ValueError:
+            self.fail(f"ETA '{record.ETA}' is not in MM/DD/YYYY format")
+
 
 class ExportBehaviourTests(unittest.TestCase):
     def setUp(self) -> None:
