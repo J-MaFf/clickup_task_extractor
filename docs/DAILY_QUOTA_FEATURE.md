@@ -100,7 +100,7 @@ The rate limit detection now includes:
 
 ### When Daily Quota Detected
 
-```
+```text
 ⚠️ Daily quota exhausted on gemini-2.5-flash-lite: Requests per day quota exceeded
 AI summaries will be disabled for the rest of the day (RPD limit reached)
 Daily quota (RPD) exhausted for all models. AI summaries disabled for rest of day.
@@ -109,14 +109,14 @@ Error: [full error message]
 
 ### When Regular Rate Limit Hit
 
-```
+```text
 ⏳ Rate limit on gemini-2.5-flash-lite: 429 Too Many Requests
 ⚠️ Rate limit on gemini-2.5-flash-lite. Switching to next model tier...
 ```
 
 ### When Quota Exhausted (Skipping Tasks)
 
-```
+```text
 [⊘] Daily quota exhausted - skipping AI summary for: Task Name
 ```
 
@@ -166,7 +166,7 @@ The implementation handles these actual Google Gemini API responses:
 
 Or during interactive use:
 
-```
+```python
 google.generativeai.types.BlockedPromptException:
 Request failed with status code: 429
 Requests per day quota exceeded

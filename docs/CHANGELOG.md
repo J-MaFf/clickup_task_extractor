@@ -5,16 +5,36 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## 1.03 - 2026-01-29
 
 ### ✨ Features & Enhancements
 
+- **ETA Automation**: Added AI-powered ETA calculation with robust fallback logic when due dates are missing, including priority-based defaults and status multipliers.
+- **PDF Export Without System Dependencies**: Replaced WeasyPrint with fpdf2 for PDF export to eliminate GTK3 requirements.
+- **Git Cleanup Helper**: Added improved git cleanup helper with better stale-branch detection and documented findings.
 - **Daily Quota (RPD) Exhaustion Detection**: Added intelligent detection for Google Gemini API daily quota (Requests Per Day) limits. When all model tiers exhaust their daily quota, AI summaries are automatically disabled for the rest of the day, preventing continued retry attempts on already-exhausted quotas. Includes `_is_daily_quota_error()` detection function and global `_daily_quota_exhausted` state tracking.
 - **Tiered Model Switching for AI Summaries**: Implemented intelligent model fallback strategy for Google Gemini API rate limiting. When the primary model (`gemini-2.5-flash-lite`, 500 RPD) hits rate limits, the system automatically switches to `gemini-2.5-pro` (1,500 RPD separate quota bucket) for continued operation with higher quality summaries. Falls back to `gemini-2.0-flash` as emergency alternative. Each tier has its own quota bucket, allowing up to 3x additional capacity when primary is exhausted.
 - **Dynamic Model Tier Management**: Refactored `ai_summary.py` with new `MODEL_TIERS` configuration list and helper functions (`_try_ai_summary_with_model`, `_handle_rate_limit_wait`, `_is_daily_quota_error`) for clean separation of concerns. Users are notified which model tier generated their summary via Rich console output.
 - **Comprehensive Rate Limit Detection**: Enhanced detection to catch 10+ rate limit error patterns including HTTP 429 status codes, RESOURCE_EXHAUSTED errors, per-minute limits (RPM), and daily quota keywords. Case-insensitive matching ensures all quota-related errors are caught regardless of message format or Google API version.
 - **Windows UTF-8 Console Support**: Improved Rich console initialization with proper cross-platform encoding parameters (`force_terminal=None`, `legacy_windows=False`) across all modules to ensure proper Unicode rendering on Windows, macOS, and Linux without breaking existing functionality.
 - **Enhanced Rate Limit Handling**: Improved exponential backoff logic and progress bar display during rate limit waits. System attempts same model up to 2 times with exponential backoff before switching tiers, providing better user feedback throughout the process.
+
+### 🐛 Fixes
+
+- **1Password Multi-Account Support**: Improved CLI fallback to handle multiple accounts, added timeouts, and standardized error handling for missing SDK or CLI errors.
+- **Auth Logging and Formatting**: Standardized auth logging messages and removed unnecessary f-strings while keeping behavior consistent.
+- **Export Path Tests**: Updated export behavior tests and cleanup to match the actual output directory behavior.
+- **Timezone-Aware Due Dates**: Fixed due date conversion to use timezone-aware datetimes.
+
+### 🧪 Testing
+
+- Updated auth tests to mock `subprocess.run` and aligned assertions with actual logging behavior.
+- Added setup/teardown cleanup for export sorting tests to avoid leftover output files.
+
+### 📚 Documentation
+
+- Added a knowledge graph backup for MCP memory state and expanded 1Password integration details.
+- Documented code style, formatting standards, and PR metadata guidance.
 
 ## [1.02] - 2025-11-18
 
@@ -30,7 +50,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### 🤖 AI Summary Improvements
 
-- Hardened Gemini integration with `_normalize_field_entries`, deterministic prompt construction, newline trimming, and automatic punctuation to produce polished 1–2 sentence rollups.
+- Hardened Gemini integration with `_normalize_field_entries`, deterministic prompt construction, newline trimming, and automatic punctuation to produce polished 1–2 sentence summarizations.
 - Added smart rate-limit handling that parses `retryDelay` hints, surfaces Rich countdowns while waiting, and gracefully falls back to raw task content after exhaustively retrying.
 - Ensured fallbacks when the Google SDK or API key is missing now return original field blocks while still logging actionable warnings.
 - **First-Person Perspective**: AI-generated summaries now use first-person perspective for more natural and engaging task descriptions.
