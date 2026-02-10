@@ -135,7 +135,7 @@ This project leverages MCP (Model Context Protocol) tools for enhanced developme
 - **ETA parsing**: Supports multiple formats via `parse_eta()` helper:
   - Display format: `"2/15/2026 at 3:45 PM"` (parsed via `"%m/%d/%Y at %I:%M %p"`)
   - ISO date format: `"2026-02-15"` (parsed via `"%Y-%m-%d"`)
-  - ISO datetime: `"2026-02-15T15:45:00"` (parsed via `fromisoformat()`)
+  - ISO datetime (with optional UTC designator): `"2026-02-15T15:45:00"` or `"2026-02-15T15:45:00Z"` (`Z` is treated as UTC and normalized to a `+00:00` offset before parsing via `fromisoformat()`)
 - **Backward compatibility**: `sort_tasks_by_priority_and_name()` remains available for name-based sorting but is no longer used in exports
 - **Test coverage**: `TestTaskSortingByETA` class in `tests/test_sorting.py` covers all scenarios (mixed priorities, missing ETAs, format variations, edge cases)
 
