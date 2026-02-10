@@ -48,7 +48,6 @@ from config import (
     DISPLAY_FORMAT,
     format_datetime,
     OutputFormat,
-    sort_tasks_by_priority_and_name,
     sort_tasks_by_priority_and_eta,
 )
 from api_client import (
