@@ -10,7 +10,7 @@ Contains:
 """
 
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, TypeAlias
 from enum import Enum
 
@@ -212,7 +212,7 @@ def sort_tasks_by_priority_and_eta(tasks: list["TaskRecord"]) -> list["TaskRecor
                     parsed_dt = datetime.fromisoformat(eta_str)
                     # Normalize to naive datetime in UTC to avoid comparison issues
                     if parsed_dt.tzinfo is not None:
-                        parsed_dt = parsed_dt.replace(tzinfo=None)
+                        parsed_dt = parsed_dt.astimezone(timezone.utc).replace(tzinfo=None)
                     return (0, parsed_dt)
                 except (ValueError, AttributeError):
                     # If all parsing fails, treat as missing
