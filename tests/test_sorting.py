@@ -498,6 +498,80 @@ class TestTaskSortingByETA(unittest.TestCase):
 
         self.assertEqual(actual, expected)
 
+    def test_iso_datetime_with_timezone(self):
+        """Test parsing ISO datetime with timezone offsets."""
+        tasks = [
+            TaskRecord(
+                Task="Task C",
+                Company="A",
+                Branch="",
+                Priority="High",
+                Status="Open",
+                ETA="2026-02-20T15:45:00+00:00",  # UTC timezone
+            ),
+            TaskRecord(
+                Task="Task A",
+                Company="A",
+                Branch="",
+                Priority="High",
+                Status="Open",
+                ETA="2026-02-10T10:30:00Z",  # Z notation for UTC
+            ),
+            TaskRecord(
+                Task="Task B",
+                Company="A",
+                Branch="",
+                Priority="High",
+                Status="Open",
+                ETA="2026-02-15T12:00:00-05:00",  # Eastern timezone
+            ),
+        ]
+
+        sorted_tasks = sort_tasks_by_priority_and_eta(tasks)
+
+        # Should be sorted by ETA chronologically (timezone-aware dates normalized)
+        expected = ["Task A", "Task B", "Task C"]
+        actual = [t.Task for t in sorted_tasks]
+
+        self.assertEqual(actual, expected)
+
+    def test_mixed_eta_formats(self):
+        """Test handling of mixed ETA formats (display, ISO date, ISO datetime with timezone)."""
+        tasks = [
+            TaskRecord(
+                Task="Display Format",
+                Company="A",
+                Branch="",
+                Priority="High",
+                Status="Open",
+                ETA="2/20/2026 at 3:45 PM",  # Display format
+            ),
+            TaskRecord(
+                Task="ISO Date",
+                Company="A",
+                Branch="",
+                Priority="High",
+                Status="Open",
+                ETA="2026-02-10",  # ISO date format
+            ),
+            TaskRecord(
+                Task="ISO Datetime TZ",
+                Company="A",
+                Branch="",
+                Priority="High",
+                Status="Open",
+                ETA="2026-02-15T12:00:00+00:00",  # ISO datetime with timezone
+            ),
+        ]
+
+        sorted_tasks = sort_tasks_by_priority_and_eta(tasks)
+
+        # Should be sorted by ETA chronologically regardless of format
+        expected = ["ISO Date", "ISO Datetime TZ", "Display Format"]
+        actual = [t.Task for t in sorted_tasks]
+
+        self.assertEqual(actual, expected)
+
     def test_complex_scenario_all_levels(self):
         """Test comprehensive scenario with all priority levels and mixed ETAs."""
         tasks = [
@@ -655,6 +729,80 @@ class TestTaskSortingByETA(unittest.TestCase):
 
         # Should be sorted by priority (Urgent → High → Low) despite same ETA
         expected = ["Urgent Task", "High Task", "Low Task"]
+        actual = [t.Task for t in sorted_tasks]
+
+        self.assertEqual(actual, expected)
+
+    def test_tertiary_sort_by_task_name(self):
+        """Test deterministic sorting by task name when priority and ETA are identical."""
+        tasks = [
+            TaskRecord(
+                Task="Zebra Task",
+                Company="A",
+                Branch="",
+                Priority="High",
+                Status="Open",
+                ETA="2/15/2026 at 3:45 PM",
+            ),
+            TaskRecord(
+                Task="Alpha Task",
+                Company="A",
+                Branch="",
+                Priority="High",
+                Status="Open",
+                ETA="2/15/2026 at 3:45 PM",
+            ),
+            TaskRecord(
+                Task="Beta Task",
+                Company="A",
+                Branch="",
+                Priority="High",
+                Status="Open",
+                ETA="2/15/2026 at 3:45 PM",
+            ),
+        ]
+
+        sorted_tasks = sort_tasks_by_priority_and_eta(tasks)
+
+        # Should be sorted alphabetically by task name when priority and ETA are the same
+        expected = ["Alpha Task", "Beta Task", "Zebra Task"]
+        actual = [t.Task for t in sorted_tasks]
+
+        self.assertEqual(actual, expected)
+
+    def test_tertiary_sort_case_insensitive(self):
+        """Test tertiary sort is case-insensitive."""
+        tasks = [
+            TaskRecord(
+                Task="zulu Task",
+                Company="A",
+                Branch="",
+                Priority="High",
+                Status="Open",
+                ETA="2/15/2026 at 3:45 PM",
+            ),
+            TaskRecord(
+                Task="Alpha Task",
+                Company="A",
+                Branch="",
+                Priority="High",
+                Status="Open",
+                ETA="2/15/2026 at 3:45 PM",
+            ),
+            TaskRecord(
+                Task="BETA Task",
+                Company="A",
+                Branch="",
+                Priority="High",
+                Status="Open",
+                ETA="2/15/2026 at 3:45 PM",
+            ),
+        ]
+
+        sorted_tasks = sort_tasks_by_priority_and_eta(tasks)
+
+        # Should be sorted case-insensitively by task name
+        expected = ["Alpha Task", "BETA Task", "zulu Task"]
         actual = [t.Task for t in sorted_tasks]
 
         self.assertEqual(actual, expected)

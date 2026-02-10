@@ -10,7 +10,7 @@ Contains:
 """
 
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, TypeAlias
 from enum import Enum
 
@@ -178,28 +178,28 @@ def sort_tasks_by_priority_and_eta(tasks: list["TaskRecord"]) -> list["TaskRecor
 
     Example:
         >>> tasks = [
-        ...     TaskRecord(Task="Alpha", Priority="Urgent", ETA="2026-02-20 3:45 PM", ...),
-        ...     TaskRecord(Task="Zebra", Priority="Urgent", ETA="2026-02-15 3:45 PM", ...),
-        ...     TaskRecord(Task="Beta", Priority="High", ETA="2026-02-10 3:45 PM", ...),
+        ...     TaskRecord(Task="Alpha", Priority="Urgent", ETA="2/20/2026 at 3:45 PM", ...),
+        ...     TaskRecord(Task="Zebra", Priority="Urgent", ETA="2/15/2026 at 3:45 PM", ...),
+        ...     TaskRecord(Task="Beta", Priority="High", ETA="2/10/2026 at 3:45 PM", ...),
         ... ]
         >>> sorted_tasks = sort_tasks_by_priority_and_eta(tasks)
         >>> # Result: [Urgent-Zebra (2/15), Urgent-Alpha (2/20), High-Beta (2/10)]
     """
 
-    def parse_eta(eta_str: str) -> tuple[int, datetime | None]:
+    def parse_eta(eta_str: str) -> tuple[int, datetime]:
         """
         Parse ETA string to datetime object for comparison.
 
         Returns a tuple of (sort_priority, datetime_obj):
         - sort_priority: 0 for valid ETA (sorts first), 1 for missing ETA (sorts last)
-        - datetime_obj: parsed datetime or None
+        - datetime_obj: parsed datetime (always returns datetime.max for invalid/missing)
         """
         if not eta_str or not eta_str.strip():
             return (1, datetime.max)  # Missing ETA sorts last
 
         try:
             # Try parsing with DISPLAY_FORMAT pattern (e.g., "2/15/2026 at 3:45 PM")
-            parsed_dt = datetime.strptime(eta_str, "%m/%d/%Y at %I:%M %p")
+            parsed_dt = datetime.strptime(eta_str, DISPLAY_FORMAT)
             return (0, parsed_dt)
         except ValueError:
             try:
@@ -208,8 +208,11 @@ def sort_tasks_by_priority_and_eta(tasks: list["TaskRecord"]) -> list["TaskRecor
                 return (0, parsed_dt)
             except ValueError:
                 try:
-                    # Try ISO format with time
+                    # Try ISO format with time (may include timezone)
                     parsed_dt = datetime.fromisoformat(eta_str)
+                    # Normalize to naive datetime in UTC to avoid comparison issues
+                    if parsed_dt.tzinfo is not None:
+                        parsed_dt = parsed_dt.astimezone(timezone.utc).replace(tzinfo=None)
                     return (0, parsed_dt)
                 except (ValueError, AttributeError):
                     # If all parsing fails, treat as missing
@@ -222,6 +225,7 @@ def sort_tasks_by_priority_and_eta(tasks: list["TaskRecord"]) -> list["TaskRecor
                 task.Priority, 0
             ),  # Negative for descending priority order
             *parse_eta(task.ETA),  # Unpack (sort_priority, datetime) for ETA sorting
+            task.Task.lower(),  # Tertiary sort by task name for deterministic ordering
         ),
     )
 
