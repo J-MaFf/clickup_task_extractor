@@ -48,7 +48,7 @@ from config import (
     DISPLAY_FORMAT,
     format_datetime,
     OutputFormat,
-    sort_tasks_by_priority_and_name,
+    sort_tasks_by_priority_and_eta,
 )
 from api_client import (
     APIClient,
@@ -494,7 +494,7 @@ class ClickUpTaskExtractor:
                 if all_tasks:
                     # Check if we need to prompt for AI summary or if it's already enabled
                     should_generate_ai = False
-                    
+
                     if self.config.enable_ai_summary and self.config.gemini_api_key:
                         # AI summary was enabled via CLI flags - generate for selected tasks
                         should_generate_ai = True
@@ -544,7 +544,7 @@ class ClickUpTaskExtractor:
                             console.print(
                                 "ℹ️ [yellow]Proceeding without AI summary.[/yellow]"
                             )
-                    
+
                     # Generate AI summaries for selected tasks if enabled
                     if should_generate_ai:
                         console.print(
@@ -660,7 +660,9 @@ class ClickUpTaskExtractor:
             eta = ""
             if due_date:
                 try:
-                    due_dt = datetime.fromtimestamp(int(due_date) / 1000, tz=timezone.utc)
+                    due_dt = datetime.fromtimestamp(
+                        int(due_date) / 1000, tz=timezone.utc
+                    )
                     eta = format_datetime(due_dt, DISPLAY_FORMAT)
                 except (ValueError, OSError):
                     eta = "Invalid Date"
@@ -932,8 +934,8 @@ class ClickUpTaskExtractor:
             console.print("[yellow]⚠️  No tasks found to export.[/yellow]")
             return
 
-        # Sort tasks by priority (Urgent → High → Normal → Low) and then alphabetically by name
-        tasks = sort_tasks_by_priority_and_name(tasks)
+        # Sort tasks by priority (Urgent → High → Normal → Low) and then by ETA (earliest first)
+        tasks = sort_tasks_by_priority_and_eta(tasks)
 
         console.print(f"\n[bold blue]📤 Exporting {len(tasks)} tasks...[/bold blue]")
 
@@ -1032,7 +1034,9 @@ class ClickUpTaskExtractor:
                 except Exception as e:
                     progress.remove_task(pdf_task)
                     console.print(f"[red]❌ Error generating PDF: {e}[/red]")
-                    console.print(f"[yellow]⚠️  PDF export failed. Please check the HTML output format works correctly.[/yellow]")
+                    console.print(
+                        f"[yellow]⚠️  PDF export failed. Please check the HTML output format works correctly.[/yellow]"
+                    )
 
         # Final success message
         console.print(

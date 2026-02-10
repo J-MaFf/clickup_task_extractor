@@ -126,6 +126,19 @@ This project leverages MCP (Model Context Protocol) tools for enhanced developme
 - **Daily quota exhaustion handling**: When `_daily_quota_exhausted` is set, `get_ai_summary` returns None immediately without API calls. Detected by `_is_daily_quota_error()` which matches "requests per day", "RPD", and "quota" + "day"/"daily" patterns. Reset with `_reset_daily_quota_state()` for testing.
 - `logger_config.setup_logging` installs Rich tracebacks and returns the shared `"clickup_extractor"` logger; pass `use_rich=False` for plain logging or supply `log_file` for file output. Console initialization uses `force_terminal=None, legacy_windows=False` for cross-platform Unicode support.
 
+### Task Sorting (Issue #90)
+
+- **Primary sort: Priority** (descending): Urgent (4) → High (3) → Normal (2) → Low (1) → missing/empty (0)
+- **Secondary sort: ETA** (ascending): Within same priority, tasks are sorted by ETA chronologically (earliest first)
+- **Missing ETAs**: Tasks with no ETA or invalid ETA format appear last within their priority tier
+- **Sorting function**: Use `sort_tasks_by_priority_and_eta()` in `config.py` for all export operations (CSV, HTML, Markdown, PDF)
+- **ETA parsing**: Supports multiple formats via `parse_eta()` helper:
+  - Display format: `"2/15/2026 at 3:45 PM"` (parsed via `"%m/%d/%Y at %I:%M %p"`)
+  - ISO date format: `"2026-02-15"` (parsed via `"%Y-%m-%d"`)
+  - ISO datetime (with optional UTC designator): `"2026-02-15T15:45:00"` or `"2026-02-15T15:45:00Z"` (`Z` is treated as UTC and normalized to a `+00:00` offset before parsing via `fromisoformat()`)
+- **Backward compatibility**: `sort_tasks_by_priority_and_name()` remains available for name-based sorting but is no longer used in exports
+- **Test coverage**: `TestTaskSortingByETA` class in `tests/test_sorting.py` covers all scenarios (mixed priorities, missing ETAs, format variations, edge cases)
+
 ## Developer workflow
 
 - Requirements live in `requirements.txt`; core deps are `requests`, `rich`, `weasyprint` (PDF), with optional `onepassword-sdk` and `google-generativeai`—guard imports accordingly.
@@ -141,6 +154,7 @@ This project leverages MCP (Model Context Protocol) tools for enhanced developme
 - Extra API filtering or mapping: hook into `_fetch_and_process_tasks`, reuse `LocationMapper` and `get_date_range`, and surface errors through Rich panels rather than bare prints.
 - **Image extraction**: Extracts images from task descriptions using regex patterns for various formats.
 - **AI model tiers**: Modify `MODEL_TIERS` in `ai_summary.py` to adjust fallback strategy. Each tier should have separate quotas for rate-limit resilience. Test with `--ai-summary --gemini-api-key <key>` to verify tier switching on rate limits.
+- **Task sorting**: Use `sort_tasks_by_priority_and_eta()` for all exports. To adjust sort order: modify `PRIORITY_ORDER` in `config.py` to change priority weights, or extend `parse_eta()` in `sort_tasks_by_priority_and_eta()` to support additional ETA formats. To change sort criteria (e.g., add third-order tiebreaker), update the sort key tuple in the function and add corresponding unit tests in `TestTaskSortingByETA` class.
 - **PDF export migration**: Issue #63 tracks migration from WeasyPrint to fpdf2. When implemented, update `extractor.py` PDF export method and replace `weasyprint>=60.0` with `fpdf2>=2.7.0` in `requirements.txt`. Remove GTK3-specific error handling and simplify imports.
 
 ## Code Style & Formatting Standards
