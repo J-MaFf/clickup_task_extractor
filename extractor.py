@@ -1136,7 +1136,7 @@ h1{color:#2c5aa0;}
 
         # Create markdown table header
         table = "| " + " | ".join(export_fields) + " |\n"
-        table += "|" + "|".join([" --- " for _ in export_fields]) + "|\n"
+        table += "| " + " | ".join(["---" for _ in export_fields]) + " |\n"
 
         # Add table rows
         for t in tasks:
