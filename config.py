@@ -162,6 +162,70 @@ def sort_tasks_by_priority_and_name(tasks: list["TaskRecord"]) -> list["TaskReco
     )
 
 
+def sort_tasks_by_priority_and_eta(tasks: list["TaskRecord"]) -> list["TaskRecord"]:
+    """
+    Sort tasks by priority (Urgent → High → Normal → Low) and then by ETA (earliest first).
+
+    This function implements the primary sorting by priority level, with ETA as a secondary
+    tiebreaker for tasks with equal priority. Tasks with missing ETAs appear last within
+    their priority tier.
+
+    Args:
+        tasks: List of TaskRecord objects to sort
+
+    Returns:
+        Sorted list of TaskRecord objects
+
+    Example:
+        >>> tasks = [
+        ...     TaskRecord(Task="Alpha", Priority="Urgent", ETA="2026-02-20 3:45 PM", ...),
+        ...     TaskRecord(Task="Zebra", Priority="Urgent", ETA="2026-02-15 3:45 PM", ...),
+        ...     TaskRecord(Task="Beta", Priority="High", ETA="2026-02-10 3:45 PM", ...),
+        ... ]
+        >>> sorted_tasks = sort_tasks_by_priority_and_eta(tasks)
+        >>> # Result: [Urgent-Zebra (2/15), Urgent-Alpha (2/20), High-Beta (2/10)]
+    """
+
+    def parse_eta(eta_str: str) -> tuple[int, datetime | None]:
+        """
+        Parse ETA string to datetime object for comparison.
+
+        Returns a tuple of (sort_priority, datetime_obj):
+        - sort_priority: 0 for valid ETA (sorts first), 1 for missing ETA (sorts last)
+        - datetime_obj: parsed datetime or None
+        """
+        if not eta_str or not eta_str.strip():
+            return (1, datetime.max)  # Missing ETA sorts last
+
+        try:
+            # Try parsing with DISPLAY_FORMAT pattern (e.g., "2/15/2026 at 3:45 PM")
+            parsed_dt = datetime.strptime(eta_str, "%m/%d/%Y at %I:%M %p")
+            return (0, parsed_dt)
+        except ValueError:
+            try:
+                # Try parsing with alternate format (e.g., "2026-02-15")
+                parsed_dt = datetime.strptime(eta_str, "%Y-%m-%d")
+                return (0, parsed_dt)
+            except ValueError:
+                try:
+                    # Try ISO format with time
+                    parsed_dt = datetime.fromisoformat(eta_str)
+                    return (0, parsed_dt)
+                except (ValueError, AttributeError):
+                    # If all parsing fails, treat as missing
+                    return (1, datetime.max)
+
+    return sorted(
+        tasks,
+        key=lambda task: (
+            -PRIORITY_ORDER.get(
+                task.Priority, 0
+            ),  # Negative for descending priority order
+            *parse_eta(task.ETA),  # Unpack (sort_priority, datetime) for ETA sorting
+        ),
+    )
+
+
 @dataclass
 class ClickUpConfig:
     """
