@@ -35,7 +35,9 @@ This project leverages MCP (Model Context Protocol) tools for enhanced developme
   - `mappers.py`: Custom field mapping (`LocationMapper`), date filtering.
   - `logger_config.py`: Logging setup for debug and file output.
 - **Output:**
-  - CSV/HTML export (see `output/`), styled with Rich, cross-platform date formatting.
+  - CSV/HTML/Markdown/PDF export (see `output/`), styled with Rich, cross-platform date formatting.
+- **Changelog:**
+  - Centralized at `docs/CHANGELOG.md` following Keep a Changelog format with Semantic Versioning.
 
 ## Key Patterns & Conventions
 
@@ -135,7 +137,7 @@ This project leverages MCP (Model Context Protocol) tools for enhanced developme
 - **ETA parsing**: Supports multiple formats via `parse_eta()` helper:
   - Display format: `"2/15/2026 at 3:45 PM"` (parsed via `"%m/%d/%Y at %I:%M %p"`)
   - ISO date format: `"2026-02-15"` (parsed via `"%Y-%m-%d"`)
-  - ISO datetime: `"2026-02-15T15:45:00"` (parsed via `fromisoformat()`)
+  - ISO datetime (with optional UTC designator): `"2026-02-15T15:45:00"` or `"2026-02-15T15:45:00Z"` (`Z` is treated as UTC and normalized to a `+00:00` offset before parsing via `fromisoformat()`)
 - **Backward compatibility**: `sort_tasks_by_priority_and_name()` remains available for name-based sorting but is no longer used in exports
 - **Test coverage**: `TestTaskSortingByETA` class in `tests/test_sorting.py` covers all scenarios (mixed priorities, missing ETAs, format variations, edge cases)
 
@@ -144,7 +146,7 @@ This project leverages MCP (Model Context Protocol) tools for enhanced developme
 - Requirements live in `requirements.txt`; core deps are `requests`, `rich`, `weasyprint` (PDF), with optional `onepassword-sdk` and `google-generativeai`—guard imports accordingly.
 - Typical runs: `python main.py` (HTML export, workspace `KMS`, space `Kikkoman`), or override with `--output-format {CSV|HTML|Markdown|PDF|Both}`, `--interactive`, `--include-completed`, `--date-filter {AllOpen|ThisWeek|LastWeek}`, and `--ai-summary/--gemini-api-key`.
 - The extractor writes to `output/` using the timestamped path from `config.default_output_path()`; exporters adjust the extension per selected format.
-- Version bumps: update `version.py` (`__version__` and related metadata), refresh the README version badge URL, and add a new entry in `CHANGELOG.md` summarizing changes since the previous release.
+- Version bumps: update `version.py` (`__version__` and related metadata), refresh the README version badge URL, and add a new entry in `docs/CHANGELOG.md` summarizing changes since the previous release.
 - Release builds: Create a `release/v<version>` branch, commit version changes, tag with `v<version>`, and build exe with PyInstaller spec pointing to `dist/v<version>`.
 
 ## Extension playbook
@@ -156,6 +158,8 @@ This project leverages MCP (Model Context Protocol) tools for enhanced developme
 - **AI model tiers**: Modify `MODEL_TIERS` in `ai_summary.py` to adjust fallback strategy. Each tier should have separate quotas for rate-limit resilience. Test with `--ai-summary --gemini-api-key <key>` to verify tier switching on rate limits.
 - **Task sorting**: Use `sort_tasks_by_priority_and_eta()` for all exports. To adjust sort order: modify `PRIORITY_ORDER` in `config.py` to change priority weights, or extend `parse_eta()` in `sort_tasks_by_priority_and_eta()` to support additional ETA formats. To change sort criteria (e.g., add third-order tiebreaker), update the sort key tuple in the function and add corresponding unit tests in `TestTaskSortingByETA` class.
 - **PDF export migration**: Issue #63 tracks migration from WeasyPrint to fpdf2. When implemented, update `extractor.py` PDF export method and replace `weasyprint>=60.0` with `fpdf2>=2.7.0` in `requirements.txt`. Remove GTK3-specific error handling and simplify imports.
+- **Markdown export normalization**: Markdown export normalizes multi-line task notes to single-line cells for table compatibility. Line breaks are replaced with single spaces (` `) instead of trailing spaces (`  \n`) to eliminate MD055, MD056, MD009 lint violations. This fix is implemented in `extractor.py` markdown rendering logic.
+- **Cleanup and commit helpers**: Utility scripts (`cleanup_now.py`, `commit_and_cleanup.py`, `do_commit.py`, `final_commit.py`, `make_commit.py`) plus shell scripts (`commit.sh`, `commit.ps1`) are available for git housekeeping and automated commit workflows. These are optional developer tools—use them for cleanup or batch operations, or skip them for manual git workflows.
 
 ## Code Style & Formatting Standards
 
