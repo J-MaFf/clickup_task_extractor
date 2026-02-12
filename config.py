@@ -11,7 +11,7 @@ Contains:
 
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import Any, TypeAlias
+from typing import Any
 from enum import Enum
 
 

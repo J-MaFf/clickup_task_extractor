@@ -40,50 +40,51 @@ GEMINI_MODEL = "gemini-flash-lite-latest"
 
 # Priority-based default ETA offsets (in days)
 PRIORITY_ETA_DAYS = {
-    "Urgent": 1,    # 1 day for urgent tasks
-    "High": 3,      # 3 days for high priority
-    "Normal": 7,    # 1 week for normal priority
-    "Low": 14,      # 2 weeks for low priority
-    "": 7,          # Default to 1 week if no priority
+    "Urgent": 1,  # 1 day for urgent tasks
+    "High": 3,  # 3 days for high priority
+    "Normal": 7,  # 1 week for normal priority
+    "Low": 14,  # 2 weeks for low priority
+    "": 7,  # Default to 1 week if no priority
 }
 
 # Status-based ETA adjustments (multipliers)
 STATUS_ETA_MULTIPLIER = {
-    "in progress": 0.5,      # Reduce ETA by half if already in progress
-    "investigating": 0.75,   # Slightly reduce if investigating
-    "to do": 1.0,            # No adjustment for to-do
-    "": 1.0,                 # Default multiplier
+    "in progress": 0.5,  # Reduce ETA by half if already in progress
+    "investigating": 0.75,  # Slightly reduce if investigating
+    "to do": 1.0,  # No adjustment for to-do
+    "": 1.0,  # Default multiplier
 }
 
 
 def _get_fallback_eta(priority: str, status: str) -> str:
     """
     Calculate fallback ETA based on priority and status when AI is unavailable.
-    
+
     Args:
         priority: Task priority (Urgent, High, Normal, Low)
         status: Task status
-        
+
     Returns:
         Formatted ETA date string (MM/DD/YYYY)
     """
     # Get base days from priority
     base_days = PRIORITY_ETA_DAYS.get(priority, 7)
-    
+
     # Apply status multiplier
     status_lower = status.lower()
     multiplier = STATUS_ETA_MULTIPLIER.get(status_lower, 1.0)
-    
+
     # Calculate final days
     final_days = int(base_days * multiplier)
     if final_days < 1:
         final_days = 1  # At least 1 day
-    
+
     # Calculate ETA date
     eta_date = datetime.now() + timedelta(days=final_days)
-    
+
     # Format as MM/DD/YYYY (without leading zeros handled by format_datetime in config.py)
     from config import format_datetime
+
     return format_datetime(eta_date, "%m/%d/%Y")
 
 
@@ -98,7 +99,7 @@ def _try_ai_eta_calculation(
 ) -> str | None:
     """
     Attempt to calculate ETA using AI based on task context.
-    
+
     Args:
         task_name: Name of the task
         priority: Task priority level
@@ -107,14 +108,17 @@ def _try_ai_eta_calculation(
         subject: Task subject
         resolution: Resolution notes
         gemini_api_key: Google Gemini API key
-        
+
     Returns:
         AI-calculated ETA date string or None if AI fails
     """
     try:
+        if configure is None or GenerativeModel is None or types is None:
+            return None
+
         configure(api_key=gemini_api_key)
         model = GenerativeModel(GEMINI_MODEL)
-        
+
         # Build context for AI
         context_parts = []
         if subject:
@@ -123,12 +127,16 @@ def _try_ai_eta_calculation(
             context_parts.append(f"Description: {description}")
         if resolution:
             context_parts.append(f"Resolution: {resolution}")
-        
-        context = "\n".join(context_parts) if context_parts else "No additional context provided"
-        
+
+        context = (
+            "\n".join(context_parts)
+            if context_parts
+            else "No additional context provided"
+        )
+
         # Current date for reference
         today = datetime.now().strftime("%m/%d/%Y")
-        
+
         prompt = f"""You are helping estimate a completion date (ETA) for a task. Based on the task details below, suggest a realistic completion date.
 
 Today's date: {today}
@@ -154,13 +162,13 @@ Respond with ONLY a date in MM/DD/YYYY format, nothing else. Do not include any 
             temperature=0.3,
             max_output_tokens=50,
         )
-        
+
         response = model.generate_content(prompt, generation_config=config)
-        
+
         if response and hasattr(response, "text") and response.text:
             # Extract date from response
             eta_text = response.text.strip()
-            
+
             # Try to validate it's a date format
             # Simple validation: should contain / and numbers
             if "/" in eta_text and any(c.isdigit() for c in eta_text):
@@ -178,7 +186,7 @@ Respond with ONLY a date in MM/DD/YYYY format, nothing else. Do not include any 
                 return None
         else:
             return None
-            
+
     except Exception as e:
         if RICH_AVAILABLE and _console:
             _console.print(f"[dim]ETA calculation error: {str(e)[:100]}[/dim]")
@@ -197,11 +205,11 @@ def calculate_eta(
 ) -> str:
     """
     Calculate ETA for a task without a due date.
-    
+
     This function attempts to calculate an intelligent ETA using either:
     1. AI-based calculation using task context (if enabled and API key provided)
     2. Fallback calculation based on priority and status
-    
+
     Args:
         task_name: Name of the task
         priority: Task priority (Urgent, High, Normal, Low)
@@ -211,7 +219,7 @@ def calculate_eta(
         resolution: Resolution notes (optional)
         gemini_api_key: Google Gemini API key (optional)
         enable_ai: Whether to attempt AI-based calculation
-        
+
     Returns:
         Formatted ETA date string (MM/DD/YYYY)
     """
@@ -233,15 +241,15 @@ def calculate_eta(
             resolution,
             gemini_api_key,
         )
-        
+
         if ai_eta:
             return ai_eta
-        
+
         # If AI fails, fall through to fallback
         if RICH_AVAILABLE and _console:
             _console.print(
                 f"[dim]Using fallback ETA calculation for: {task_name}[/dim]"
             )
-    
+
     # Fallback calculation based on priority and status
     return _get_fallback_eta(priority, status)

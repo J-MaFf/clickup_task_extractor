@@ -53,7 +53,6 @@ A powerful, cross-platform Python application for extracting, processing, and ex
    - 1Password: Store in 1Password with reference `op://Home Server/ClickUp personal API token/credential`
 
 > 💡 The CLI auto-relaunches inside `.venv/` when present, so activating the virtualenv manually is optional as long as dependencies live there.
-
 > 📝 **Note**: PDF export now uses fpdf2, a pure-Python library with no external system dependencies. No GTK3 or Pango runtime libraries are required.
 
 ### Using the Executable
@@ -149,7 +148,7 @@ Each prompt provides clear options and defaults, making it easy to configure the
 ### Command Line Options
 
 | Option | Description | Default |
-|--------|-------------|---------|
+| --- | --- | --- |
 | `--api-key` | ClickUp API key | From environment or 1Password |
 | `--workspace` | Workspace name | `KMS` |
 | `--space` | Space name | `Kikkoman` |

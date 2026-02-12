@@ -9,7 +9,6 @@ Contains:
 - Progress bar functionality for wait times
 """
 
-import re
 import time
 from typing import Callable, Mapping, Sequence, TypeAlias
 
@@ -36,7 +35,7 @@ except ImportError:
     Status = None
 
 # Type aliases for clarity
-SummaryResult: TypeAlias = str
+SummaryResult: TypeAlias = str | None
 
 # Global state for tracking API availability
 _api_available = True
@@ -105,7 +104,7 @@ def _normalize_field_entries(
 
 def _try_ai_summary(
     task_name: str, field_block: str, gemini_api_key: str
-) -> tuple[str | None, bool]:
+) -> tuple[SummaryResult, bool]:
     """
     Attempt to generate AI summary using Gemini Flash-Latest.
 
@@ -118,6 +117,9 @@ def _try_ai_summary(
         Tuple of (summary_text or None, is_rate_limit_error)
     """
     try:
+        if configure is None or GenerativeModel is None or types is None:
+            return None, False
+
         configure(api_key=gemini_api_key)
         model = GenerativeModel(GEMINI_MODEL)
 
@@ -204,13 +206,15 @@ def _handle_rate_limit_wait(
             f"⏳ [yellow]Rate limit hit. Waiting {retry_delay}s before retry (attempt {attempt + 1}/{max_retries + 1})...[/yellow]"
         )
     else:
-        print(f"Rate limit hit. Waiting {retry_delay}s before retry (attempt {attempt + 1}/{max_retries + 1})...")
+        print(
+            f"Rate limit hit. Waiting {retry_delay}s before retry (attempt {attempt + 1}/{max_retries + 1})..."
+        )
 
     time.sleep(retry_delay)
 
     # Print completion message
     if RICH_AVAILABLE and _console:
-        _console.print(f"✅ [green]Wait complete - retrying API call...[/green]")
+        _console.print("✅ [green]Wait complete - retrying API call...[/green]")
     else:
         print("Wait complete - retrying API call...")
 
@@ -301,10 +305,10 @@ def get_ai_summary(
             # Non-retryable error
             if RICH_AVAILABLE and _console:
                 _console.print(
-                    f"⚠️ [yellow]Unable to generate summary. Using fallback content.[/yellow]"
+                    "⚠️ [yellow]Unable to generate summary. Using fallback content.[/yellow]"
                 )
             else:
-                print(f"Unable to generate summary. Using fallback content.")
+                print("Unable to generate summary. Using fallback content.")
             return field_block
 
     # Fallback (should not reach here, but safety net)

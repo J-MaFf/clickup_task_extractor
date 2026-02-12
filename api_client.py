@@ -21,16 +21,19 @@ logger = get_logger(__name__)
 
 class APIError(Exception):
     """Base exception for API-related errors."""
+
     pass
 
 
 class AuthenticationError(APIError):
     """Raised when API authentication fails."""
+
     pass
 
 
 class ShardRoutingError(APIError):
     """Raised when API encounters shard routing issues (SHARD_* error codes)."""
+
     pass
 
 
@@ -45,13 +48,18 @@ class APIClient(Protocol):
 class ClickUpAPIClient:
     """HTTP client for ClickUp API v2 with error handling, debugging, and retry logic."""
 
-    BASE_URL = 'https://api.clickup.com/api/v2'
+    BASE_URL = "https://api.clickup.com/api/v2"
 
     # Retry configuration
     MAX_RETRIES = 3
     INITIAL_BACKOFF = 1  # seconds
     MAX_BACKOFF = 30  # seconds
-    RETRYABLE_STATUS_CODES = {502, 503, 504, 429}  # Bad Gateway, Service Unavailable, Gateway Timeout, Rate Limit
+    RETRYABLE_STATUS_CODES = {
+        502,
+        503,
+        504,
+        429,
+    }  # Bad Gateway, Service Unavailable, Gateway Timeout, Rate Limit
 
     def __init__(self, api_key: str) -> None:
         """
@@ -60,10 +68,7 @@ class ClickUpAPIClient:
         Args:
             api_key: ClickUp API key for authentication
         """
-        self.headers = {
-            'Authorization': api_key,
-            'Content-Type': 'application/json'
-        }
+        self.headers = {"Authorization": api_key, "Content-Type": "application/json"}
 
     def _exponential_backoff_with_jitter(self, attempt: int) -> float:
         """
@@ -75,7 +80,7 @@ class ClickUpAPIClient:
         Returns:
             Time to wait in seconds
         """
-        backoff = min(self.INITIAL_BACKOFF * (2 ** attempt), self.MAX_BACKOFF)
+        backoff = min(self.INITIAL_BACKOFF * (2**attempt), self.MAX_BACKOFF)
         jitter = random.uniform(0, backoff * 0.1)  # Add up to 10% jitter
         return backoff + jitter
 
@@ -96,12 +101,17 @@ class ClickUpAPIClient:
         """
         url = f"{self.BASE_URL}{endpoint}"
 
+        resp = None
+
         for attempt in range(self.MAX_RETRIES):
             try:
                 resp = requests.get(url, headers=self.headers, timeout=30)
 
                 # Check if this is a retryable error
-                if resp.status_code in self.RETRYABLE_STATUS_CODES and attempt < self.MAX_RETRIES - 1:
+                if (
+                    resp.status_code in self.RETRYABLE_STATUS_CODES
+                    and attempt < self.MAX_RETRIES - 1
+                ):
                     wait_time = self._exponential_backoff_with_jitter(attempt)
                     logger.warning(
                         f"🔄 API returned {resp.status_code}. "
@@ -138,6 +148,9 @@ class ClickUpAPIClient:
             except requests.exceptions.RequestException as e:
                 raise APIError(f"Network error while accessing {url}: {e}") from e
 
+        if resp is None:
+            raise APIError(f"Request to {url} did not produce a response")
+
         # Handle authentication errors specifically
         if resp.status_code == 401:
             raise AuthenticationError(
@@ -146,14 +159,16 @@ class ClickUpAPIClient:
 
         # Add debugging information for other failed requests
         if not resp.ok:
-            error_msg = f"API Request failed:\n  URL: {url}\n  Status: {resp.status_code}"
+            error_msg = (
+                f"API Request failed:\n  URL: {url}\n  Status: {resp.status_code}"
+            )
             error_code = None
             error_detail = None
 
             try:
                 error_json = resp.json()
-                error_detail = error_json.get('err', resp.text)
-                error_code = error_json.get('ECODE')
+                error_detail = error_json.get("err", resp.text)
+                error_code = error_json.get("ECODE")
                 error_msg += f"\n  Error: {error_detail}"
                 if error_code:
                     error_msg += f"\n  Error Code: {error_code}"
@@ -163,7 +178,7 @@ class ClickUpAPIClient:
             print(error_msg)
 
             # Handle shard routing errors specifically (SHARD_* error codes)
-            if error_code and error_code.startswith('SHARD_'):
+            if error_code and error_code.startswith("SHARD_"):
                 raise ShardRoutingError(
                     f"HTTP {resp.status_code}: {resp.text}\n"
                     f"ClickUp API shard routing error ({error_code}). "

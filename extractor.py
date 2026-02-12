@@ -910,12 +910,13 @@ class ClickUpTaskExtractor:
 
         if source == AISource.GEMINI:
             if gemini_key:
-                return get_ai_summary(
+                ai_notes = get_ai_summary(
                     task_name,
                     ai_field_items,
                     gemini_key,
                     progress_pause_callback=self._pause_progress_callback,
                 )
+                return ai_notes or base_notes
             if clickup_value:
                 return clickup_value
             return base_notes
@@ -924,12 +925,13 @@ class ClickUpTaskExtractor:
         if clickup_value:
             return clickup_value
         if gemini_key:
-            return get_ai_summary(
+            ai_notes = get_ai_summary(
                 task_name,
                 ai_field_items,
                 gemini_key,
                 progress_pause_callback=self._pause_progress_callback,
             )
+            return ai_notes or base_notes
         return base_notes
 
     def interactive_include(self, tasks: TaskList) -> TaskList:
