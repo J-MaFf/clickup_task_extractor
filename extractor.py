@@ -1134,18 +1134,26 @@ h1{color:#2c5aa0;}
         if not tasks:
             return header + "*No tasks found.*\n"
 
-        # Create markdown table header
-        table = "| " + " | ".join(export_fields) + " |\n"
-        table += "|" + "|".join([" --- " for _ in export_fields]) + "|\n"
+        # Create markdown table header (compact pipe style to satisfy MD060 table-column style)
+        table = "|" + "|".join(export_fields) + "|\n"
+        table += "|" + "|".join(["---" for _ in export_fields]) + "|\n"
 
         # Add table rows
         for t in tasks:
             row_values = []
             for field in export_fields:
                 value = str(getattr(t, field) or "")
-                # Escape pipe characters and convert newlines to markdown line breaks (two trailing spaces)
-                value = value.replace("|", "\\|").replace("\n", "  \n")
+                # Escape pipe characters and normalize newlines to spaces for table integrity
+                value = value.replace("|", "\\|").replace("\n", " ")
+                # Escape email addresses as bare URLs (MD034)
+                import re
+
+                value = re.sub(
+                    r"([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})", r"`\1`", value
+                )
+                # Trim to avoid leading/trailing spaces triggering MD060 boundary complaints
+                value = value.strip()
                 row_values.append(value)
-            table += "| " + " | ".join(row_values) + " |\n"
+            table += "|" + "|".join(row_values) + "|\n"
 
         return header + table
