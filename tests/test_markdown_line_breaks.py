@@ -143,6 +143,27 @@ class TestMarkdownLineBreaks(unittest.TestCase):
         # Should not have unnecessary trailing spaces in the middle of content
         self.assertNotIn("Single  \n", markdown)
 
+    def test_markdown_trims_cell_boundaries(self):
+        """Ensure cells are stripped to avoid MD060 boundary issues in tight tables."""
+        task = TaskRecord(
+            Task="  Task with spaces  ",
+            Company="  Company  ",
+            Branch=" Branch ",
+            Priority=" Normal ",
+            Status=" Open ",
+            ETA=" 2/19/2026 ",
+            Notes=" Note with trailing space ",
+            Extra=" Extra ",
+        )
+
+        markdown = self.extractor.render_markdown([task])
+
+        # Each cell should be trimmed inside the tight pipe delimiters
+        self.assertIn(
+            "|Task with spaces|Company|Branch|Normal|Open|2/19/2026|Note with trailing space|Extra|",
+            markdown,
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
