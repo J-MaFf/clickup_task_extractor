@@ -1143,8 +1143,8 @@ h1{color:#2c5aa0;}
             row_values = []
             for field in export_fields:
                 value = str(getattr(t, field) or "")
-                # Escape pipe characters and convert newlines to markdown line breaks (two trailing spaces)
-                value = value.replace("|", "\\|").replace("\n", "  \n")
+                # Escape pipe characters and normalize newlines to spaces for table integrity
+                value = value.replace("|", "\\|").replace("\n", " ")
                 row_values.append(value)
             table += "| " + " | ".join(row_values) + " |\n"
 
