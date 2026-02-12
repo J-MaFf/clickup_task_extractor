@@ -35,10 +35,10 @@ class TaskPriority(Enum):
 
 # Priority sorting order (higher value = higher priority)
 PRIORITY_ORDER = {
-    "Urgent": 4,
-    "High": 3,
-    "Normal": 2,
-    "Low": 1,
+    "urgent": 4,
+    "high": 3,
+    "normal": 2,
+    "low": 1,
     "": 0,  # Handle empty/missing priority
 }
 
@@ -156,7 +156,7 @@ def sort_tasks_by_priority_and_name(tasks: list["TaskRecord"]) -> list["TaskReco
     return sorted(
         tasks,
         key=lambda task: (
-            -PRIORITY_ORDER.get(task.Priority, 0),  # Negative for descending order
+            -_priority_value(task.Priority),  # Negative for descending order
             task.Task.lower(),  # Case-insensitive alphabetical
         ),
     )
@@ -197,37 +197,57 @@ def sort_tasks_by_priority_and_eta(tasks: list["TaskRecord"]) -> list["TaskRecor
         if not eta_str or not eta_str.strip():
             return (1, datetime.max)  # Missing ETA sorts last
 
+        eta_normalized = eta_str.strip()
+
         try:
             # Try parsing with DISPLAY_FORMAT pattern (e.g., "2/15/2026 at 3:45 PM")
-            parsed_dt = datetime.strptime(eta_str, DISPLAY_FORMAT)
+            parsed_dt = datetime.strptime(eta_normalized, DISPLAY_FORMAT)
             return (0, parsed_dt)
         except ValueError:
             try:
-                # Try parsing with alternate format (e.g., "2026-02-15")
-                parsed_dt = datetime.strptime(eta_str, "%Y-%m-%d")
+                # Try parsing with month/day/year format without time (e.g., "2/15/2026")
+                parsed_dt = datetime.strptime(eta_normalized, "%m/%d/%Y")
                 return (0, parsed_dt)
             except ValueError:
                 try:
-                    # Try ISO format with time (may include timezone)
-                    parsed_dt = datetime.fromisoformat(eta_str)
-                    # Normalize to naive datetime in UTC to avoid comparison issues
-                    if parsed_dt.tzinfo is not None:
-                        parsed_dt = parsed_dt.astimezone(timezone.utc).replace(tzinfo=None)
+                    # Try parsing with alternate format (e.g., "2026-02-15")
+                    parsed_dt = datetime.strptime(eta_normalized, "%Y-%m-%d")
                     return (0, parsed_dt)
-                except (ValueError, AttributeError):
-                    # If all parsing fails, treat as missing
-                    return (1, datetime.max)
+                except ValueError:
+                    try:
+                        # Normalize trailing Z for fromisoformat compatibility
+                        if eta_normalized.endswith("Z"):
+                            eta_normalized = eta_normalized[:-1] + "+00:00"
+
+                        # Try ISO format with time (may include timezone)
+                        parsed_dt = datetime.fromisoformat(eta_normalized)
+                        # Normalize to naive datetime in UTC to avoid comparison issues
+                        if parsed_dt.tzinfo is not None:
+                            parsed_dt = parsed_dt.astimezone(timezone.utc).replace(
+                                tzinfo=None
+                            )
+                        return (0, parsed_dt)
+                    except (ValueError, AttributeError):
+                        # If all parsing fails, treat as missing
+                        return (1, datetime.max)
 
     return sorted(
         tasks,
         key=lambda task: (
-            -PRIORITY_ORDER.get(
-                task.Priority, 0
-            ),  # Negative for descending priority order
+            -_priority_value(task.Priority),  # Negative for descending priority order
             *parse_eta(task.ETA),  # Unpack (sort_priority, datetime) for ETA sorting
             task.Task.lower(),  # Tertiary sort by task name for deterministic ordering
         ),
     )
+
+
+def _priority_value(priority: str | None) -> int:
+    """Map priority label to numeric order (case-insensitive)."""
+
+    if not priority:
+        return 0
+
+    return PRIORITY_ORDER.get(priority.strip().lower(), 0)
 
 
 @dataclass

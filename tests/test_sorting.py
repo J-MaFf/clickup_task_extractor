@@ -134,6 +134,45 @@ class TestTaskSorting(unittest.TestCase):
 
         self.assertEqual(actual_names, expected_names)
 
+    def test_case_insensitive_priority_sorting(self):
+        """Test priority values are normalized case-insensitively."""
+
+        tasks = [
+            TaskRecord(
+                Task="Low Task", Company="A", Branch="", Priority="low", Status="Open"
+            ),
+            TaskRecord(
+                Task="Urgent Task",
+                Company="A",
+                Branch="",
+                Priority="URGENT",
+                Status="Open",
+            ),
+            TaskRecord(
+                Task="High Task", Company="A", Branch="", Priority="High", Status="Open"
+            ),
+            TaskRecord(
+                Task="Normal Task",
+                Company="A",
+                Branch="",
+                Priority="normal",
+                Status="Open",
+            ),
+        ]
+
+        sorted_tasks = sort_tasks_by_priority_and_name(tasks)
+
+        expected = [
+            ("Urgent Task", "URGENT"),
+            ("High Task", "High"),
+            ("Normal Task", "normal"),
+            ("Low Task", "low"),
+        ]
+
+        actual = [(t.Task, t.Priority) for t in sorted_tasks]
+
+        self.assertEqual(actual, expected)
+
     def test_empty_priority_sorting(self):
         """Test tasks with empty priority are sorted last."""
         tasks = [
@@ -498,6 +537,43 @@ class TestTaskSortingByETA(unittest.TestCase):
 
         self.assertEqual(actual, expected)
 
+    def test_month_day_year_date_only_eta(self):
+        """Test parsing month/day/year dates without time."""
+
+        tasks = [
+            TaskRecord(
+                Task="Task C",
+                Company="A",
+                Branch="",
+                Priority="High",
+                Status="Open",
+                ETA="2/20/2026",
+            ),
+            TaskRecord(
+                Task="Task A",
+                Company="A",
+                Branch="",
+                Priority="High",
+                Status="Open",
+                ETA="2/10/2026",
+            ),
+            TaskRecord(
+                Task="Task B",
+                Company="A",
+                Branch="",
+                Priority="High",
+                Status="Open",
+                ETA="2/15/2026",
+            ),
+        ]
+
+        sorted_tasks = sort_tasks_by_priority_and_eta(tasks)
+
+        expected = ["Task A", "Task B", "Task C"]
+        actual = [t.Task for t in sorted_tasks]
+
+        self.assertEqual(actual, expected)
+
     def test_iso_datetime_with_timezone(self):
         """Test parsing ISO datetime with timezone offsets."""
         tasks = [
@@ -728,6 +804,43 @@ class TestTaskSortingByETA(unittest.TestCase):
         sorted_tasks = sort_tasks_by_priority_and_eta(tasks)
 
         # Should be sorted by priority (Urgent → High → Low) despite same ETA
+        expected = ["Urgent Task", "High Task", "Low Task"]
+        actual = [t.Task for t in sorted_tasks]
+
+        self.assertEqual(actual, expected)
+
+    def test_priority_normalization_with_eta(self):
+        """Test priority ordering remains correct when casing varies and ETAs match."""
+
+        tasks = [
+            TaskRecord(
+                Task="Low Task",
+                Company="A",
+                Branch="",
+                Priority="low",
+                Status="Open",
+                ETA="2/15/2026 at 3:45 PM",
+            ),
+            TaskRecord(
+                Task="Urgent Task",
+                Company="A",
+                Branch="",
+                Priority="URGENT",
+                Status="Open",
+                ETA="2/15/2026 at 3:45 PM",
+            ),
+            TaskRecord(
+                Task="High Task",
+                Company="A",
+                Branch="",
+                Priority="High",
+                Status="Open",
+                ETA="2/15/2026 at 3:45 PM",
+            ),
+        ]
+
+        sorted_tasks = sort_tasks_by_priority_and_eta(tasks)
+
         expected = ["Urgent Task", "High Task", "Low Task"]
         actual = [t.Task for t in sorted_tasks]
 
