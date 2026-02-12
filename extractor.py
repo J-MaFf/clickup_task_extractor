@@ -14,12 +14,9 @@ import sys
 import csv
 import html
 from datetime import datetime, timezone
-from dataclasses import asdict
-from typing import TypeAlias
+from typing import Callable, TypeAlias
 from contextlib import contextmanager
 from pathlib import Path
-
-import sys
 
 # Rich imports for beautiful console output
 try:
@@ -33,8 +30,6 @@ try:
         TaskProgressColumn,
     )
     from rich.panel import Panel
-    from rich.text import Text
-    from rich import print as rprint
 except ImportError:
     print("Error: The 'rich' library is required but not installed.")
     print("Please install it using: pip install -r requirements.txt")
@@ -54,7 +49,6 @@ from config import (
 )
 from api_client import (
     APIClient,
-    ClickUpAPIClient,
     APIError,
     AuthenticationError,
     ShardRoutingError,
@@ -136,7 +130,7 @@ class ClickUpTaskExtractor:
         self.api = api_client
         self.load_gemini_key_func = load_gemini_key_func
         self._progress_context: Progress | None = None
-        self._pause_progress_callback: callable | None = None
+        self._pause_progress_callback: Callable[[], None] | None = None
         self._ai_field_notice_emitted = False
 
     def run(self) -> None:
@@ -1100,7 +1094,7 @@ class ClickUpTaskExtractor:
 
                 try:
                     # Import fpdf2 for pure-Python PDF generation
-                    from fpdf import FPDF
+                    from fpdf import FPDF  # type: ignore[import-untyped]
 
                     # Ensure output directory exists
                     pdf_path.parent.mkdir(parents=True, exist_ok=True)
@@ -1122,14 +1116,14 @@ class ClickUpTaskExtractor:
                 except ImportError:
                     progress.remove_task(pdf_task)
                     console.print(
-                        f"[red]❌ Error: fpdf2 not installed. Install with: pip install fpdf2[/red]"
+                        "[red]❌ Error: fpdf2 not installed. Install with: pip install fpdf2[/red]"
                     )
-                    console.print(f"[yellow]⚠️  PDF export skipped.[/yellow]")
+                    console.print("[yellow]⚠️  PDF export skipped.[/yellow]")
                 except Exception as e:
                     progress.remove_task(pdf_task)
                     console.print(f"[red]❌ Error generating PDF: {e}[/red]")
                     console.print(
-                        f"[yellow]⚠️  PDF export failed. Please check the HTML output format works correctly.[/yellow]"
+                        "[yellow]⚠️  PDF export failed. Please check the HTML output format works correctly.[/yellow]"
                     )
 
         # Final success message
