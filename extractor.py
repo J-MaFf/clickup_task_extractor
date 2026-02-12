@@ -49,6 +49,8 @@ from config import (
     format_datetime,
     OutputFormat,
     sort_tasks_by_priority_and_eta,
+    AISource,
+    CLICKUP_AI_SUMMARY_FIELD_ID,
 )
 from api_client import (
     APIClient,
@@ -135,6 +137,7 @@ class ClickUpTaskExtractor:
         self.load_gemini_key_func = load_gemini_key_func
         self._progress_context: Progress | None = None
         self._pause_progress_callback: callable | None = None
+        self._ai_field_notice_emitted = False
 
     def run(self) -> None:
         """
@@ -493,12 +496,9 @@ class ClickUpTaskExtractor:
                 # After task selection in interactive mode, handle AI summary generation
                 if all_tasks:
                     # Check if we need to prompt for AI summary or if it's already enabled
-                    should_generate_ai = False
+                    should_generate_ai = self.config.enable_ai_summary
 
-                    if self.config.enable_ai_summary and self.config.gemini_api_key:
-                        # AI summary was enabled via CLI flags - generate for selected tasks
-                        should_generate_ai = True
-                    elif not self.config.enable_ai_summary:
+                    if not self.config.enable_ai_summary:
                         # AI summary not enabled - ask the user
                         console.print(
                             Panel(
@@ -558,32 +558,27 @@ class ClickUpTaskExtractor:
                             console.print(
                                 f"  [dim]Processing task {i}/{len(all_tasks)}:[/dim] [bold]{task.Task}[/bold]"
                             )
-                            if hasattr(task, "_metadata") and task._metadata:
-                                metadata = task._metadata
-                                raw_fields = metadata.get("ai_fields")
-                                task_name = metadata.get("task_name", task.Task)
-                                if raw_fields:
-                                    if isinstance(raw_fields, dict):
-                                        ai_fields = list(raw_fields.items())
-                                    else:
-                                        ai_fields = list(raw_fields)
-                                    ai_notes = get_ai_summary(
-                                        task_name,
-                                        ai_fields,
-                                        self.config.gemini_api_key,
-                                        progress_pause_callback=self._pause_progress_callback,
-                                    )
-                                else:
-                                    fallback_fields = [
-                                        ("Notes", task.Notes or "(not provided)")
-                                    ]
-                                    ai_notes = get_ai_summary(
-                                        task_name,
-                                        fallback_fields,
-                                        self.config.gemini_api_key,
-                                        progress_pause_callback=self._pause_progress_callback,
-                                    )
-                                task.Notes = ai_notes
+                            metadata = getattr(task, "_metadata", {}) or {}
+                            task_name = metadata.get("task_name", task.Task)
+                            raw_fields = metadata.get("ai_fields") or []
+                            clickup_ai_summary = metadata.get("clickup_ai_summary")
+                            base_notes = metadata.get("base_notes", task.Notes)
+
+                            if isinstance(raw_fields, dict):
+                                ai_fields = list(raw_fields.items())
+                            else:
+                                ai_fields = list(raw_fields)
+
+                            if not ai_fields:
+                                ai_fields = [("Notes", task.Notes or "(not provided)")]
+
+                            task.Notes = self._apply_ai_source(
+                                task_name,
+                                ai_fields,
+                                base_notes,
+                                clickup_ai_summary,
+                                allow_gemini=True,
+                            )
                         console.print(
                             "✅ [bold green]AI summaries generated for all selected tasks.[/bold green]"
                         )
@@ -780,22 +775,16 @@ class ClickUpTaskExtractor:
             add_ai_field("RMA Number", extract_field_value(cf.get("RMA Number")))
             add_ai_field("Task Description", default_description)
 
-            # Generate AI summary or use original notes
-            # Skip AI generation during initial processing if interactive mode is enabled
-            # AI summaries will be generated after user selection in interactive mode
-            if (
-                self.config.enable_ai_summary
-                and self.config.gemini_api_key
-                and not self.config.interactive_selection
-            ):
-                notes = get_ai_summary(
-                    task_detail.get("name", ""),
-                    ai_field_items,
-                    self.config.gemini_api_key,
-                    progress_pause_callback=self._pause_progress_callback,
-                )
-            else:
-                notes = "\n".join(notes_parts)
+            base_notes = "\n".join(notes_parts)
+            clickup_ai_summary = self._get_clickup_ai_summary(task_custom_fields)
+
+            notes = self._apply_ai_source(
+                task_detail.get("name", ""),
+                ai_field_items,
+                base_notes,
+                clickup_ai_summary,
+                allow_gemini=not self.config.interactive_selection,
+            )
 
             # Extract images (like original)
             desc_img = extract_images(cf.get("Description", {}).get("value", ""))
@@ -833,6 +822,8 @@ class ClickUpTaskExtractor:
             task_record._metadata = {
                 "task_name": task_name,
                 "ai_fields": tuple(ai_field_items),
+                "base_notes": base_notes,
+                "clickup_ai_summary": clickup_ai_summary,
             }
 
             return task_record
@@ -843,6 +834,109 @@ class ClickUpTaskExtractor:
 
             traceback.print_exc()
             return None
+
+    def _get_clickup_ai_summary(
+        self, task_custom_fields: list[dict] | None
+    ) -> str | None:
+        """Extract ClickUp AI summary from custom fields using configured field ID/name."""
+
+        if not task_custom_fields or not self.config.enable_ai_summary:
+            return None
+
+        target_id = (
+            self.config.ai_clickup_field_id or CLICKUP_AI_SUMMARY_FIELD_ID
+        ).strip()
+        target_name = "Summary"
+
+        chosen_field: dict | None = None
+
+        for field in task_custom_fields:
+            field_id = str(field.get("id", ""))
+            if target_id and field_id == target_id:
+                chosen_field = field
+                break
+
+        if chosen_field is None:
+            for field in task_custom_fields:
+                field_name = str(field.get("name", "")).strip().lower()
+                if field_name == target_name.lower():
+                    chosen_field = field
+                    break
+
+        if chosen_field is None:
+            self._emit_ai_field_notice("ClickUp AI summary field not found on tasks.")
+            return None
+
+        value = chosen_field.get("value")
+        if value in (None, ""):
+            self._emit_ai_field_notice(
+                "ClickUp AI summary field is empty; ensure automation populates it."
+            )
+            return None
+
+        return str(value)
+
+    def _emit_ai_field_notice(self, message: str) -> None:
+        """Emit a single console notice about missing/empty ClickUp AI field."""
+
+        if self._ai_field_notice_emitted:
+            return
+        if self.config.ai_source == AISource.GEMINI:
+            return
+
+        self._ai_field_notice_emitted = True
+        console.print(
+            Panel(
+                f"[yellow]⚠️  {message}[/yellow]\n"
+                f"[dim]Field ID: {self.config.ai_clickup_field_id or CLICKUP_AI_SUMMARY_FIELD_ID}[/dim]",
+                title="ClickUp AI Summary",
+                style="yellow",
+            )
+        )
+
+    def _apply_ai_source(
+        self,
+        task_name: str,
+        ai_field_items: tuple[tuple[str, str], ...] | list[tuple[str, str]],
+        base_notes: str,
+        clickup_ai_summary: str | None,
+        allow_gemini: bool,
+    ) -> str:
+        """Resolve notes based on AI source selection and availability."""
+
+        if not self.config.enable_ai_summary:
+            return base_notes
+
+        source = self.config.ai_source
+        gemini_key = self.config.gemini_api_key if allow_gemini else None
+        clickup_value = (clickup_ai_summary or "").strip()
+
+        if source == AISource.CLICKUP:
+            return clickup_value or base_notes
+
+        if source == AISource.GEMINI:
+            if gemini_key:
+                return get_ai_summary(
+                    task_name,
+                    ai_field_items,
+                    gemini_key,
+                    progress_pause_callback=self._pause_progress_callback,
+                )
+            if clickup_value:
+                return clickup_value
+            return base_notes
+
+        # AISource.BOTH
+        if clickup_value:
+            return clickup_value
+        if gemini_key:
+            return get_ai_summary(
+                task_name,
+                ai_field_items,
+                gemini_key,
+                progress_pause_callback=self._pause_progress_callback,
+            )
+        return base_notes
 
     def interactive_include(self, tasks: TaskList) -> TaskList:
         """

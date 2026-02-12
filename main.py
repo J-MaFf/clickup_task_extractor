@@ -37,7 +37,9 @@ from config import (
     TIMESTAMP_FORMAT,
     DateFilter,
     OutputFormat,
+    AISource,
     format_datetime,
+    CLICKUP_AI_SUMMARY_FIELD_ID,
 )
 from extractor import ClickUpTaskExtractor
 from logger_config import setup_logging
@@ -132,6 +134,17 @@ def main():
         help="Enable AI summary (requires Gemini API key - will auto-load from 1Password if available)",
     )
     parser.add_argument(
+        "--ai-source",
+        type=str,
+        choices=["Both", "ClickUp", "Gemini"],
+        help="AI summary source: Both (prefer ClickUp AI field, fallback to Gemini), ClickUp only, or Gemini only (default: Both)",
+    )
+    parser.add_argument(
+        "--ai-clickup-field-id",
+        type=str,
+        help="Custom field ID for ClickUp AI summary (default: Summary field)",
+    )
+    parser.add_argument(
         "--gemini-api-key",
         type=str,
         help='Google Gemini API key for AI summary generation (or auto-load from 1Password: "op://Home Server/nftoo3gsi3wpx7z5bdmcsvr7p4/credential")',
@@ -223,8 +236,19 @@ def main():
             console.print("Please provide via --gemini-api-key.")
             return False
 
-    # If AI summary flag was explicitly used, load the key now
-    if args.ai_summary and not gemini_api_key:
+    def ai_source_includes_gemini(source_value: str | None) -> bool:
+        try:
+            src = AISource(source_value) if source_value else AISource.BOTH
+        except ValueError:
+            src = AISource.BOTH
+        return src in (AISource.BOTH, AISource.GEMINI)
+
+    # If AI summary flag was explicitly used, load the key now when Gemini is required
+    if (
+        args.ai_summary
+        and ai_source_includes_gemini(args.ai_source)
+        and not gemini_api_key
+    ):
         if not load_gemini_api_key():
             # If still no Gemini API key and AI summary is enabled, prompt for manual input
             gemini_api_key = console.input(
@@ -266,21 +290,41 @@ def main():
         )
         if get_yes_no_input("Would you like to enable AI summaries for tasks? (y/n): "):
             args.ai_summary = True
-            if not load_gemini_api_key():
-                gemini_api_key = console.input(
-                    "[bold cyan]🤖 Enter Gemini API Key (or press Enter to disable AI summary): [/bold cyan]"
+            if not args.ai_source:
+                console.print(
+                    "Select which AI to use. ClickUp AI summaries are free and default; choose Both or Gemini if you want Gemini involved."
                 )
-                if not gemini_api_key:
-                    console.print(
-                        "[yellow]⚠️  No Gemini API key provided. AI summary will be disabled.[/yellow]"
+                ai_source_choice = get_choice_input(
+                    "Choose AI source (1-3) [default: ClickUp AI]: ",
+                    [
+                        AISource.CLICKUP.value,
+                        AISource.BOTH.value,
+                        AISource.GEMINI.value,
+                    ],
+                    default_index=0,
+                )
+                args.ai_source = ai_source_choice
+
+            if ai_source_includes_gemini(args.ai_source):
+                if not load_gemini_api_key():
+                    gemini_api_key = console.input(
+                        "[bold cyan]🤖 Enter Gemini API Key (or press Enter to disable AI summary): [/bold cyan]"
                     )
-                    args.ai_summary = False
+                    if not gemini_api_key:
+                        console.print(
+                            "[yellow]⚠️  No Gemini API key provided. AI summary will be disabled.[/yellow]"
+                        )
+                        args.ai_summary = False
+                    else:
+                        console.print(
+                            "✅ [green]AI summary enabled with manual API key.[/green]"
+                        )
                 else:
                     console.print(
-                        "✅ [green]AI summary enabled with manual API key.[/green]"
+                        "✅ [green]AI summary enabled with Gemini fallback.[/green]"
                     )
             else:
-                console.print("✅ [green]AI summary enabled.[/green]")
+                console.print("✅ [green]AI summary enabled using ClickUp AI.[/green]")
         else:
             console.print("✅ [green]AI summary disabled.[/green]")
 
@@ -334,6 +378,15 @@ def main():
             }
             output_format = output_format_map.get(args.output_format, OutputFormat.HTML)
 
+    ai_source = AISource.BOTH
+    if args.ai_source:
+        try:
+            ai_source = AISource(args.ai_source)
+        except ValueError:
+            ai_source = AISource.BOTH
+
+    ai_clickup_field_id = args.ai_clickup_field_id or CLICKUP_AI_SUMMARY_FIELD_ID
+
     config = ClickUpConfig(
         api_key=api_key,
         workspace_name=args.workspace or "KMS",
@@ -344,6 +397,8 @@ def main():
         date_filter=date_filter,
         enable_ai_summary=args.ai_summary,
         gemini_api_key=gemini_api_key,
+        ai_source=ai_source,
+        ai_clickup_field_id=ai_clickup_field_id,
         output_format=output_format,
         interactive_selection=interactive_mode,
     )
@@ -368,6 +423,8 @@ def main():
     config_table.add_row(
         "AI Summary", "[OK] Yes" if config.enable_ai_summary else "[NO] No"
     )
+    if config.enable_ai_summary:
+        config_table.add_row("AI Source", config.ai_source.value)
 
     console.print(config_table)
 

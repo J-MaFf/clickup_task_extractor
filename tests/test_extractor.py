@@ -5,7 +5,14 @@ from pathlib import Path
 from typing import Any, cast
 from unittest.mock import patch
 
-from config import ClickUpConfig, OutputFormat, TaskRecord, sort_tasks_by_priority_and_name
+from config import (
+    ClickUpConfig,
+    OutputFormat,
+    TaskRecord,
+    sort_tasks_by_priority_and_name,
+    AISource,
+    CLICKUP_AI_SUMMARY_FIELD_ID,
+)
 from extractor import ClickUpTaskExtractor, get_export_fields
 
 
@@ -124,7 +131,9 @@ class ClickUpTaskExtractorProcessTaskTests(unittest.TestCase):
         self.assertIn(("Vendor", "(not provided)"), ai_fields)
         self.assertIn(("Serial Number(s)", "SN123, SN456"), ai_fields)
         self.assertEqual(ai_fields[0], ("Name", "Custom Task Name"))
-        self.assertEqual(ai_fields[-1], ("Task Description", "Default description body"))
+        self.assertEqual(
+            ai_fields[-1], ("Task Description", "Default description body")
+        )
 
     def test_process_task_with_ai_summary_enabled(self) -> None:
         self.config.enable_ai_summary = True
@@ -132,7 +141,9 @@ class ClickUpTaskExtractorProcessTaskTests(unittest.TestCase):
         task = {"id": self.task_id, "name": "Printer outage"}
         list_item = {"name": "Support"}
 
-        with patch("extractor.get_ai_summary", return_value="AI summary text") as mock_get_summary:
+        with patch(
+            "extractor.get_ai_summary", return_value="AI summary text"
+        ) as mock_get_summary:
             record = self.extractor._process_task(task, [], list_item)
 
         self.assertIsNotNone(record)
@@ -145,6 +156,48 @@ class ClickUpTaskExtractorProcessTaskTests(unittest.TestCase):
         self.assertEqual(api_key, "secret")
         self.assertEqual(len(fields_arg), 13)
         self.assertEqual(fields_arg[0], ("Name", "Custom Task Name"))
+
+    def test_process_task_prefers_clickup_ai_summary(self) -> None:
+        self.config.enable_ai_summary = True
+        self.config.ai_source = AISource.BOTH
+        self.config.gemini_api_key = "secret"
+        self.config.ai_clickup_field_id = CLICKUP_AI_SUMMARY_FIELD_ID
+
+        self.task_detail["custom_fields"].append(
+            {
+                "name": "Summary",
+                "id": CLICKUP_AI_SUMMARY_FIELD_ID,
+                "value": "ClickUp AI summary value",
+            }
+        )
+
+        task = {"id": self.task_id, "name": "Printer outage"}
+        list_item = {"name": "Support"}
+
+        with patch("extractor.get_ai_summary") as mock_get_summary:
+            record = self.extractor._process_task(task, [], list_item)
+
+        self.assertIsNotNone(record)
+        record = cast(TaskRecord, record)
+        self.assertEqual(record.Notes, "ClickUp AI summary value")
+        mock_get_summary.assert_not_called()
+
+    def test_clickup_source_missing_field_falls_back_to_base_notes(self) -> None:
+        self.config.enable_ai_summary = True
+        self.config.ai_source = AISource.CLICKUP
+        self.config.ai_clickup_field_id = "missing-field"
+        self.config.gemini_api_key = None
+
+        task = {"id": self.task_id, "name": "Printer outage"}
+        list_item = {"name": "Support"}
+
+        with patch("extractor.get_ai_summary") as mock_get_summary:
+            record = self.extractor._process_task(task, [], list_item)
+
+        self.assertIsNotNone(record)
+        record = cast(TaskRecord, record)
+        self.assertIn("Subject: Printer outage", record.Notes)
+        mock_get_summary.assert_not_called()
 
     def test_process_task_with_due_date(self) -> None:
         """Test that tasks with due dates use the due date as ETA."""
@@ -176,6 +229,7 @@ class ClickUpTaskExtractorProcessTaskTests(unittest.TestCase):
         self.assertNotEqual(record.ETA, "")
         # Should be a date in MM/DD/YYYY format
         from datetime import datetime
+
         try:
             datetime.strptime(record.ETA, "%m/%d/%Y")
         except ValueError:
@@ -211,7 +265,10 @@ class ExportBehaviourTests(unittest.TestCase):
             actual_path = Path("output") / "tasks.csv"
             self.assertTrue(actual_path.exists())
             content = actual_path.read_text(encoding="utf-8")
-            self.assertIn("Task,Company,Branch,Priority,Status,ETA,Notes,Extra", content.splitlines()[0])
+            self.assertIn(
+                "Task,Company,Branch,Priority,Status,ETA,Notes,Extra",
+                content.splitlines()[0],
+            )
             self.assertIn("Task A", content)
 
     def test_html_export_creates_file(self) -> None:
@@ -239,7 +296,9 @@ class FetchProcessTasksTests(unittest.TestCase):
         self.spinner_patcher = patch("extractor.SpinnerColumn", DummySpinnerColumn)
         self.text_patcher = patch("extractor.TextColumn", DummyTextColumn)
         self.bar_patcher = patch("extractor.BarColumn", DummyBarColumn)
-        self.task_prog_patcher = patch("extractor.TaskProgressColumn", DummyTaskProgressColumn)
+        self.task_prog_patcher = patch(
+            "extractor.TaskProgressColumn", DummyTaskProgressColumn
+        )
         self.console_patcher = patch("extractor.console")
 
         self.progress_patcher.start()
@@ -268,7 +327,9 @@ class FetchProcessTasksTests(unittest.TestCase):
             "/team": {"teams": [{"id": "team1", "name": workspace_name}]},
             "/team/team1/space": {"spaces": [{"id": "space1", "name": space_name}]},
             "/space/space1/folder": {"folders": []},
-            "/space/space1/list?archived=false": {"lists": [{"id": "list1", "name": "Support"}]},
+            "/space/space1/list?archived=false": {
+                "lists": [{"id": "list1", "name": "Support"}]
+            },
             "/list/list1/task?archived=false": {
                 "tasks": [
                     {
@@ -290,7 +351,9 @@ class FetchProcessTasksTests(unittest.TestCase):
                     {
                         "name": "Branch",
                         "value": "hq",
-                        "type_config": {"options": [{"id": "hq", "name": "Headquarters"}]},
+                        "type_config": {
+                            "options": [{"id": "hq", "name": "Headquarters"}]
+                        },
                         "options": [{"id": "hq", "name": "Headquarters"}],
                     },
                     {"name": "Subject", "value": "Printer outage"},
@@ -351,10 +414,18 @@ class TaskExportSortingTests(unittest.TestCase):
         """Test that export method sorts tasks before rendering."""
         # Create unsorted tasks
         tasks = [
-            TaskRecord(Task="Zebra", Company="A", Branch="", Priority="High", Status="Open"),
-            TaskRecord(Task="Alpha", Company="B", Branch="", Priority="Urgent", Status="Open"),
-            TaskRecord(Task="Beta", Company="C", Branch="", Priority="Low", Status="Open"),
-            TaskRecord(Task="Charlie", Company="D", Branch="", Priority="Normal", Status="Open"),
+            TaskRecord(
+                Task="Zebra", Company="A", Branch="", Priority="High", Status="Open"
+            ),
+            TaskRecord(
+                Task="Alpha", Company="B", Branch="", Priority="Urgent", Status="Open"
+            ),
+            TaskRecord(
+                Task="Beta", Company="C", Branch="", Priority="Low", Status="Open"
+            ),
+            TaskRecord(
+                Task="Charlie", Company="D", Branch="", Priority="Normal", Status="Open"
+            ),
         ]
 
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -367,9 +438,11 @@ class TaskExportSortingTests(unittest.TestCase):
             extractor = ClickUpTaskExtractor(config, api_client)
 
             # Mock progress to avoid Rich output during test
-            with patch("extractor.Progress", DummyProgress), \
-                 patch("extractor.SpinnerColumn", DummySpinnerColumn), \
-                 patch("extractor.TextColumn", DummyTextColumn):
+            with (
+                patch("extractor.Progress", DummyProgress),
+                patch("extractor.SpinnerColumn", DummySpinnerColumn),
+                patch("extractor.TextColumn", DummyTextColumn),
+            ):
                 extractor.export(tasks)
 
             # Read the CSV and verify order
@@ -377,6 +450,7 @@ class TaskExportSortingTests(unittest.TestCase):
             csv_path = Path("output") / "test.csv"
             with open(csv_path, "r") as f:
                 import csv
+
                 reader = csv.DictReader(f)
                 rows = list(reader)
 
