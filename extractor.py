@@ -1224,30 +1224,45 @@ h1{color:#2c5aa0;}
         if not tasks:
             return header + "*No tasks found.*\n"
 
-        # Create markdown table header (compact pipe style to satisfy MD060 table-column style)
-        table = "|" + "|".join(export_fields) + "|\n"
-        table += "|" + "|".join(["---" for _ in export_fields]) + "|\n"
-
-        # Add table rows
         import re
+        import textwrap
 
         def sanitize_markdown_value(raw: str) -> str:
-            """Normalize cell content to avoid markdownlint link and table issues."""
+            """Normalize cell content to avoid markdownlint line-length/link violations."""
 
-            value = raw.replace("|", "\\|").replace("\n", " ")
+            value = raw.replace("\n", " ")
+            value = re.sub(r"\s+", " ", value).strip()
             value = re.sub(
                 r"([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})", r"`\1`", value
             )
-            # Strip markdown links that have empty or fragment-only targets (MD042/MD051)
             value = re.sub(r"\[([^\]]+)\]\(\s*#?\s*\)", r"\1", value)
             value = re.sub(r"\[([^\]]+)\]\(\s*#[^)]+\)", r"\1", value)
-            return value.strip()
+            value = re.sub(r"(?<!<)(https?://\S+)(?!>)", r"<\1>", value)
+            return value
 
-        for t in tasks:
-            row_values = []
+        def format_bullet(label: str, value: str) -> str:
+            """Render a wrapped bullet line that stays markdownlint-safe."""
+
+            prefix = f"- **{label}:** "
+            safe_value = value if value else "(not provided)"
+            # Keep generated output concise and lint-safe even for very long task notes.
+            if len(safe_value) > 240:
+                safe_value = safe_value[:237].rstrip() + "..."
+            return textwrap.fill(
+                prefix + safe_value,
+                width=79,
+                initial_indent="",
+                subsequent_indent="  ",
+                break_long_words=True,
+                break_on_hyphens=False,
+            )
+
+        sections: list[str] = []
+        for index, task in enumerate(tasks, start=1):
+            sections.append(f"### Task {index}\n")
             for field in export_fields:
-                value = str(getattr(t, field) or "")
-                row_values.append(sanitize_markdown_value(value))
-            table += "|" + "|".join(row_values) + "|\n"
+                value = sanitize_markdown_value(str(getattr(task, field) or ""))
+                sections.append(format_bullet(field, value))
+            sections.append("")
 
-        return header + table
+        return header + "\n".join(sections).rstrip() + "\n"
