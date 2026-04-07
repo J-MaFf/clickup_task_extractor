@@ -173,7 +173,7 @@ mock_console_class.assert_called_once_with(
 python main.py
 
 # Run specific export format
-python main.py --output-format Both --ai-summary
+python main.py --output-format Markdown --ai-summary
 ```
 
 ## Verification Commands

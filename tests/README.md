@@ -132,10 +132,9 @@ Tests for extraction workflows in `extractor.py`:
   - Tests selective task selection
   - Tests rejecting all tasks
 
-- **TestMultiFormatExport** (4 tests)
-  - Tests CSV export
+- **TestMultiFormatExport** (3 tests)
+  - Tests Markdown export
   - Tests HTML export
-  - Tests Both format (CSV + HTML)
   - Tests empty task list handling
 
 - **TestErrorHandling** (3 tests)

@@ -32,9 +32,11 @@ def get_yes_no_input(prompt: str, default_on_interrupt: bool = False) -> bool:
     """
     try:
         response = input(prompt).strip().lower()
-        return response in ['y', 'yes']
+        return response in ["y", "yes"]
     except (EOFError, KeyboardInterrupt):
-        print(f"\n{'Defaulting to yes.' if default_on_interrupt else 'Defaulting to no.'}")
+        print(
+            f"\n{'Defaulting to yes.' if default_on_interrupt else 'Defaulting to no.'}"
+        )
         return default_on_interrupt
 
 
@@ -51,28 +53,28 @@ def get_choice_input(prompt: str, choices: list[str], default_index: int = 0) ->
         The selected choice string
 
     Example:
-        >>> formats = ['CSV', 'HTML', 'Markdown', 'PDF']
+        >>> formats = ['Markdown', 'HTML']
         >>> selected = get_choice_input('Select format:', formats, default_index=1)
     """
     if not choices:
         raise ValueError("Choices list cannot be empty")
-    
+
     if default_index < 0 or default_index >= len(choices):
         default_index = 0
-    
+
     try:
         # Display choices
         for i, choice in enumerate(choices, 1):
             default_marker = " (default)" if i - 1 == default_index else ""
             print(f"  {i}. {choice}{default_marker}")
-        
+
         # Get user input
         response = input(prompt).strip()
-        
+
         # Handle empty input (use default)
         if not response:
             return choices[default_index]
-        
+
         # Try to parse as number
         try:
             choice_num = int(response)
@@ -80,17 +82,17 @@ def get_choice_input(prompt: str, choices: list[str], default_index: int = 0) ->
                 return choices[choice_num - 1]
         except ValueError:
             pass
-        
+
         # Try to match by name (case-insensitive)
         response_lower = response.lower()
         for choice in choices:
             if choice.lower() == response_lower:
                 return choice
-        
+
         # Invalid input, use default
         print(f"Invalid choice. Using default: {choices[default_index]}")
         return choices[default_index]
-        
+
     except (EOFError, KeyboardInterrupt):
         print(f"\nDefaulting to: {choices[default_index]}")
         return choices[default_index]
@@ -113,11 +115,11 @@ def get_date_range(filter_name: DateFilter | str) -> DateRange:
         filter_str = filter_name
 
     today = datetime.now()
-    if filter_str == 'ThisWeek':
+    if filter_str == "ThisWeek":
         start = today - timedelta(days=today.weekday())
         end = start + timedelta(days=6)
         return start, end
-    elif filter_str == 'LastWeek':
+    elif filter_str == "LastWeek":
         start = today - timedelta(days=today.weekday() + 7)
         end = start + timedelta(days=6)
         return start, end
@@ -135,17 +137,17 @@ def extract_images(text: str) -> str:
         Semicolon-separated string of image references
     """
     if not text:
-        return ''
+        return ""
     patterns = [
-        r'!\[.*?\]\(.*?\)',
-        r'<img[^>]*>',
-        r'https?://[^\s]*\.(jpg|jpeg|png|gif|bmp|webp)',
-        r'attachment[s]?[:.]?[^\s]*\.(jpg|jpeg|png|gif|bmp|webp)'
+        r"!\[.*?\]\(.*?\)",
+        r"<img[^>]*>",
+        r"https?://[^\s]*\.(jpg|jpeg|png|gif|bmp|webp)",
+        r"attachment[s]?[:.]?[^\s]*\.(jpg|jpeg|png|gif|bmp|webp)",
     ]
     images = []
     for pat in patterns:
         images += re.findall(pat, text, re.IGNORECASE)
-    return '; '.join(images)
+    return "; ".join(images)
 
 
 class LocationMapper:
@@ -168,18 +170,18 @@ class LocationMapper:
             return str(val)
         # Always match by id (ClickUp stores dropdown value as option id)
         for opt in options:
-            if str(opt.get('id')) == str(val):
-                return opt.get('name', str(val))
+            if str(opt.get("id")) == str(val):
+                return opt.get("name", str(val))
         # Try to match by orderindex if value is int or str number
         try:
             val_int = int(val)
             for opt in options:
-                if 'orderindex' in opt and int(opt['orderindex']) == val_int:
-                    return opt.get('name', str(val))
+                if "orderindex" in opt and int(opt["orderindex"]) == val_int:
+                    return opt.get("name", str(val))
         except Exception:
             pass
         # Try to match by name if value is a string and matches an option name
         for opt in options:
-            if str(opt.get('name')) == str(val):
-                return opt.get('name', str(val))
+            if str(opt.get("name")) == str(val):
+                return opt.get("name", str(val))
         return str(val)

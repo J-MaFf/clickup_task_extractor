@@ -27,13 +27,18 @@ class MainEntrypointTests(unittest.TestCase):
         mock_console = MagicMock()
         mock_console.input.return_value = ""
 
-        with patch.object(main_module, "console", mock_console), \
-            patch.object(main_module, "get_yes_no_input", return_value=False) as mock_yes_no, \
-            patch.object(main_module, "get_choice_input", return_value="HTML") as mock_choice_input, \
-            patch.object(main_module, "load_secret_with_fallback") as mock_load_secret, \
-            patch.object(main_module, "ClickUpTaskExtractor") as mock_extractor_cls, \
-            patch.object(main_module, "ClickUpAPIClient") as mock_api_client_cls:
-
+        with (
+            patch.object(main_module, "console", mock_console),
+            patch.object(
+                main_module, "get_yes_no_input", return_value=False
+            ) as mock_yes_no,
+            patch.object(
+                main_module, "get_choice_input", return_value="HTML"
+            ) as mock_choice_input,
+            patch.object(main_module, "load_secret_with_fallback") as mock_load_secret,
+            patch.object(main_module, "ClickUpTaskExtractor") as mock_extractor_cls,
+            patch.object(main_module, "ClickUpAPIClient") as mock_api_client_cls,
+        ):
             extractor_instance = mock_extractor_cls.return_value
             extractor_instance.run = MagicMock()
 
@@ -46,7 +51,7 @@ class MainEntrypointTests(unittest.TestCase):
                 "--space",
                 "Ops",
                 "--output",
-                "output/custom.csv",
+                "output/custom.md",
                 "--include-completed",
                 "--date-filter",
                 "LastWeek",
@@ -54,7 +59,7 @@ class MainEntrypointTests(unittest.TestCase):
                 "--gemini-api-key",
                 "gem-key",
                 "--output-format",
-                "Both",
+                "HTML",
                 "--interactive",
             ]
 
@@ -72,12 +77,12 @@ class MainEntrypointTests(unittest.TestCase):
         self.assertEqual(config_arg.api_key, "test-key")
         self.assertEqual(config_arg.workspace_name, "Acme Workspace")
         self.assertEqual(config_arg.space_name, "Ops")
-        self.assertEqual(config_arg.output_path, "output/custom.csv")
+        self.assertEqual(config_arg.output_path, "output/custom.md")
         self.assertTrue(config_arg.include_completed)
         self.assertEqual(config_arg.date_filter, DateFilter.LAST_WEEK)
         self.assertTrue(config_arg.enable_ai_summary)
         self.assertEqual(config_arg.gemini_api_key, "gem-key")
-        self.assertEqual(config_arg.output_format, OutputFormat.BOTH)
+        self.assertEqual(config_arg.output_format, OutputFormat.HTML)
         self.assertTrue(config_arg.interactive_selection)
 
         load_func = mock_extractor_cls.call_args.args[2]
@@ -90,13 +95,18 @@ class MainEntrypointTests(unittest.TestCase):
         mock_console = MagicMock()
         mock_console.input.return_value = ""
 
-        with patch.object(main_module, "console", mock_console), \
-            patch.object(main_module, "get_yes_no_input", return_value=False) as mock_yes_no, \
-            patch.object(main_module, "get_choice_input", return_value="CSV") as mock_choice_input, \
-            patch.object(main_module, "load_secret_with_fallback") as mock_load_secret, \
-            patch.object(main_module, "ClickUpTaskExtractor") as mock_extractor_cls, \
-            patch.object(main_module, "ClickUpAPIClient") as mock_api_client_cls:
-
+        with (
+            patch.object(main_module, "console", mock_console),
+            patch.object(
+                main_module, "get_yes_no_input", return_value=False
+            ) as mock_yes_no,
+            patch.object(
+                main_module, "get_choice_input", return_value="Markdown"
+            ) as mock_choice_input,
+            patch.object(main_module, "load_secret_with_fallback") as mock_load_secret,
+            patch.object(main_module, "ClickUpTaskExtractor") as mock_extractor_cls,
+            patch.object(main_module, "ClickUpAPIClient") as mock_api_client_cls,
+        ):
             extractor_instance = mock_extractor_cls.return_value
             extractor_instance.run = MagicMock()
 
@@ -114,13 +124,13 @@ class MainEntrypointTests(unittest.TestCase):
         # Verify the choice input function was called for output format
         mock_choice_input.assert_called_once()
         call_args = mock_choice_input.call_args
-        self.assertIn('CSV', call_args.args[1])  # CSV should be in choices
-        self.assertIn('HTML', call_args.args[1])  # HTML should be in choices
-        self.assertIn('PDF', call_args.args[1])  # PDF should be in choices
+        self.assertIn("Markdown", call_args.args[1])
+        self.assertIn("HTML", call_args.args[1])
+        self.assertEqual(len(call_args.args[1]), 2)
 
         # Verify config was set with the selected format
         config_arg = mock_extractor_cls.call_args.args[0]
-        self.assertEqual(config_arg.output_format, OutputFormat.CSV)
+        self.assertEqual(config_arg.output_format, OutputFormat.MARKDOWN)
 
 
 if __name__ == "__main__":  # pragma: no cover - manual execution safeguard

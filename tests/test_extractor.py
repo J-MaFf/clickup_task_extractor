@@ -96,7 +96,7 @@ class ClickUpTaskExtractorProcessTaskTests(unittest.TestCase):
         }
         responses = {f"/task/{self.task_id}": self.task_detail}
         self.api_client = DummyAPIClient(responses)
-        self.config = ClickUpConfig(api_key="dummy", output_path="output/test.csv")
+        self.config = ClickUpConfig(api_key="dummy", output_path="output/test.md")
         self.extractor = ClickUpTaskExtractor(self.config, self.api_client)
 
     def test_get_export_fields_excludes_metadata(self) -> None:
@@ -249,31 +249,28 @@ class ExportBehaviourTests(unittest.TestCase):
             Extra="",
         )
 
-    def test_csv_export_creates_file(self) -> None:
+    def test_markdown_export_creates_file(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
-            output_path = Path(tmpdir) / "tasks.csv"
+            output_path = Path(tmpdir) / "tasks.md"
             config = ClickUpConfig(
                 api_key="dummy",
                 output_path=str(output_path),
-                output_format=OutputFormat.CSV,
+                output_format=OutputFormat.MARKDOWN,
             )
             extractor = ClickUpTaskExtractor(config, DummyAPIClient({}))
 
             extractor.export([self.task])
 
             # Note: Exporter always outputs to clickup_task_extractor/output/ directory
-            actual_path = Path("output") / "tasks.csv"
+            actual_path = Path("output") / "tasks.md"
             self.assertTrue(actual_path.exists())
             content = actual_path.read_text(encoding="utf-8")
-            self.assertIn(
-                "Task,Company,Branch,Priority,Status,ETA,Notes,Extra",
-                content.splitlines()[0],
-            )
+            self.assertIn("# Weekly Task List", content)
             self.assertIn("Task A", content)
 
     def test_html_export_creates_file(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
-            output_path = Path(tmpdir) / "report.csv"
+            output_path = Path(tmpdir) / "report.md"
             config = ClickUpConfig(
                 api_key="dummy",
                 output_path=str(output_path),
@@ -374,7 +371,7 @@ class FetchProcessTasksTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdir:
             config = ClickUpConfig(
                 api_key="dummy",
-                output_path=str(Path(tmpdir) / "out.csv"),
+                output_path=str(Path(tmpdir) / "out.md"),
                 team_id=team_id,
             )
             api_client = DummyAPIClient(responses)
@@ -400,15 +397,15 @@ class TaskExportSortingTests(unittest.TestCase):
 
     def setUp(self) -> None:
         """Clean up any existing test output files before each test."""
-        test_csv = Path("output") / "test.csv"
-        if test_csv.exists():
-            test_csv.unlink()
+        test_md = Path("output") / "test.md"
+        if test_md.exists():
+            test_md.unlink()
 
     def tearDown(self) -> None:
         """Clean up test output files after each test."""
-        test_csv = Path("output") / "test.csv"
-        if test_csv.exists():
-            test_csv.unlink()
+        test_md = Path("output") / "test.md"
+        if test_md.exists():
+            test_md.unlink()
 
     def test_export_sorts_tasks_by_priority_then_name(self):
         """Test that export method sorts tasks before rendering."""
@@ -431,8 +428,8 @@ class TaskExportSortingTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdir:
             config = ClickUpConfig(
                 api_key="test",
-                output_path=str(Path(tmpdir) / "test.csv"),
-                output_format=OutputFormat.CSV,
+                output_path=str(Path(tmpdir) / "test.md"),
+                output_format=OutputFormat.MARKDOWN,
             )
             api_client = DummyAPIClient({})
             extractor = ClickUpTaskExtractor(config, api_client)
@@ -445,25 +442,19 @@ class TaskExportSortingTests(unittest.TestCase):
             ):
                 extractor.export(tasks)
 
-            # Read the CSV and verify order
-            # Note: Exporter always outputs to clickup_task_extractor/output/ directory
-            csv_path = Path("output") / "test.csv"
-            with open(csv_path, "r") as f:
-                import csv
+            markdown_path = Path("output") / "test.md"
+            content = markdown_path.read_text(encoding="utf-8")
 
-                reader = csv.DictReader(f)
-                rows = list(reader)
+            alpha_idx = content.find("- **Task:** Alpha")
+            zebra_idx = content.find("- **Task:** Zebra")
+            charlie_idx = content.find("- **Task:** Charlie")
+            beta_idx = content.find("- **Task:** Beta")
 
-            # Verify tasks are sorted
-            self.assertEqual(len(rows), 4)
-            self.assertEqual(rows[0]["Task"], "Alpha")
-            self.assertEqual(rows[0]["Priority"], "Urgent")
-            self.assertEqual(rows[1]["Task"], "Zebra")
-            self.assertEqual(rows[1]["Priority"], "High")
-            self.assertEqual(rows[2]["Task"], "Charlie")
-            self.assertEqual(rows[2]["Priority"], "Normal")
-            self.assertEqual(rows[3]["Task"], "Beta")
-            self.assertEqual(rows[3]["Priority"], "Low")
+            self.assertTrue(alpha_idx != -1)
+            self.assertTrue(zebra_idx != -1)
+            self.assertTrue(charlie_idx != -1)
+            self.assertTrue(beta_idx != -1)
+            self.assertTrue(alpha_idx < zebra_idx < charlie_idx < beta_idx)
 
 
 if __name__ == "__main__":

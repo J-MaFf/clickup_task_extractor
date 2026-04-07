@@ -16,7 +16,7 @@ A powerful, cross-platform Python application for extracting, processing, and ex
   - Uses existing due dates when available
   - AI-powered ETA estimation based on task context
   - Fallback calculation using priority and status
-- 📊 **Multiple Export Formats**: CSV, HTML, Markdown, PDF, or combined formats with professional styling
+- 📊 **Multiple Export Formats**: Markdown (default) and HTML with professional styling
 - 🔍 **Interactive Mode**: Review and select tasks before export with user-friendly prompts
 - 📄 **Interactive Format Selection**: Choose output format at runtime via intuitive prompt
 - 📅 **Flexible Filtering**: Date range filtering (This Week, Last Week, All Open)
@@ -53,7 +53,6 @@ A powerful, cross-platform Python application for extracting, processing, and ex
    - 1Password: Store in 1Password with reference `op://Home Server/ClickUp personal API token/credential`
 
 > 💡 The CLI auto-relaunches inside `.venv/` when present, so activating the virtualenv manually is optional as long as dependencies live there.
-> 📝 **Note**: PDF export now uses fpdf2, a pure-Python library with no external system dependencies. No GTK3 or Pango runtime libraries are required.
 
 ### Using the Executable
 
@@ -91,13 +90,13 @@ The executable version does **not** include the 1Password SDK (due to bundling l
 **Example:**
 
 ```bash
-ClickUpTaskExtractor.exe --output-format Both --interactive
+ClickUpTaskExtractor.exe --output-format Markdown --interactive
 ```
 
 ### Basic Usage
 
 ```bash
-# Run with default settings (HTML output, KMS workspace, Kikkoman space)
+# Run with default settings (Markdown output, KMS workspace, Kikkoman space)
 python main.py
 
 # Interactive mode - review tasks before export
@@ -105,8 +104,7 @@ python main.py --interactive
 
 # Export specific formats
 python main.py --output-format Markdown
-python main.py --output-format PDF
-python main.py --output-format Both  # CSV + HTML
+python main.py --output-format HTML
 
 # Include completed tasks
 python main.py --include-completed
@@ -124,22 +122,21 @@ When certain options are not specified via CLI arguments, the application will p
 
 1. **Interactive Mode**: Asks if you want to review and select which tasks to export
 2. **AI Summary**: Asks if you want to enable AI-powered task summaries (requires Gemini API key)
-3. **Output Format**: Asks you to choose your preferred export format (CSV, HTML, Markdown, PDF, or Both)
+3. **Output Format**: Asks you to choose your preferred export format (Markdown or HTML)
 
 Each prompt provides clear options and defaults, making it easy to configure the application on-the-fly without remembering all CLI flags.
 
 ## 🔧 Development workflow
 
 - Install deps via `pip install -r requirements.txt`; optional features require `onepassword-sdk` and `google-generativeai` which are already listed.
-- Run the extractor with `python main.py` (defaults: workspace `KMS`, space `Kikkoman`, HTML export). Override with `--output-format`, `--interactive`, `--include-completed`, `--date-filter`, `--ai-summary`, and `--gemini-api-key`.
+- Run the extractor with `python main.py` (defaults: workspace `KMS`, space `Kikkoman`, Markdown export). Override with `--output-format`, `--interactive`, `--include-completed`, `--date-filter`, `--ai-summary`, and `--gemini-api-key`.
 - Authentication falls back in this order: CLI flag → env var `CLICKUP_API_KEY` → 1Password SDK (requires `OP_SERVICE_ACCOUNT_TOKEN`) → `op read` CLI → manual prompt.
 - Logging comes from `logger_config.setup_logging`; pass `use_rich=False` for plain output or a `log_file` path to persist logs.
 - All exports land under `output/`, named with `default_output_path()` which strips leading zeros for cross-platform friendly filenames.
 
 ### Extending the extractor
 
-- **Add export fields**: Extend `TaskRecord` in `config.py`, update `get_export_fields()`, and ensure HTML/Markdown renderers display the new column.
-- **New output formats**: Add an `OutputFormat` enum value, surface it in CLI choices, and implement the exporter inside `ClickUpTaskExtractor.export()` using `export_file()`.
+- **Add export fields**: Extend `TaskRecord` in `config.py`, update `get_export_fields()`, and ensure Markdown/HTML renderers display the new column.
 - **Custom filtering or mapping**: Hook into `_fetch_and_process_tasks()`, reuse `get_date_range()`, and lean on `LocationMapper.map_location()` for dropdowns.
 - **Authentication tweaks**: Keep changes inside `load_secret_with_fallback()` so logging and fallback order stay consistent.
 
@@ -153,7 +150,7 @@ Each prompt provides clear options and defaults, making it easy to configure the
 | `--workspace` | Workspace name | `KMS` |
 | `--space` | Space name | `Kikkoman` |
 | `--output` | Output file path | Auto-generated timestamp |
-| `--output-format` | Export format: `CSV`, `Markdown`, `PDF`, `Both` | Prompted if not specified, defaults to `HTML` |
+| `--output-format` | Export format: `Markdown` or `HTML` | Prompted if not specified, defaults to `Markdown` |
 | `--include-completed` | Include completed/archived tasks | `False` |
 | `--interactive` | Enable interactive task selection | Prompted |
 | `--date-filter` | Date filter: `AllOpen`, `ThisWeek`, `LastWeek` | `AllOpen` |
@@ -203,7 +200,7 @@ clickup_task_extractor/
 ├── mappers.py                 # Prompts, date filters, dropdown mapping, image extraction
 ├── logger_config.py           # Rich-enhanced logging setup and helper accessor
 ├── requirements.txt           # Dependency manifest
-└── output/                    # Generated reports (HTML/CSV/Markdown/PDF)
+└── output/                    # Generated reports (Markdown/HTML)
 ```
 
 ### Key Components
@@ -217,18 +214,19 @@ clickup_task_extractor/
 
 ## 📊 Output Examples
 
-### HTML Export (Default)
+### Markdown Export (Default)
+
+- Structured Markdown sections optimized for readability and lint compliance
+- Task details with status, priority, and custom fields
+- Cross-platform date formatting (e.g., "10/7/2025 at 3:45 PM" for October 7, 2025 - MM/DD/YYYY format)
+- Image extraction from task descriptions
+
+### HTML Export
 
 - Professional-looking HTML tables with CSS styling
 - Task summaries with status, priority, and custom fields
 - Cross-platform date formatting (e.g., "10/7/2025 at 3:45 PM" for October 7, 2025 - MM/DD/YYYY format)
 - Image extraction from task descriptions
-
-### CSV Export
-
-- Standard CSV format compatible with Excel and other tools
-- All task fields including custom field mappings
-- Configurable field exclusions
 
 ### Interactive Mode
 
@@ -323,19 +321,6 @@ _reset_daily_quota_state()
 - `google-generativeai>=0.8.0` - AI-powered task summaries
 
 ## 🐛 Troubleshooting
-
-### PDF Export Issues
-
-**WeasyPrint GTK3 Dependencies:**
-
-Current PDF export uses WeasyPrint which requires system-level GTK3 runtime libraries. This is being addressed in [issue #63](https://github.com/J-MaFf/clickup_task_extractor/issues/63) with a planned migration to fpdf2 (pure Python, no system dependencies).
-
-For now, if you encounter PDF generation errors:
-
-1. Verify dependencies are installed: `pip install -r requirements.txt`
-2. On Windows, the GTK3 runtime may be required (though support for this will be removed in the fpdf2 migration)
-
-**Future**: Once issue #63 is resolved, PDF export will work without any system dependencies.
 
 ### Common Issues
 

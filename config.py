@@ -58,11 +58,8 @@ CLICKUP_AI_SUMMARY_FIELD_ID = "d7426f47-27f0-494b-b3a2-7d254132ee1a"
 class OutputFormat(Enum):
     """Enumeration of supported output formats."""
 
-    CSV = "CSV"
     HTML = "HTML"
     MARKDOWN = "Markdown"
-    PDF = "PDF"
-    BOTH = "Both"  # Legacy support for CSV + HTML
 
 
 class DateFilter(Enum):
@@ -139,10 +136,10 @@ def default_output_path() -> str:
         Default file path for task export using current timestamp
 
     Example:
-        'output/WeeklyTaskList_1-8-2025_3-45PM.csv'
+        'output/WeeklyTaskList_1-8-2025_3-45PM.md'
     """
     return (
-        f"output/WeeklyTaskList_{format_datetime(datetime.now(), TIMESTAMP_FORMAT)}.csv"
+        f"output/WeeklyTaskList_{format_datetime(datetime.now(), TIMESTAMP_FORMAT)}.md"
     )
 
 
@@ -281,7 +278,7 @@ class ClickUpConfig:
         date_filter: Date range filter (DateFilter enum: ALL_OPEN, THIS_WEEK, LAST_WEEK)
         enable_ai_summary: Whether to generate AI summaries using Gemini
         gemini_api_key: Google Gemini API key for AI functionality
-        output_format: Export format (OutputFormat enum: CSV, HTML, BOTH)
+        output_format: Export format (OutputFormat enum: MARKDOWN, HTML)
         interactive_selection: Whether to enable interactive task selection
         exclude_statuses: List of task statuses to exclude from export
 
@@ -305,7 +302,7 @@ class ClickUpConfig:
     gemini_api_key: str | None = None
     ai_source: AISource = AISource.BOTH
     ai_clickup_field_id: str | None = CLICKUP_AI_SUMMARY_FIELD_ID
-    output_format: OutputFormat = OutputFormat.HTML
+    output_format: OutputFormat = OutputFormat.MARKDOWN
     interactive_selection: bool = False
     # Exclude tasks with these statuses
     exclude_statuses: list[str] = field(
@@ -319,7 +316,7 @@ class TaskRecord:
     Data structure for task export records.
 
     This dataclass represents a task record with all the fields that will be
-    exported to CSV/HTML format. It matches the structure expected by the
+    exported to Markdown/HTML format. It matches the structure expected by the
     export functionality and provides a clean interface for task data.
 
     Attributes:
@@ -346,7 +343,7 @@ class TaskRecord:
     Task: str
     Company: str
     Branch: str
-    Priority: str  # Keep as string for CSV export compatibility
+    Priority: str
     Status: str
     ETA: str = ""
     Notes: str = ""

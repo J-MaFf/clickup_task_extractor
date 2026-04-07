@@ -18,6 +18,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Output format support is now limited to `Markdown` and `HTML`
+  - Removed CSV/PDF/Both output options from CLI, interactive prompts, and exporter paths
+  - Default export format is now `Markdown`
+  - Default auto-generated export file extension is now `.md`
+
 - Markdown export now normalizes multi-line notes to single-line cells for better table compatibility
   - Multi-line content is preserved but displayed on single line
   - Example: "Line one\nLine two" → "Line one Line two"
