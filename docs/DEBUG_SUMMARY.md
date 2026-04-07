@@ -133,8 +133,8 @@ mock_console_class.assert_called_once_with(
 
 ### Unit Tests ✅
 
-- 175 tests passed
-- 10 tests deselected (pre-existing failures unrelated to these fixes)
+- Test suite now passes fully in current branch (see latest CI/local runs).
+- No deselected tests are required for the current runbook.
 - 0 new failures introduced
 
 ## Files Modified
@@ -197,5 +197,5 @@ All debugging is complete. The application now has:
 - ✅ Proper Rich console integration maintaining beautiful UI
 - ✅ Cross-platform Windows compatibility verified
 - ✅ Local .venv properly configured and detected
-- ✅ All tests passing (except pre-existing unrelated failures)
+- ✅ All tests passing in current validation runs
 - ✅ No breaking changes to existing functionality

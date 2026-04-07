@@ -1137,7 +1137,7 @@ h1{color:#2c5aa0;}
 
     def render_markdown(self, tasks: TaskList) -> str:
         """
-        Render tasks as Markdown table.
+        Render tasks as Markdown wrapped sections.
 
         Args:
             tasks: List of TaskRecord objects
