@@ -46,6 +46,22 @@ from logger_config import setup_logging
 from mappers import get_choice_input, get_yes_no_input
 from version import __description__, __version__
 
+
+def _configure_stdio_encoding() -> None:
+    """Use UTF-8 for stdio when supported to avoid Windows cp1252 encode failures."""
+
+    for stream in (sys.stdout, sys.stderr):
+        reconfigure = getattr(stream, "reconfigure", None)
+        if callable(reconfigure):
+            try:
+                reconfigure(encoding="utf-8", errors="replace")
+            except (ValueError, OSError):
+                # Some stream wrappers do not allow reconfiguration.
+                continue
+
+
+_configure_stdio_encoding()
+
 # Initialize Rich console with proper encoding for cross-platform compatibility
 # This ensures proper rendering on Windows, macOS, and Linux
 console = Console(force_terminal=None, legacy_windows=False)

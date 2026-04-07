@@ -41,11 +41,38 @@ SummaryResult: TypeAlias = str | None
 _api_available = True
 _last_error_message = ""
 
-# Google GenAI SDK imports
+# Google GenAI SDK imports (google.genai)
 try:
-    from google.generativeai.client import configure  # type: ignore
-    from google.generativeai.generative_models import GenerativeModel  # type: ignore
-    from google.generativeai import types  # type: ignore
+    from google import genai as _genai  # type: ignore
+    from google.genai import types as _genai_types  # type: ignore
+
+    _genai_client = None
+
+    def configure(api_key: str) -> None:
+        """Configure a shared Google GenAI client."""
+
+        global _genai_client
+        _genai_client = _genai.Client(api_key=api_key)
+
+    class GenerativeModel:
+        """Compatibility wrapper matching legacy GenerativeModel usage."""
+
+        def __init__(self, model_name: str) -> None:
+            self.model_name = model_name
+
+        def generate_content(self, prompt: str, generation_config=None):
+            if _genai_client is None:
+                raise RuntimeError("Google GenAI client is not configured")
+            return _genai_client.models.generate_content(
+                model=self.model_name,
+                contents=prompt,
+                config=generation_config,
+            )
+
+    class _TypesNamespace:
+        GenerationConfig = _genai_types.GenerateContentConfig
+
+    types = _TypesNamespace()
 except ImportError:
     configure = None
     GenerativeModel = None
@@ -262,11 +289,11 @@ def get_ai_summary(
     if GenerativeModel is None or configure is None or types is None:
         if RICH_AVAILABLE and _console:
             _console.print(
-                "[yellow]Warning: Google GenAI SDK not available - install with: pip install google-generativeai[/yellow]"
+                "[yellow]Warning: Google GenAI SDK not available - install with: pip install google-genai[/yellow]"
             )
         else:
             print(
-                "Warning: Google GenAI SDK not available - install with: pip install google-generativeai"
+                "Warning: Google GenAI SDK not available - install with: pip install google-genai"
             )
         return field_block
 

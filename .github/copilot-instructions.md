@@ -143,7 +143,7 @@ This project leverages MCP (Model Context Protocol) tools for enhanced developme
 
 ## Developer workflow
 
-- Requirements live in `requirements.txt`; core deps are `requests`, `rich`, with optional `onepassword-sdk` and `google-generativeai`—guard imports accordingly.
+- Requirements live in `requirements.txt`; core deps are `requests`, `rich`, with optional `onepassword-sdk` and `google-genai`—guard imports accordingly.
 - Typical runs: `python main.py` (Markdown export, workspace `KMS`, space `Kikkoman`), or override with `--output-format {Markdown|HTML}`, `--interactive`, `--include-completed`, `--date-filter {AllOpen|ThisWeek|LastWeek}`, and `--ai-summary/--gemini-api-key`.
 - The extractor writes to `output/` using the timestamped path from `config.default_output_path()`; exporters adjust the extension per selected format.
 - Version bumps: update `version.py` (`__version__` and related metadata), refresh the README version badge URL, and add a new entry in `docs/CHANGELOG.md` summarizing changes since the previous release.

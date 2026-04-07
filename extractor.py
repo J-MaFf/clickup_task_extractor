@@ -1183,9 +1183,6 @@ h1{color:#2c5aa0;}
 
             prefix = f"- **{label}:** "
             safe_value = value if value else "(not provided)"
-            # Keep generated output concise and lint-safe even for very long task notes.
-            if len(safe_value) > 240:
-                safe_value = safe_value[:237].rstrip() + "..."
             return textwrap.fill(
                 prefix + safe_value,
                 width=79,
