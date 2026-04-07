@@ -11,7 +11,7 @@ Contains:
 
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import Any, TypeAlias
+from typing import Any
 from enum import Enum
 
 
@@ -33,6 +33,14 @@ class TaskPriority(Enum):
     URGENT = "Urgent"
 
 
+class AISource(Enum):
+    """AI summary source selection."""
+
+    BOTH = "Both"
+    CLICKUP = "ClickUp"
+    GEMINI = "Gemini"
+
+
 # Priority sorting order (higher value = higher priority)
 PRIORITY_ORDER = {
     "urgent": 4,
@@ -41,6 +49,10 @@ PRIORITY_ORDER = {
     "low": 1,
     "": 0,  # Handle empty/missing priority
 }
+
+
+# Default ClickUp AI summary custom field identifier ("Summary")
+CLICKUP_AI_SUMMARY_FIELD_ID = "d7426f47-27f0-494b-b3a2-7d254132ee1a"
 
 
 class OutputFormat(Enum):
@@ -291,6 +303,8 @@ class ClickUpConfig:
     date_filter: DateFilter = DateFilter.ALL_OPEN
     enable_ai_summary: bool = False
     gemini_api_key: str | None = None
+    ai_source: AISource = AISource.BOTH
+    ai_clickup_field_id: str | None = CLICKUP_AI_SUMMARY_FIELD_ID
     output_format: OutputFormat = OutputFormat.HTML
     interactive_selection: bool = False
     # Exclude tasks with these statuses

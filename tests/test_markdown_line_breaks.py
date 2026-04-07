@@ -62,7 +62,7 @@ class TestMarkdownLineBreaks(unittest.TestCase):
         )
 
     def test_markdown_pipe_escaping(self):
-        """Test that pipe characters are properly escaped in markdown tables."""
+        """Test that pipe characters are preserved safely in markdown list output."""
         task = TaskRecord(
             Task="Test | Task",
             Company="Company | Name",
@@ -76,21 +76,21 @@ class TestMarkdownLineBreaks(unittest.TestCase):
 
         markdown = self.extractor.render_markdown([task])
 
-        # Verify pipes are escaped with backslash
+        # Verify values are present and bullets render as expected
         self.assertIn(
-            "Test \\| Task",
+            "- **Task:** Test | Task",
             markdown,
-            "Pipe characters should be escaped with backslash",
+            "Task line should render in bullet format",
         )
         self.assertIn(
-            "Company \\| Name",
+            "- **Company:** Company | Name",
             markdown,
-            "Pipe characters should be escaped with backslash",
+            "Company line should render in bullet format",
         )
         self.assertIn(
-            "Notes with \\| pipes",
+            "- **Notes:** Notes with | pipes",
             markdown,
-            "Pipe characters should be escaped with backslash",
+            "Notes line should render in bullet format",
         )
 
     def test_markdown_combined_escaping_and_line_breaks(self):
@@ -108,11 +108,11 @@ class TestMarkdownLineBreaks(unittest.TestCase):
 
         markdown = self.extractor.render_markdown([task])
 
-        # Verify both escaping and space normalization are applied
+        # Verify multiline text is normalized and rendered in bullet output
         self.assertIn(
-            "First \\| line Second \\| line Third line",
+            "- **Notes:** First | line Second | line Third line",
             markdown,
-            "Should escape pipes AND replace newlines with spaces",
+            "Should normalize newlines and preserve visible pipe characters",
         )
 
     def test_markdown_empty_task_list(self):
@@ -143,8 +143,8 @@ class TestMarkdownLineBreaks(unittest.TestCase):
         # Should not have unnecessary trailing spaces in the middle of content
         self.assertNotIn("Single  \n", markdown)
 
-    def test_markdown_trims_cell_boundaries(self):
-        """Ensure cells are stripped to avoid MD060 boundary issues in tight tables."""
+    def test_markdown_trims_field_values(self):
+        """Ensure field values are stripped in bullet output."""
         task = TaskRecord(
             Task="  Task with spaces  ",
             Company="  Company  ",
@@ -158,9 +158,37 @@ class TestMarkdownLineBreaks(unittest.TestCase):
 
         markdown = self.extractor.render_markdown([task])
 
-        # Each cell should be trimmed inside the tight pipe delimiters
+        # Each field value should be trimmed
         self.assertIn(
-            "|Task with spaces|Company|Branch|Normal|Open|2/19/2026|Note with trailing space|Extra|",
+            "- **Task:** Task with spaces",
+            markdown,
+        )
+        self.assertIn(
+            "- **Company:** Company",
+            markdown,
+        )
+        self.assertIn(
+            "- **Branch:** Branch",
+            markdown,
+        )
+        self.assertIn(
+            "- **Priority:** Normal",
+            markdown,
+        )
+        self.assertIn(
+            "- **Status:** Open",
+            markdown,
+        )
+        self.assertIn(
+            "- **ETA:** 2/19/2026",
+            markdown,
+        )
+        self.assertIn(
+            "- **Notes:** Note with trailing space",
+            markdown,
+        )
+        self.assertIn(
+            "- **Extra:** Extra",
             markdown,
         )
 

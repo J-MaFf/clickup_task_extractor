@@ -21,6 +21,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Markdown export now normalizes multi-line notes to single-line cells for better table compatibility
   - Multi-line content is preserved but displayed on single line
   - Example: "Line one\nLine two" → "Line one Line two"
+- Markdown export now renders per-task wrapped bullet sections instead of a wide table
+  - Keeps generated files compliant with strict markdownlint rules (notably MD013 and MD034)
+  - Converts bare URLs to bracketed form (`<https://...>`) and wraps long content lines
 
 ## 1.03 - 2026-01-29
 
