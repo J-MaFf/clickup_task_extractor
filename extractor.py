@@ -6,12 +6,11 @@ Main Business Logic Module for ClickUp Task Extractor
 Contains:
 - ClickUpTaskExtractor class for task processing and export
 - Interactive task selection functionality
-- CSV, HTML, Markdown, and PDF export with styling
+- HTML and Markdown export with styling
 """
 
 import os
 import sys
-import csv
 import html
 from datetime import datetime, timezone
 from typing import Callable, TypeAlias
@@ -82,9 +81,8 @@ def export_file(file_path: str, mode: str = "w", encoding: str = "utf-8"):
         File object for writing
 
     Example:
-        >>> with export_file('output.csv') as f:
-        ...     writer = csv.writer(f)
-        ...     writer.writerow(['header1', 'header2'])
+        >>> with export_file('output.md') as f:
+        ...     f.write('# Weekly Task List\n')
     """
     # Ensure output directory exists using pathlib
     output_path = Path(file_path)
@@ -103,7 +101,7 @@ def get_export_fields() -> list[str]:
     Get the list of fields to export, excluding internal fields like _metadata.
 
     Returns:
-        List of field names for export (CSV headers and HTML columns)
+        List of field names for export (HTML columns and Markdown fields)
     """
     return [
         field
@@ -1015,7 +1013,7 @@ class ClickUpTaskExtractor:
 
     def export(self, tasks: TaskList) -> None:
         """
-        Export tasks to CSV, HTML, Markdown, and/or PDF format.
+        Export tasks to HTML or Markdown format.
 
         Args:
             tasks: List of TaskRecord objects to export
@@ -1040,29 +1038,8 @@ class ClickUpTaskExtractor:
             TextColumn("[progress.description]{task.description}"),
             console=console,
         ) as progress:
-            # CSV Export
-            if self.config.output_format in (OutputFormat.CSV, OutputFormat.BOTH):
-                csv_task = progress.add_task("💾 Generating CSV...", total=None)
-                export_fields = get_export_fields()
-                csv_path = output_dir / f"{base_filename}.csv"
-
-                with export_file(str(csv_path), "w") as f:
-                    writer = csv.DictWriter(f, fieldnames=export_fields)
-                    writer.writeheader()
-                    for t in tasks:
-                        # Get only the export fields, excluding internal fields like _metadata
-                        row_data = {
-                            field: getattr(t, field, "") for field in export_fields
-                        }
-                        writer.writerow(row_data)
-
-                progress.remove_task(csv_task)
-                console.print(
-                    f"✅ [green]CSV exported:[/green] [bold]{csv_path}[/bold]"
-                )
-
             # HTML Export
-            if self.config.output_format in (OutputFormat.HTML, OutputFormat.BOTH):
+            if self.config.output_format == OutputFormat.HTML:
                 html_task = progress.add_task("🌐 Generating HTML...", total=None)
                 html_path = output_dir / f"{base_filename}.html"
 
@@ -1089,45 +1066,6 @@ class ClickUpTaskExtractor:
                     f"✅ [green]Markdown exported:[/green] [bold]{markdown_path}[/bold]"
                 )
 
-            # PDF Export
-            if self.config.output_format == OutputFormat.PDF:
-                pdf_task = progress.add_task("📄 Generating PDF...", total=None)
-                pdf_path = output_dir / f"{base_filename}.pdf"
-
-                try:
-                    # Import fpdf2 for pure-Python PDF generation
-                    from fpdf import FPDF  # type: ignore[import-untyped]
-
-                    # Ensure output directory exists
-                    pdf_path.parent.mkdir(parents=True, exist_ok=True)
-
-                    # Generate HTML first, then convert to PDF using fpdf2
-                    html_content = self.render_html(tasks)
-
-                    # Create PDF and parse HTML
-                    pdf = FPDF()
-                    pdf.add_page()
-                    pdf.write_html(html_content)
-                    pdf.output(str(pdf_path))
-
-                    progress.remove_task(pdf_task)
-                    console.print(
-                        f"✅ [green]PDF exported:[/green] [bold]{pdf_path}[/bold]"
-                    )
-
-                except ImportError:
-                    progress.remove_task(pdf_task)
-                    console.print(
-                        "[red]❌ Error: fpdf2 not installed. Install with: pip install fpdf2[/red]"
-                    )
-                    console.print("[yellow]⚠️  PDF export skipped.[/yellow]")
-                except Exception as e:
-                    progress.remove_task(pdf_task)
-                    console.print(f"[red]❌ Error generating PDF: {e}[/red]")
-                    console.print(
-                        "[yellow]⚠️  PDF export failed. Please check the HTML output format works correctly.[/yellow]"
-                    )
-
         # Final success message
         console.print(
             Panel(
@@ -1149,7 +1087,7 @@ class ClickUpTaskExtractor:
         Returns:
             Complete HTML document as string
         """
-        # Simple HTML table, styled with proper structure for fpdf2 compatibility
+        # Simple HTML table with readable styling
         head = """<!DOCTYPE html>
 <html>
 <head>
@@ -1199,7 +1137,7 @@ h1{color:#2c5aa0;}
 
     def render_markdown(self, tasks: TaskList) -> str:
         """
-        Render tasks as Markdown table.
+        Render tasks as Markdown wrapped sections.
 
         Args:
             tasks: List of TaskRecord objects

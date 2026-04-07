@@ -1,8 +1,10 @@
 # Markdown Export Line Break Regression Fix - Implementation Summary
 
+> **Note**: This summary captures the earlier table-based markdown fix. Current markdown output uses wrapped task sections instead of tables.
+
 ## Problem Statement
 
-The fix for issue #86 (MD060 table separator inconsistency) was successful, but introduced a new regression in markdown exports with multi-line task notes. The line break handling strategy using two trailing spaces (`  \n`) was breaking table structure and causing multiple markdown lint violations:
+The fix for issue #86 (MD060 table separator inconsistency) was successful, but introduced a new regression in markdown exports with multi-line task notes. The line break handling strategy using two trailing spaces (`\n`) was breaking table structure and causing multiple markdown lint violations:
 
 - **MD055/table-pipe-style**: Missing leading/trailing pipes on continuation lines
 - **MD056/table-column-count**: Table column count mismatch
@@ -11,11 +13,13 @@ The fix for issue #86 (MD060 table separator inconsistency) was successful, but 
 ## Root Cause
 
 The original line break handling in `extractor.py`:
+
 ```python
 value = value.replace("|", "\\|").replace("\n", "  \n")
 ```
 
-When task notes contained newlines, the `  \n` replacement created continuation lines that exited the table cell context:
+When task notes contained newlines, the `\n` replacement created continuation lines that exited the table cell context:
+
 ```markdown
 | Task | ... | Description with
 line break here
@@ -45,11 +49,13 @@ value = value.replace("|", "\\|").replace("\n", " ")
 ## Files Changed
 
 ### 1. `extractor.py` (Line 1147)
+
 - **Change**: `.replace("\n", "  \n")` → `.replace("\n", " ")`
 - **Impact**: All markdown exports with multi-line notes now maintain valid table structure
 - **Backwards Compatibility**: No external APIs changed; only output format affected
 
 ### 2. `tests/test_markdown_line_breaks.py`
+
 - **Updated**: `test_markdown_line_breaks_use_trailing_spaces()` → `test_markdown_line_breaks_use_spaces()`
 - **Updated**: Test assertions to verify newlines are replaced with spaces
 - **Updated**: `test_markdown_combined_escaping_and_line_breaks()` to check space-based strategy
@@ -60,10 +66,11 @@ value = value.replace("|", "\\|").replace("\n", " ")
 ✅ **Syntax Verification**: Changes compile without errors
 ✅ **Logic Verification**: Line break handling correctly normalizes newlines to spaces
 ✅ **Test Coverage**:
-  - Multi-line notes are properly normalized
-  - Pipe escaping works with space-normalized newlines
-  - Table structure integrity is maintained
-  - No trailing spaces are introduced
+
+- Multi-line notes are properly normalized
+- Pipe escaping works with space-normalized newlines
+- Table structure integrity is maintained
+- No trailing spaces are introduced
 
 ## Expected Improvements
 
@@ -76,7 +83,8 @@ After this fix, markdown exports will:
 
 ## Example Output Comparison
 
-### Before Fix (MD055, MD056, MD009 violations):
+### Before Fix (MD055, MD056, MD009 violations)
+
 ```markdown
 | Task | Notes |
 | --- | --- |
@@ -84,7 +92,8 @@ After this fix, markdown exports will:
 line break here |
 ```
 
-### After Fix (No violations):
+### After Fix (No violations)
+
 ```markdown
 | Task | Notes |
 | --- | --- |
@@ -107,6 +116,7 @@ line break here |
 ## Configuration Notes
 
 No configuration changes required. This fix applies automatically to all markdown exports. The solution is:
+
 - Non-breaking (only affects output format, not API)
 - Transparent to users
 - Compatible with existing workflows
@@ -114,6 +124,7 @@ No configuration changes required. This fix applies automatically to all markdow
 ## Rollback Plan
 
 If needed, the change can be reverted by changing line 1147 in `extractor.py` back to:
+
 ```python
 value = value.replace("|", "\\|").replace("\n", "  \n")
 ```

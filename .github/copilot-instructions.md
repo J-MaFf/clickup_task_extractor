@@ -35,7 +35,7 @@ This project leverages MCP (Model Context Protocol) tools for enhanced developme
   - `mappers.py`: Custom field mapping (`LocationMapper`), date filtering.
   - `logger_config.py`: Logging setup for debug and file output.
 - **Output:**
-  - CSV/HTML/Markdown/PDF export (see `output/`), styled with Rich, cross-platform date formatting.
+  - Markdown/HTML export (see `output/`), styled with Rich, cross-platform date formatting.
 - **Changelog:**
   - Centralized at `docs/CHANGELOG.md` following Keep a Changelog format with Semantic Versioning.
 
@@ -56,8 +56,8 @@ This project leverages MCP (Model Context Protocol) tools for enhanced developme
 
 ## Developer Workflows
 
-- **Run app:** `python main.py` (default HTML export, interactive if `--interactive`)
-- **Export both formats:** `python main.py --output-format Both`
+- **Run app:** `python main.py` (default Markdown export, interactive if `--interactive`)
+- **Export HTML format:** `python main.py --output-format HTML`
 - **Add export field:** Update `TaskRecord` in `config.py`, then update export logic in `extractor.py`.
 - **Add output format:** Extend `export` in `extractor.py`, add enum/config.
 - **Add custom field mapping:** Extend `LocationMapper` in `mappers.py`.
@@ -100,7 +100,8 @@ This project leverages MCP (Model Context Protocol) tools for enhanced developme
 - Interactive: `python main.py --interactive`
 - Custom workspace: `python main.py --workspace "MyWorkspace" --space "MySpace"`
 - HTML export: `python main.py --output-format HTML`
-- Using executable: `ClickUpTaskExtractor.exe --output-format Both`
+- Markdown export: `python main.py --output-format Markdown`
+- Using executable: `ClickUpTaskExtractor.exe --output-format Markdown`
 
 ## Building Executables
 
@@ -108,7 +109,6 @@ This project leverages MCP (Model Context Protocol) tools for enhanced developme
 - Build with: `.venv\Scripts\pyinstaller.exe ClickUpTaskExtractor.spec --distpath .\dist\v<version>`
 - Requires PyInstaller 6.16+: `pip install pyinstaller`
 - Output: Single-file executable with all dependencies bundled (~42 MB)
-- **PDF Export**: Currently uses WeasyPrint. Migration to fpdf2 (pure Python, no system dependencies) planned in issue #63 to eliminate GTK3 runtime requirements
 
 # Copilot Instructions: ClickUp Task Extractor
 
@@ -122,7 +122,7 @@ This project leverages MCP (Model Context Protocol) tools for enhanced developme
 
 ## UX and utilities
 
-- File output always uses the `export_file` context manager (creates parent dirs, handles IO errors) and `get_export_fields()` to define CSV/HTML column order.
+- File output always uses the `export_file` context manager (creates parent dirs, handles IO errors) and `get_export_fields()` to define Markdown/HTML field order.
 - `mappers.py` supplies Rich-friendly prompts (`get_yes_no_input`), date filters via `get_date_range`, screenshot scraping with `extract_images`, and `LocationMapper.map_location` (id → orderindex → name fallback) for custom fields.
 - `ai_summary.get_ai_summary` talks to Google Gemini with **tiered model strategy**: tries `gemini-2.5-flash-lite` (500 RPD) first, switches to `gemini-2.5-pro` (1,500 RPD separate bucket) on rate limit, then `gemini-2.0-flash` as emergency fallback. Detects rate limits via HTTP 429, RESOURCE_EXHAUSTED errors, 'quota'/'rate limit' keywords (case-insensitive), and per-minute/per-day quota patterns. **Daily quota detection** via `_is_daily_quota_error()` sets global `_daily_quota_exhausted` flag to skip AI summaries for rest of day. Uses exponential backoff for same-model retries (2 retries) before switching tiers. Falls back to raw task content when all tiers exhausted or daily quota exceeded.
 - **Daily quota exhaustion handling**: When `_daily_quota_exhausted` is set, `get_ai_summary` returns None immediately without API calls. Detected by `_is_daily_quota_error()` which matches "requests per day", "RPD", and "quota" + "day"/"daily" patterns. Reset with `_reset_daily_quota_state()` for testing.
@@ -133,7 +133,7 @@ This project leverages MCP (Model Context Protocol) tools for enhanced developme
 - **Primary sort: Priority** (descending): Urgent (4) → High (3) → Normal (2) → Low (1) → missing/empty (0)
 - **Secondary sort: ETA** (ascending): Within same priority, tasks are sorted by ETA chronologically (earliest first)
 - **Missing ETAs**: Tasks with no ETA or invalid ETA format appear last within their priority tier
-- **Sorting function**: Use `sort_tasks_by_priority_and_eta()` in `config.py` for all export operations (CSV, HTML, Markdown, PDF)
+- **Sorting function**: Use `sort_tasks_by_priority_and_eta()` in `config.py` for all export operations (Markdown, HTML)
 - **ETA parsing**: Supports multiple formats via `parse_eta()` helper:
   - Display format: `"2/15/2026 at 3:45 PM"` (parsed via `"%m/%d/%Y at %I:%M %p"`)
   - ISO date format: `"2026-02-15"` (parsed via `"%Y-%m-%d"`)
@@ -143,8 +143,8 @@ This project leverages MCP (Model Context Protocol) tools for enhanced developme
 
 ## Developer workflow
 
-- Requirements live in `requirements.txt`; core deps are `requests`, `rich`, `weasyprint` (PDF), with optional `onepassword-sdk` and `google-generativeai`—guard imports accordingly.
-- Typical runs: `python main.py` (HTML export, workspace `KMS`, space `Kikkoman`), or override with `--output-format {CSV|HTML|Markdown|PDF|Both}`, `--interactive`, `--include-completed`, `--date-filter {AllOpen|ThisWeek|LastWeek}`, and `--ai-summary/--gemini-api-key`.
+- Requirements live in `requirements.txt`; core deps are `requests`, `rich`, with optional `onepassword-sdk` and `google-generativeai`—guard imports accordingly.
+- Typical runs: `python main.py` (Markdown export, workspace `KMS`, space `Kikkoman`), or override with `--output-format {Markdown|HTML}`, `--interactive`, `--include-completed`, `--date-filter {AllOpen|ThisWeek|LastWeek}`, and `--ai-summary/--gemini-api-key`.
 - The extractor writes to `output/` using the timestamped path from `config.default_output_path()`; exporters adjust the extension per selected format.
 - Version bumps: update `version.py` (`__version__` and related metadata), refresh the README version badge URL, and add a new entry in `docs/CHANGELOG.md` summarizing changes since the previous release.
 - Release builds: Create a `release/v<version>` branch, commit version changes, tag with `v<version>`, and build exe with PyInstaller spec pointing to `dist/v<version>`.
@@ -157,8 +157,7 @@ This project leverages MCP (Model Context Protocol) tools for enhanced developme
 - **Image extraction**: Extracts images from task descriptions using regex patterns for various formats.
 - **AI model tiers**: Modify `MODEL_TIERS` in `ai_summary.py` to adjust fallback strategy. Each tier should have separate quotas for rate-limit resilience. Test with `--ai-summary --gemini-api-key <key>` to verify tier switching on rate limits.
 - **Task sorting**: Use `sort_tasks_by_priority_and_eta()` for all exports. To adjust sort order: modify `PRIORITY_ORDER` in `config.py` to change priority weights, or extend `parse_eta()` in `sort_tasks_by_priority_and_eta()` to support additional ETA formats. To change sort criteria (e.g., add third-order tiebreaker), update the sort key tuple in the function and add corresponding unit tests in `TestTaskSortingByETA` class.
-- **PDF export migration**: Issue #63 tracks migration from WeasyPrint to fpdf2. When implemented, update `extractor.py` PDF export method and replace `weasyprint>=60.0` with `fpdf2>=2.7.0` in `requirements.txt`. Remove GTK3-specific error handling and simplify imports.
-- **Markdown export normalization**: Markdown export normalizes multi-line task notes to single-line cells for table compatibility. Line breaks are replaced with single spaces (` `) instead of trailing spaces (`  \n`) to eliminate MD055, MD056, MD009 lint violations. This fix is implemented in `extractor.py` markdown rendering logic.
+- **Markdown export with wrapped sections**: Markdown export renders tasks using wrapped sections. Multi-line task notes are normalized to single-line content with line breaks replaced by single spaces (` `) to keep output readable and lint-safe. This implementation is in `extractor.py` markdown rendering logic.
 - **Cleanup and commit helpers**: Utility scripts (`cleanup_now.py`, `commit_and_cleanup.py`, `do_commit.py`, `final_commit.py`, `make_commit.py`) plus shell scripts (`commit.sh`, `commit.ps1`) are available for git housekeeping and automated commit workflows. These are optional developer tools—use them for cleanup or batch operations, or skip them for manual git workflows.
 
 ## Code Style & Formatting Standards

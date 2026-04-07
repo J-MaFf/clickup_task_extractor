@@ -1,5 +1,7 @@
 # 🎯 Implementation Complete: Markdown Export Line Break Regression Fix
 
+> **Note**: This document describes the prior table-oriented markdown export fix. Current markdown output uses wrapped task sections instead of tables.
+
 ## Status: ✅ COMPLETED
 
 ### What Was Implemented
@@ -11,16 +13,19 @@ Fixed the markdown export regression caused by the line break handling strategy 
 ### 1. **Core Fix: `extractor.py` (Line 1147)**
 
 **Before:**
+
 ```python
 value = value.replace("|", "\\|").replace("\n", "  \n")
 ```
 
 **After:**
+
 ```python
 value = value.replace("|", "\\|").replace("\n", " ")
 ```
 
 **Impact:**
+
 - ✅ Eliminates trailing spaces (MD009)
 - ✅ Maintains table structure (MD055, MD056)
 - ✅ All rows have consistent column count
@@ -29,6 +34,7 @@ value = value.replace("|", "\\|").replace("\n", " ")
 ### 2. **Test Updates: `tests/test_markdown_line_breaks.py`**
 
 **Updated Methods:**
+
 - `test_markdown_line_breaks_use_spaces()` (was: `test_markdown_line_breaks_use_trailing_spaces()`)
   - Now verifies newlines are replaced with spaces
   - Checks that no trailing spaces are introduced
@@ -37,6 +43,7 @@ value = value.replace("|", "\\|").replace("\n", " ")
   - Updated to verify space-based line break strategy
 
 **Test Coverage:**
+
 - ✅ Multi-line notes are properly normalized
 - ✅ Pipe escaping works with space-normalized newlines
 - ✅ Table structure integrity is maintained
@@ -47,6 +54,7 @@ value = value.replace("|", "\\|").replace("\n", " ")
 ### 3. **Documentation**
 
 Created new documentation files:
+
 - `MARKDOWN_LINEBREAK_FIX_SUMMARY.md` - Detailed technical explanation
 - `CHANGELOG.md` - Version history with this fix documented
 - `verify_markdown_fix.py` - Standalone verification script
@@ -56,12 +64,14 @@ Created new documentation files:
 ### Strategy: Option 1 - Keep Text on Single Line (Simplest)
 
 **Advantages:**
+
 - 🎯 **Simplest**: Single character change, easy to understand
 - 🔧 **Reliable**: Works with all markdown viewers and linters
 - ✅ **Valid**: Maintains proper markdown table structure
 - 🚀 **Performant**: No complex processing required
 
 **Trade-offs:**
+
 - Multi-line readability in raw markdown is reduced
 - Content displayed on single line in table cell
 - (But content is still readable and fully preserved)
@@ -100,7 +110,8 @@ After deployment, markdown exports will:
 
 ## Example Output
 
-### Before Fix (Violates MD055, MD056, MD009):
+### Before Fix (Violates MD055, MD056, MD009)
+
 ```markdown
 | Task | Company | Notes |
 | --- | --- | --- |
@@ -108,7 +119,8 @@ After deployment, markdown exports will:
 line break |
 ```
 
-### After Fix (Valid markdown):
+### After Fix (Valid markdown)
+
 ```markdown
 | Task | Company | Notes |
 | --- | --- | --- |
@@ -140,6 +152,7 @@ line break |
 ## ✨ Summary
 
 **The markdown export regression has been fixed with a simple, elegant solution that:**
+
 - Maintains backward compatibility
 - Passes all tests
 - Eliminates markdown lint violations

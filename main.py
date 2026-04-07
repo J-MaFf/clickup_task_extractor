@@ -100,7 +100,7 @@ def main():
     )
 
     parser = argparse.ArgumentParser(
-        description=f"ClickUp Task Extractor v{__version__} - {__description__}\n\nExtract and export ClickUp tasks to HTML (default), Markdown, PDF, or CSV. Default workspace: KMS.\nAPI key 1Password reference: op://Home Server/ClickUp personal API token/credential\nRequires OP_SERVICE_ACCOUNT_TOKEN for 1Password SDK authentication.",
+        description=f"ClickUp Task Extractor v{__version__} - {__description__}\n\nExtract and export ClickUp tasks to Markdown (default) or HTML. Default workspace: KMS.\nAPI key 1Password reference: op://Home Server/ClickUp personal API token/credential\nRequires OP_SERVICE_ACCOUNT_TOKEN for 1Password SDK authentication.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument(
@@ -152,8 +152,8 @@ def main():
     parser.add_argument(
         "--output-format",
         type=str,
-        choices=["CSV", "HTML", "Markdown", "PDF", "Both"],
-        help="Output format: CSV, HTML, Markdown, PDF, or Both (CSV+HTML) - default: HTML",
+        choices=["HTML", "Markdown"],
+        help="Output format: HTML or Markdown - default: Markdown",
     )
     parser.add_argument(
         "--interactive", action="store_true", help="Enable interactive task selection"
@@ -332,19 +332,14 @@ def main():
     if not args.output_format:
         console.print("\n[bold blue]📄 Output Format[/bold blue]")
         console.print("Choose the format for your exported task list:")
-        console.print(
-            "  • [cyan]CSV[/cyan] - Comma-separated values, great for spreadsheets"
-        )
         console.print("  • [cyan]HTML[/cyan] - Rich formatted web page with styling")
         console.print("  • [cyan]Markdown[/cyan] - Lightweight markup format")
-        console.print("  • [cyan]PDF[/cyan] - Portable document format")
-        console.print("  • [cyan]Both[/cyan] - Export as both CSV and HTML")
 
-        format_choices = ["CSV", "HTML", "Markdown", "PDF", "Both"]
+        format_choices = ["Markdown", "HTML"]
         selected_format = get_choice_input(
-            "Enter your choice (1-5) or format name [default: HTML]: ",
+            "Enter your choice (1-2) or format name [default: Markdown]: ",
             format_choices,
-            default_index=1,
+            default_index=0,
         )
         args.output_format = selected_format
         console.print(f"✅ [green]Output format set to: {selected_format}[/green]")
@@ -363,20 +358,19 @@ def main():
             }
             date_filter = date_filter_map.get(args.date_filter, DateFilter.ALL_OPEN)
 
-    output_format = OutputFormat.HTML
+    output_format = OutputFormat.MARKDOWN
     if args.output_format:
         try:
             output_format = OutputFormat(args.output_format)
         except ValueError:
             # Fallback for old string values
             output_format_map = {
-                "CSV": OutputFormat.CSV,
                 "HTML": OutputFormat.HTML,
                 "Markdown": OutputFormat.MARKDOWN,
-                "PDF": OutputFormat.PDF,
-                "Both": OutputFormat.BOTH,
             }
-            output_format = output_format_map.get(args.output_format, OutputFormat.HTML)
+            output_format = output_format_map.get(
+                args.output_format, OutputFormat.MARKDOWN
+            )
 
     ai_source = AISource.BOTH
     if args.ai_source:
@@ -392,7 +386,7 @@ def main():
         workspace_name=args.workspace or "KMS",
         space_name=args.space or "Kikkoman",
         output_path=args.output
-        or f"output/WeeklyTaskList_{format_datetime(datetime.now(), TIMESTAMP_FORMAT)}.csv",
+        or f"output/WeeklyTaskList_{format_datetime(datetime.now(), TIMESTAMP_FORMAT)}.md",
         include_completed=args.include_completed,
         date_filter=date_filter,
         enable_ai_summary=args.ai_summary,

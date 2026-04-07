@@ -2,7 +2,12 @@ import os
 import unittest
 from datetime import datetime
 
-from config import DISPLAY_FORMAT, TIMESTAMP_FORMAT, default_output_path, format_datetime
+from config import (
+    DISPLAY_FORMAT,
+    TIMESTAMP_FORMAT,
+    default_output_path,
+    format_datetime,
+)
 
 
 class FormatDateTimeTests(unittest.TestCase):
@@ -31,7 +36,7 @@ class DefaultOutputPathTests(unittest.TestCase):
     def test_default_output_path_uses_output_directory(self) -> None:
         path = default_output_path()
         self.assertTrue(path.startswith("output/WeeklyTaskList_"))
-        self.assertTrue(path.endswith(".csv"))
+        self.assertTrue(path.endswith(".md"))
         # Ensure directory component is "output" regardless of OS separators
         directory = os.path.dirname(path)
         self.assertIn("output", directory)

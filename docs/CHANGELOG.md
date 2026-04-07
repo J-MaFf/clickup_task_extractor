@@ -7,30 +7,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- No unreleased changes yet.
+
+## [1.04] - 2026-04-07
+
 ### Fixed
 
-- **Markdown Export Regression**: Fixed line break handling in markdown table exports
+- **Markdown Export Regression**: Fixed line break handling in markdown exports
   - Changed newline replacement strategy from two trailing spaces (`\n`) to single spaces (` `)
   - Eliminates markdown lint violations (MD055, MD056, MD009)
-  - Maintains valid table structure with consistent column counts
+  - Maintains consistent, lint-safe markdown rendering
   - Resolves issue regression from #86 fix
   - See `MARKDOWN_LINEBREAK_FIX_SUMMARY.md` for detailed explanation
 
 ### Changed
 
-- Markdown export now normalizes multi-line notes to single-line cells for better table compatibility
-  - Multi-line content is preserved but displayed on single line
+- Removed PDF output support from active export options (project now supports Markdown and HTML outputs only)
+- Markdown export now renders per-task wrapped bullet sections instead of tables
+  - Multi-line content is preserved but normalized to single lines for safer rendering
   - Example: "Line one\nLine two" → "Line one Line two"
-- Markdown export now renders per-task wrapped bullet sections instead of a wide table
   - Keeps generated files compliant with strict markdownlint rules (notably MD013 and MD034)
   - Converts bare URLs to bracketed form (`<https://...>`) and wraps long content lines
 
-## 1.03 - 2026-01-29
+## [1.03] - 2026-01-29
 
 ### ✨ Features & Enhancements
 
 - **ETA Automation**: Added AI-powered ETA calculation with robust fallback logic when due dates are missing, including priority-based defaults and status multipliers.
-- **PDF Export Without System Dependencies**: Replaced WeasyPrint with fpdf2 for PDF export to eliminate GTK3 requirements.
 - **Git Cleanup Helper**: Added improved git cleanup helper with better stale-branch detection and documented findings.
 - **Daily Quota (RPD) Exhaustion Detection**: Added intelligent detection for Google Gemini API daily quota (Requests Per Day) limits. When all model tiers exhaust their daily quota, AI summaries are automatically disabled for the rest of the day, preventing continued retry attempts on already-exhausted quotas. Includes `_is_daily_quota_error()` detection function and global `_daily_quota_exhausted` state tracking.
 - **Tiered Model Switching for AI Summaries**: Implemented intelligent model fallback strategy for Google Gemini API rate limiting. When the primary model (`gemini-2.5-flash-lite`, 500 RPD) hits rate limits, the system automatically switches to `gemini-2.5-pro` (1,500 RPD separate quota bucket) for continued operation with higher quality summaries. Falls back to `gemini-2.0-flash` as emergency alternative. Each tier has its own quota bucket, allowing up to 3x additional capacity when primary is exhausted.

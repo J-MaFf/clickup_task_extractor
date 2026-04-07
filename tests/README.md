@@ -4,7 +4,7 @@ This directory contains comprehensive unit tests for the ClickUp Task Extractor 
 
 ## Overview
 
-The test suite includes 159 tests covering all major modules and functionality:
+The test suite provides comprehensive coverage across all major modules and functionality:
 
 - **test_mappers.py** (49 tests) - Utility helpers and data mapping
 - **test_logger_config.py** (23 tests) - Logging configuration
@@ -22,31 +22,31 @@ The test suite includes 159 tests covering all major modules and functionality:
 ### Run All Tests
 
 ```bash
-python -m unittest discover -s tests -p "test_*.py"
+.\.venv\Scripts\python.exe -m pytest tests/ -v
 ```
 
 ### Run Specific Test Module
 
 ```bash
-python -m unittest tests.test_mappers
+.\.venv\Scripts\python.exe -m pytest tests/test_mappers.py -v
 ```
 
 ### Run Specific Test Class
 
 ```bash
-python -m unittest tests.test_api_client.TestClickUpAPIClient
+.\.venv\Scripts\python.exe -m pytest tests/test_api_client.py::TestClickUpAPIClient -v
 ```
 
 ### Run Specific Test Method
 
 ```bash
-python -m unittest tests.test_mappers.TestGetDateRange.test_this_week_with_enum
+.\.venv\Scripts\python.exe -m pytest tests/test_mappers.py::TestGetDateRange::test_this_week_with_enum -v
 ```
 
 ### Run with Verbose Output
 
 ```bash
-python -m unittest discover -s tests -p "test_*.py" -v
+.\.venv\Scripts\python.exe -m pytest tests/ -v
 ```
 
 ## Test Coverage
@@ -132,10 +132,9 @@ Tests for extraction workflows in `extractor.py`:
   - Tests selective task selection
   - Tests rejecting all tasks
 
-- **TestMultiFormatExport** (4 tests)
-  - Tests CSV export
+- **TestMultiFormatExport** (3 tests)
+  - Tests Markdown export
   - Tests HTML export
-  - Tests Both format (CSV + HTML)
   - Tests empty task list handling
 
 - **TestErrorHandling** (3 tests)
