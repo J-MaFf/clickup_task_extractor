@@ -292,14 +292,14 @@ def main():
             args.ai_summary = True
             if not args.ai_source:
                 console.print(
-                    "Select which AI to use. ClickUp AI summaries are free and default; choose Both or Gemini if you want Gemini involved."
+                    "Select which AI to use. Gemini is option 1 (default), ClickUp AI is option 2, and Both is option 3."
                 )
                 ai_source_choice = get_choice_input(
-                    "Choose AI source (1-3) [default: ClickUp AI]: ",
+                    "Choose AI source (1-3) [default: Gemini]: ",
                     [
+                        AISource.GEMINI.value,
                         AISource.CLICKUP.value,
                         AISource.BOTH.value,
-                        AISource.GEMINI.value,
                     ],
                     default_index=0,
                 )
