@@ -58,6 +58,7 @@ CLICKUP_AI_SUMMARY_FIELD_ID = "d7426f47-27f0-494b-b3a2-7d254132ee1a"
 class OutputFormat(Enum):
     """Enumeration of supported output formats."""
 
+    CSV = "CSV"
     HTML = "HTML"
     MARKDOWN = "Markdown"
 
@@ -272,6 +273,7 @@ class ClickUpConfig:
         api_key: ClickUp API key for authentication
         workspace_name: Name of the ClickUp workspace to extract from
         space_name: Name of the ClickUp space within the workspace
+        list_name: Optional ClickUp list name to extract from within the selected space
         team_id: ClickUp Team/Workspace ID (optional, used if /team endpoint fails)
         output_path: File path for exported task data
         include_completed: Whether to include completed/archived tasks
@@ -294,6 +296,7 @@ class ClickUpConfig:
     api_key: str
     workspace_name: str = "KMS"
     space_name: str = "Kikkoman"
+    list_name: str | None = None
     team_id: str = "9014534294"
     output_path: str = field(default_factory=default_output_path)
     include_completed: bool = False

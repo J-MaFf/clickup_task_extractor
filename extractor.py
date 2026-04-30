@@ -12,6 +12,7 @@ Contains:
 import os
 import sys
 import html
+import csv
 from datetime import datetime, timezone
 from typing import Callable, TypeAlias
 from contextlib import contextmanager
@@ -314,6 +315,25 @@ class ClickUpTaskExtractor:
                     "lists"
                 ]
                 lists.extend(space_lists)
+
+                if self.config.list_name:
+                    target_list_name = self.config.list_name.strip().lower()
+                    lists = [
+                        list_item
+                        for list_item in lists
+                        if list_item.get("name", "").strip().lower() == target_list_name
+                    ]
+
+                    if not lists:
+                        console.print(
+                            Panel(
+                                f"[red]List '{self.config.list_name}' not found in space '{self.config.space_name}'.[/red]\n"
+                                f"[dim]Check the list name and try again.[/dim]",
+                                title="❌ List Error",
+                                style="red",
+                            )
+                        )
+                        return
                 progress.remove_task(task)
 
                 console.print(
@@ -341,7 +361,7 @@ class ClickUpTaskExtractor:
                         progress.remove_task(current_list_task)
 
                     tasks_resp = self.api.get(
-                        f"/list/{list_item['id']}/task?archived={str(self.config.include_completed).lower()}"
+                        f"/list/{list_item['id']}/task?archived={str(self.config.include_completed).lower()}&subtasks=true"
                     )
                     tasks = tasks_resp.get("tasks", [])
 
@@ -1038,6 +1058,28 @@ class ClickUpTaskExtractor:
             TextColumn("[progress.description]{task.description}"),
             console=console,
         ) as progress:
+            # CSV Export
+            if self.config.output_format == OutputFormat.CSV:
+                csv_task = progress.add_task("📊 Generating CSV...", total=None)
+                csv_path = output_dir / f"{base_filename}.csv"
+                export_fields = get_export_fields()
+
+                with export_file(str(csv_path), "w") as f:
+                    writer = csv.DictWriter(f, fieldnames=export_fields)
+                    writer.writeheader()
+                    for task in tasks:
+                        writer.writerow(
+                            {
+                                field: getattr(task, field) or ""
+                                for field in export_fields
+                            }
+                        )
+
+                progress.remove_task(csv_task)
+                console.print(
+                    f"✅ [green]CSV exported:[/green] [bold]{csv_path}[/bold]"
+                )
+
             # HTML Export
             if self.config.output_format == OutputFormat.HTML:
                 html_task = progress.add_task("🌐 Generating HTML...", total=None)
@@ -1183,9 +1225,6 @@ h1{color:#2c5aa0;}
 
             prefix = f"- **{label}:** "
             safe_value = value if value else "(not provided)"
-            # Keep generated output concise and lint-safe even for very long task notes.
-            if len(safe_value) > 240:
-                safe_value = safe_value[:237].rstrip() + "..."
             return textwrap.fill(
                 prefix + safe_value,
                 width=79,

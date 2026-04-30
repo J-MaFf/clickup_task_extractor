@@ -128,7 +128,7 @@ Each prompt provides clear options and defaults, making it easy to configure the
 
 ## 🔧 Development workflow
 
-- Install deps via `pip install -r requirements.txt`; optional features require `onepassword-sdk` and `google-generativeai` which are already listed.
+- Install deps via `pip install -r requirements.txt`; optional features require `onepassword-sdk` and `google-genai` which are already listed.
 - Run the extractor with `python main.py` (defaults: workspace `KMS`, space `Kikkoman`, Markdown export). Override with `--output-format`, `--interactive`, `--include-completed`, `--date-filter`, `--ai-summary`, and `--gemini-api-key`.
 - Authentication falls back in this order: CLI flag → env var `CLICKUP_API_KEY` → 1Password SDK (requires `OP_SERVICE_ACCOUNT_TOKEN`) → `op read` CLI → manual prompt.
 - Logging comes from `logger_config.setup_logging`; pass `use_rich=False` for plain output or a `log_file` path to persist logs.
@@ -318,7 +318,7 @@ _reset_daily_quota_state()
 ### Optional Dependencies
 
 - `onepassword-sdk>=0.3.1` - Secure credential management
-- `google-generativeai>=0.8.0` - AI-powered task summaries
+- `google-genai>=1.0.0` - AI-powered task summaries
 
 ## 🐛 Troubleshooting
 

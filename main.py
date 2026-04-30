@@ -46,6 +46,22 @@ from logger_config import setup_logging
 from mappers import get_choice_input, get_yes_no_input
 from version import __description__, __version__
 
+
+def _configure_stdio_encoding() -> None:
+    """Use UTF-8 for stdio when supported to avoid Windows cp1252 encode failures."""
+
+    for stream in (sys.stdout, sys.stderr):
+        reconfigure = getattr(stream, "reconfigure", None)
+        if callable(reconfigure):
+            try:
+                reconfigure(encoding="utf-8", errors="replace")
+            except (ValueError, OSError):
+                # Some stream wrappers do not allow reconfiguration.
+                continue
+
+
+_configure_stdio_encoding()
+
 # Initialize Rich console with proper encoding for cross-platform compatibility
 # This ensures proper rendering on Windows, macOS, and Linux
 console = Console(force_terminal=None, legacy_windows=False)
@@ -115,6 +131,9 @@ def main():
     parser.add_argument("--workspace", type=str, help="Workspace name (default: KMS)")
     parser.add_argument("--space", type=str, help="Space name (default: Kikkoman)")
     parser.add_argument(
+        "--list", type=str, help="Optional list name to extract from within the space"
+    )
+    parser.add_argument(
         "--output", type=str, help="Output file path (default: auto-generated)"
     )
     parser.add_argument(
@@ -152,8 +171,8 @@ def main():
     parser.add_argument(
         "--output-format",
         type=str,
-        choices=["HTML", "Markdown"],
-        help="Output format: HTML or Markdown - default: Markdown",
+        choices=["CSV", "HTML", "Markdown"],
+        help="Output format: CSV, HTML, or Markdown - default: Markdown",
     )
     parser.add_argument(
         "--interactive", action="store_true", help="Enable interactive task selection"
@@ -332,12 +351,13 @@ def main():
     if not args.output_format:
         console.print("\n[bold blue]📄 Output Format[/bold blue]")
         console.print("Choose the format for your exported task list:")
+        console.print("  • [cyan]CSV[/cyan] - Spreadsheet-friendly table output")
         console.print("  • [cyan]HTML[/cyan] - Rich formatted web page with styling")
         console.print("  • [cyan]Markdown[/cyan] - Lightweight markup format")
 
-        format_choices = ["Markdown", "HTML"]
+        format_choices = ["Markdown", "HTML", "CSV"]
         selected_format = get_choice_input(
-            "Enter your choice (1-2) or format name [default: Markdown]: ",
+            "Enter your choice (1-3) or format name [default: Markdown]: ",
             format_choices,
             default_index=0,
         )
@@ -365,6 +385,7 @@ def main():
         except ValueError:
             # Fallback for old string values
             output_format_map = {
+                "CSV": OutputFormat.CSV,
                 "HTML": OutputFormat.HTML,
                 "Markdown": OutputFormat.MARKDOWN,
             }
@@ -385,6 +406,7 @@ def main():
         api_key=api_key,
         workspace_name=args.workspace or "KMS",
         space_name=args.space or "Kikkoman",
+        list_name=args.list,
         output_path=args.output
         or f"output/WeeklyTaskList_{format_datetime(datetime.now(), TIMESTAMP_FORMAT)}.md",
         include_completed=args.include_completed,
@@ -406,6 +428,8 @@ def main():
 
     config_table.add_row("Workspace", config.workspace_name)
     config_table.add_row("Space", config.space_name)
+    if config.list_name:
+        config_table.add_row("List", config.list_name)
     config_table.add_row("Output Format", config.output_format.value)
     config_table.add_row("Date Filter", config.date_filter.value)
     config_table.add_row(

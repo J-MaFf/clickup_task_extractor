@@ -1,5 +1,6 @@
 import tempfile
 import unittest
+import csv
 from datetime import datetime
 from pathlib import Path
 from typing import Any, cast
@@ -286,6 +287,27 @@ class ExportBehaviourTests(unittest.TestCase):
             html_content = html_path.read_text(encoding="utf-8")
             self.assertIn("Weekly Task List", html_content)
 
+    def test_csv_export_creates_file(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            output_path = Path(tmpdir) / "report.md"
+            config = ClickUpConfig(
+                api_key="dummy",
+                output_path=str(output_path),
+                output_format=OutputFormat.CSV,
+            )
+            extractor = ClickUpTaskExtractor(config, DummyAPIClient({}))
+
+            extractor.export([self.task])
+
+            csv_path = Path("output") / "report.csv"
+            self.assertTrue(csv_path.exists())
+            with csv_path.open(encoding="utf-8", newline="") as handle:
+                rows = list(csv.DictReader(handle))
+
+            self.assertEqual(len(rows), 1)
+            self.assertEqual(rows[0]["Task"], "Task A")
+            self.assertEqual(rows[0]["Notes"], "Sample notes")
+
 
 class FetchProcessTasksTests(unittest.TestCase):
     def setUp(self) -> None:
@@ -327,7 +349,7 @@ class FetchProcessTasksTests(unittest.TestCase):
             "/space/space1/list?archived=false": {
                 "lists": [{"id": "list1", "name": "Support"}]
             },
-            "/list/list1/task?archived=false": {
+            "/list/list1/task?archived=false&subtasks=true": {
                 "tasks": [
                     {
                         "id": "task1",
@@ -390,6 +412,138 @@ class FetchProcessTasksTests(unittest.TestCase):
             self.assertEqual(task_record.Priority, "High")
             self.assertEqual(task_record.Status, "In Progress")
             self.assertIn("Subject: Printer outage", task_record.Notes)
+
+    def test_fetch_and_process_tasks_filters_to_requested_list(self) -> None:
+        timestamp_ms = int(datetime(2025, 10, 7, 12, 0, 0).timestamp() * 1000)
+
+        responses: dict[str, Any] = {
+            "/team": {"teams": [{"id": "team1", "name": "KMS"}]},
+            "/team/team1/space": {"spaces": [{"id": "space1", "name": "Kikkoman"}]},
+            "/space/space1/folder": {"folders": []},
+            "/space/space1/list?archived=false": {
+                "lists": [
+                    {"id": "list1", "name": "KFI Jefferson"},
+                    {"id": "list2", "name": "Other List"},
+                ]
+            },
+            "/list/list1/task?archived=false&subtasks=true": {
+                "tasks": [
+                    {
+                        "id": "task1",
+                        "name": "Jefferson Task",
+                        "archived": False,
+                        "status": {"status": "open"},
+                        "date_created": str(timestamp_ms),
+                    }
+                ]
+            },
+            "/list/list1": {"custom_fields": []},
+            "/task/task1": {
+                "name": "Jefferson Task",
+                "priority": {"priority": 3},
+                "status": {"status": "In Progress"},
+                "description": "Jefferson details",
+                "custom_fields": [],
+            },
+        }
+
+        class RecordingExtractor(ClickUpTaskExtractor):
+            def __init__(self, *args, **kwargs) -> None:
+                super().__init__(*args, **kwargs)
+                self.export_calls: list[list[TaskRecord]] = []
+
+            def export(self, tasks: list[TaskRecord]) -> None:  # type: ignore[override]
+                self.export_calls.append(tasks)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            config = ClickUpConfig(
+                api_key="dummy",
+                output_path=str(Path(tmpdir) / "out.md"),
+                team_id="team1",
+                list_name="KFI Jefferson",
+            )
+            api_client = DummyAPIClient(responses)
+            extractor = RecordingExtractor(config, api_client)
+
+            extractor._fetch_and_process_tasks()
+
+            self.assertEqual(len(extractor.export_calls), 1)
+            exported_tasks = extractor.export_calls[0]
+            self.assertEqual(len(exported_tasks), 1)
+            self.assertEqual(exported_tasks[0].Task, "Jefferson Task")
+
+    def test_fetch_and_process_tasks_includes_subtasks(self) -> None:
+        timestamp_ms = int(datetime(2025, 10, 7, 12, 0, 0).timestamp() * 1000)
+
+        responses: dict[str, Any] = {
+            "/team": {"teams": [{"id": "team1", "name": "KMS"}]},
+            "/team/team1/space": {"spaces": [{"id": "space1", "name": "Kikkoman"}]},
+            "/space/space1/folder": {"folders": []},
+            "/space/space1/list?archived=false": {
+                "lists": [{"id": "list1", "name": "Support"}]
+            },
+            "/list/list1/task?archived=false&subtasks=true": {
+                "tasks": [
+                    {
+                        "id": "task1",
+                        "name": "Parent Task",
+                        "archived": False,
+                        "status": {"status": "open"},
+                        "date_created": str(timestamp_ms),
+                    },
+                    {
+                        "id": "task2",
+                        "name": "Child Task",
+                        "archived": False,
+                        "status": {"status": "open"},
+                        "date_created": str(timestamp_ms),
+                        "parent": "task1",
+                    },
+                ]
+            },
+            "/list/list1": {"custom_fields": []},
+            "/task/task1": {
+                "name": "Parent Task",
+                "priority": {"priority": 3},
+                "status": {"status": "In Progress"},
+                "description": "Parent details",
+                "custom_fields": [],
+            },
+            "/task/task2": {
+                "name": "Child Task",
+                "priority": {"priority": 2},
+                "status": {"status": "Open"},
+                "description": "Subtask details",
+                "parent": "task1",
+                "custom_fields": [],
+            },
+        }
+
+        class RecordingExtractor(ClickUpTaskExtractor):
+            def __init__(self, *args, **kwargs) -> None:
+                super().__init__(*args, **kwargs)
+                self.export_calls: list[list[TaskRecord]] = []
+
+            def export(self, tasks: list[TaskRecord]) -> None:  # type: ignore[override]
+                self.export_calls.append(tasks)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            config = ClickUpConfig(
+                api_key="dummy",
+                output_path=str(Path(tmpdir) / "out.md"),
+                team_id="team1",
+            )
+            api_client = DummyAPIClient(responses)
+            extractor = RecordingExtractor(config, api_client)
+
+            extractor._fetch_and_process_tasks()
+
+            self.assertEqual(len(extractor.export_calls), 1)
+            exported_tasks = extractor.export_calls[0]
+            self.assertEqual(len(exported_tasks), 2)
+            self.assertEqual(
+                [task.Task for task in exported_tasks], ["Parent Task", "Child Task"]
+            )
 
 
 class TaskExportSortingTests(unittest.TestCase):
