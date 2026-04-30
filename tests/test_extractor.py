@@ -1,5 +1,6 @@
 import tempfile
 import unittest
+import csv
 from datetime import datetime
 from pathlib import Path
 from typing import Any, cast
@@ -285,6 +286,27 @@ class ExportBehaviourTests(unittest.TestCase):
             self.assertTrue(html_path.exists())
             html_content = html_path.read_text(encoding="utf-8")
             self.assertIn("Weekly Task List", html_content)
+
+    def test_csv_export_creates_file(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            output_path = Path(tmpdir) / "report.md"
+            config = ClickUpConfig(
+                api_key="dummy",
+                output_path=str(output_path),
+                output_format=OutputFormat.CSV,
+            )
+            extractor = ClickUpTaskExtractor(config, DummyAPIClient({}))
+
+            extractor.export([self.task])
+
+            csv_path = Path("output") / "report.csv"
+            self.assertTrue(csv_path.exists())
+            with csv_path.open(encoding="utf-8", newline="") as handle:
+                rows = list(csv.DictReader(handle))
+
+            self.assertEqual(len(rows), 1)
+            self.assertEqual(rows[0]["Task"], "Task A")
+            self.assertEqual(rows[0]["Notes"], "Sample notes")
 
 
 class FetchProcessTasksTests(unittest.TestCase):

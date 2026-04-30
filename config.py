@@ -58,6 +58,7 @@ CLICKUP_AI_SUMMARY_FIELD_ID = "d7426f47-27f0-494b-b3a2-7d254132ee1a"
 class OutputFormat(Enum):
     """Enumeration of supported output formats."""
 
+    CSV = "CSV"
     HTML = "HTML"
     MARKDOWN = "Markdown"
 

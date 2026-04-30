@@ -104,7 +104,7 @@ class MainEntrypointTests(unittest.TestCase):
                 main_module, "get_yes_no_input", return_value=False
             ) as mock_yes_no,
             patch.object(
-                main_module, "get_choice_input", return_value="Markdown"
+                main_module, "get_choice_input", return_value="CSV"
             ) as mock_choice_input,
             patch.object(main_module, "load_secret_with_fallback") as mock_load_secret,
             patch.object(main_module, "ClickUpTaskExtractor") as mock_extractor_cls,
@@ -129,11 +129,12 @@ class MainEntrypointTests(unittest.TestCase):
         call_args = mock_choice_input.call_args
         self.assertIn("Markdown", call_args.args[1])
         self.assertIn("HTML", call_args.args[1])
-        self.assertEqual(len(call_args.args[1]), 2)
+        self.assertIn("CSV", call_args.args[1])
+        self.assertEqual(len(call_args.args[1]), 3)
 
         # Verify config was set with the selected format
         config_arg = mock_extractor_cls.call_args.args[0]
-        self.assertEqual(config_arg.output_format, OutputFormat.MARKDOWN)
+        self.assertEqual(config_arg.output_format, OutputFormat.CSV)
 
 
 if __name__ == "__main__":  # pragma: no cover - manual execution safeguard

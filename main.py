@@ -171,8 +171,8 @@ def main():
     parser.add_argument(
         "--output-format",
         type=str,
-        choices=["HTML", "Markdown"],
-        help="Output format: HTML or Markdown - default: Markdown",
+        choices=["CSV", "HTML", "Markdown"],
+        help="Output format: CSV, HTML, or Markdown - default: Markdown",
     )
     parser.add_argument(
         "--interactive", action="store_true", help="Enable interactive task selection"
@@ -351,12 +351,13 @@ def main():
     if not args.output_format:
         console.print("\n[bold blue]📄 Output Format[/bold blue]")
         console.print("Choose the format for your exported task list:")
+        console.print("  • [cyan]CSV[/cyan] - Spreadsheet-friendly table output")
         console.print("  • [cyan]HTML[/cyan] - Rich formatted web page with styling")
         console.print("  • [cyan]Markdown[/cyan] - Lightweight markup format")
 
-        format_choices = ["Markdown", "HTML"]
+        format_choices = ["Markdown", "HTML", "CSV"]
         selected_format = get_choice_input(
-            "Enter your choice (1-2) or format name [default: Markdown]: ",
+            "Enter your choice (1-3) or format name [default: Markdown]: ",
             format_choices,
             default_index=0,
         )
@@ -384,6 +385,7 @@ def main():
         except ValueError:
             # Fallback for old string values
             output_format_map = {
+                "CSV": OutputFormat.CSV,
                 "HTML": OutputFormat.HTML,
                 "Markdown": OutputFormat.MARKDOWN,
             }

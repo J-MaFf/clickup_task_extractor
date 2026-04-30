@@ -12,6 +12,7 @@ Contains:
 import os
 import sys
 import html
+import csv
 from datetime import datetime, timezone
 from typing import Callable, TypeAlias
 from contextlib import contextmanager
@@ -1057,6 +1058,28 @@ class ClickUpTaskExtractor:
             TextColumn("[progress.description]{task.description}"),
             console=console,
         ) as progress:
+            # CSV Export
+            if self.config.output_format == OutputFormat.CSV:
+                csv_task = progress.add_task("📊 Generating CSV...", total=None)
+                csv_path = output_dir / f"{base_filename}.csv"
+                export_fields = get_export_fields()
+
+                with export_file(str(csv_path), "w") as f:
+                    writer = csv.DictWriter(f, fieldnames=export_fields)
+                    writer.writeheader()
+                    for task in tasks:
+                        writer.writerow(
+                            {
+                                field: getattr(task, field) or ""
+                                for field in export_fields
+                            }
+                        )
+
+                progress.remove_task(csv_task)
+                console.print(
+                    f"✅ [green]CSV exported:[/green] [bold]{csv_path}[/bold]"
+                )
+
             # HTML Export
             if self.config.output_format == OutputFormat.HTML:
                 html_task = progress.add_task("🌐 Generating HTML...", total=None)
