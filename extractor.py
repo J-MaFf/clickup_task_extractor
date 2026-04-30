@@ -314,6 +314,25 @@ class ClickUpTaskExtractor:
                     "lists"
                 ]
                 lists.extend(space_lists)
+
+                if self.config.list_name:
+                    target_list_name = self.config.list_name.strip().lower()
+                    lists = [
+                        list_item
+                        for list_item in lists
+                        if list_item.get("name", "").strip().lower() == target_list_name
+                    ]
+
+                    if not lists:
+                        console.print(
+                            Panel(
+                                f"[red]List '{self.config.list_name}' not found in space '{self.config.space_name}'.[/red]\n"
+                                f"[dim]Check the list name and try again.[/dim]",
+                                title="❌ List Error",
+                                style="red",
+                            )
+                        )
+                        return
                 progress.remove_task(task)
 
                 console.print(
@@ -341,7 +360,7 @@ class ClickUpTaskExtractor:
                         progress.remove_task(current_list_task)
 
                     tasks_resp = self.api.get(
-                        f"/list/{list_item['id']}/task?archived={str(self.config.include_completed).lower()}"
+                        f"/list/{list_item['id']}/task?archived={str(self.config.include_completed).lower()}&subtasks=true"
                     )
                     tasks = tasks_resp.get("tasks", [])
 

@@ -131,6 +131,9 @@ def main():
     parser.add_argument("--workspace", type=str, help="Workspace name (default: KMS)")
     parser.add_argument("--space", type=str, help="Space name (default: Kikkoman)")
     parser.add_argument(
+        "--list", type=str, help="Optional list name to extract from within the space"
+    )
+    parser.add_argument(
         "--output", type=str, help="Output file path (default: auto-generated)"
     )
     parser.add_argument(
@@ -401,6 +404,7 @@ def main():
         api_key=api_key,
         workspace_name=args.workspace or "KMS",
         space_name=args.space or "Kikkoman",
+        list_name=args.list,
         output_path=args.output
         or f"output/WeeklyTaskList_{format_datetime(datetime.now(), TIMESTAMP_FORMAT)}.md",
         include_completed=args.include_completed,
@@ -422,6 +426,8 @@ def main():
 
     config_table.add_row("Workspace", config.workspace_name)
     config_table.add_row("Space", config.space_name)
+    if config.list_name:
+        config_table.add_row("List", config.list_name)
     config_table.add_row("Output Format", config.output_format.value)
     config_table.add_row("Date Filter", config.date_filter.value)
     config_table.add_row(

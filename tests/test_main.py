@@ -50,6 +50,8 @@ class MainEntrypointTests(unittest.TestCase):
                 "Acme Workspace",
                 "--space",
                 "Ops",
+                "--list",
+                "KFI Jefferson",
                 "--output",
                 "output/custom.md",
                 "--include-completed",
@@ -77,6 +79,7 @@ class MainEntrypointTests(unittest.TestCase):
         self.assertEqual(config_arg.api_key, "test-key")
         self.assertEqual(config_arg.workspace_name, "Acme Workspace")
         self.assertEqual(config_arg.space_name, "Ops")
+        self.assertEqual(config_arg.list_name, "KFI Jefferson")
         self.assertEqual(config_arg.output_path, "output/custom.md")
         self.assertTrue(config_arg.include_completed)
         self.assertEqual(config_arg.date_filter, DateFilter.LAST_WEEK)
