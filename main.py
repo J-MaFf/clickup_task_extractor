@@ -30,7 +30,6 @@ except ImportError:
     sys.exit(1)
 
 # Import project modules
-from api_client import ClickUpAPIClient
 from auth import load_secret_with_fallback
 from config import (
     ClickUpConfig,
@@ -41,10 +40,29 @@ from config import (
     format_datetime,
     CLICKUP_AI_SUMMARY_FIELD_ID,
 )
-from extractor import ClickUpTaskExtractor
 from logger_config import setup_logging
 from mappers import get_choice_input, get_yes_no_input
 from version import __description__, __version__
+
+# Lazily imported runtime dependencies.
+# These are loaded in main() to make startup resilient when VS Code's
+# "Run Python File" interrupts a reused terminal process.
+ClickUpAPIClient = None
+ClickUpTaskExtractor = None
+
+
+def _load_runtime_dependencies() -> None:
+    """Import runtime dependencies only when needed."""
+
+    global ClickUpAPIClient, ClickUpTaskExtractor
+    if ClickUpAPIClient is not None and ClickUpTaskExtractor is not None:
+        return
+
+    from api_client import ClickUpAPIClient as _ClickUpAPIClient
+    from extractor import ClickUpTaskExtractor as _ClickUpTaskExtractor
+
+    ClickUpAPIClient = _ClickUpAPIClient
+    ClickUpTaskExtractor = _ClickUpTaskExtractor
 
 
 def _configure_stdio_encoding() -> None:
@@ -100,6 +118,16 @@ def main():
     4. 1Password CLI fallback (requires 'op' command available)
     5. Manual input prompt
     """
+    try:
+        _load_runtime_dependencies()
+    except KeyboardInterrupt:
+        # VS Code's Run Python File may reuse a terminal and emit Ctrl+C once.
+        # Retry one time so startup does not fail from a transient interrupt.
+        console.print(
+            "[yellow]Startup interrupted while loading dependencies. Retrying once...[/yellow]"
+        )
+        _load_runtime_dependencies()
+
     # Beautiful header
     header_text = Text()
     header_text.append("ClickUp Task Extractor", style="bold blue")
