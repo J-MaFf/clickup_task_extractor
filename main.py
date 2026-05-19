@@ -53,16 +53,17 @@ ClickUpTaskExtractor = None
 
 def _load_runtime_dependencies() -> tuple:
     """Import runtime dependencies only when needed.
-    
+
     Returns:
         tuple: (ClickUpAPIClient class, ClickUpTaskExtractor class)
-        
+
     Raises:
         ImportError: If runtime dependencies cannot be loaded
     """
     try:
         from api_client import ClickUpAPIClient as _ClickUpAPIClient
         from extractor import ClickUpTaskExtractor as _ClickUpTaskExtractor
+
         return _ClickUpAPIClient, _ClickUpTaskExtractor
     except ImportError as e:
         console.print(
@@ -121,14 +122,18 @@ def main():
     Supports CLI args for config overrides. Example:
       python ClickUpTaskExtractor.py --api-key ... --workspace ... --space ...
 
-    API key 1Password reference: "op://Home Server/ClickUp personal API token/credential"
-
-    Authentication priority:
+    Authentication priority (for API keys):
     1. --api-key command line argument
     2. CLICKUP_API_KEY environment variable
-    3. 1Password SDK (requires OP_SERVICE_ACCOUNT_TOKEN env var)
-    4. 1Password CLI fallback (requires 'op' command available)
-    5. Manual input prompt
+    3. 1Password Environment (requires OP_ENVIRONMENT_ID env var)
+    4. 1Password SDK (requires OP_SERVICE_ACCOUNT_TOKEN env var)
+    5. 1Password CLI fallback (requires 'op' command and desktop app)
+    6. Manual input prompt
+
+    1Password Environment setup:
+    - Create an Environment in 1Password desktop app (Developer > View Environments)
+    - Add variable: CLICKUP_API_KEY = your ClickUp API key
+    - Copy Environment ID and set: export OP_ENVIRONMENT_ID=<environment_id>
     """
     try:
         _ClickUpAPIClient, _ClickUpTaskExtractor = _load_runtime_dependencies()
@@ -163,17 +168,23 @@ def main():
     )
 
     parser = argparse.ArgumentParser(
-        description=f"ClickUp Task Extractor v{__version__} - {__description__}\n\nExtract and export ClickUp tasks to Markdown (default) or HTML. Default workspace: KMS.\nAPI key 1Password reference: op://Home Server/ClickUp personal API token/credential\nRequires OP_SERVICE_ACCOUNT_TOKEN for 1Password SDK authentication.",
+        description=f"ClickUp Task Extractor v{__version__} - {__description__}\n\nExtract and export ClickUp tasks to Markdown (default) or HTML. Default workspace: KMS.\nAPI keys can be provided via: 1Password Environment (OP_ENVIRONMENT_ID), environment variables (CLICKUP_API_KEY), or command-line arguments.\n\n1Password Environment Setup: Developer > View Environments > Create new > Add CLICKUP_API_KEY variable > Copy Environment ID > export OP_ENVIRONMENT_ID=<id>",
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument(
         "--version", action="version", version=f"ClickUp Task Extractor v{__version__}"
     )
     parser.add_argument(
+        "--environment-id",
+        type=str,
+        default=os.environ.get("OP_ENVIRONMENT_ID"),
+        help="1Password Environment ID (or set OP_ENVIRONMENT_ID env var). Automatically tries to load CLICKUP_API_KEY and GEMINI_API_KEY from the Environment.",
+    )
+    parser.add_argument(
         "--api-key",
         type=str,
         default=os.environ.get("CLICKUP_API_KEY"),
-        help='ClickUp API Key (or set CLICKUP_API_KEY env, or use 1Password SDK with OP_SERVICE_ACCOUNT_TOKEN, e.g. from 1Password: "op://Home Server/ClickUp personal API token/credential")',
+        help="ClickUp API Key (or set CLICKUP_API_KEY env var). Falls back to 1Password Environment or 1Password SDK (requires OP_SERVICE_ACCOUNT_TOKEN).",
     )
     parser.add_argument("--workspace", type=str, help="Workspace name (default: KMS)")
     parser.add_argument("--space", type=str, help="Space name (default: Kikkoman)")
@@ -197,7 +208,7 @@ def main():
     parser.add_argument(
         "--ai-summary",
         action="store_true",
-        help="Enable AI summary (requires Gemini API key - will auto-load from 1Password if available)",
+        help="Enable AI summary (requires Gemini API key - will auto-load from 1Password Environment or SDK if available)",
     )
     parser.add_argument(
         "--ai-source",
@@ -213,7 +224,7 @@ def main():
     parser.add_argument(
         "--gemini-api-key",
         type=str,
-        help='Google Gemini API key for AI summary generation (or auto-load from 1Password: "op://Home Server/nftoo3gsi3wpx7z5bdmcsvr7p4/credential")',
+        help="Google Gemini API key for AI summary generation (or auto-load from 1Password Environment via GEMINI_API_KEY variable or 1Password SDK)",
     )
     parser.add_argument(
         "--output-format",
@@ -232,25 +243,32 @@ def main():
     if not api_key:
         # Try to get API key from 1Password with fallback
         is_frozen = getattr(sys, "frozen", False)
-        if is_frozen:
-            console.print(
-                Panel(
-                    "[yellow]🔐 Attempting to load API key from 1Password CLI...[/yellow]\n"
-                    "[dim]Reference: op://Home Server/ClickUp personal API token/credential[/dim]\n"
-                    "[dim]Note: Executable version uses 1Password CLI only (SDK not available)[/dim]",
-                    title="Authentication",
-                    style="yellow",
-                )
+        environment_id = os.environ.get("OP_ENVIRONMENT_ID")
+
+        # Build informative authentication panel message
+        auth_msg = (
+            "[yellow]🔐 Attempting to load ClickUp API key from 1Password...[/yellow]\n"
+        )
+        if environment_id:
+            auth_msg += f"[dim]Environment ID: {environment_id}[/dim]\n"
+            auth_msg += (
+                "[dim]Method: 1Password Environment (SDK/DesktopAuth or CLI beta)[/dim]"
             )
+            auth_msg += "\n[dim]SDK auth can use OP_ACCOUNT_NAME; automation can use OP_SERVICE_ACCOUNT_TOKEN[/dim]"
         else:
-            console.print(
-                Panel(
-                    "[yellow]🔐 Attempting to load API key from 1Password...[/yellow]\n"
-                    "[dim]Reference: op://Home Server/ClickUp personal API token/credential[/dim]",
-                    title="Authentication",
-                    style="yellow",
-                )
+            auth_msg += "[dim]Methods: 1Password SDK, then 1Password CLI[/dim]\n"
+            auth_msg += "[dim]💡 Tip: Set OP_ENVIRONMENT_ID for 1Password Environment auth[/dim]"
+
+        if is_frozen:
+            auth_msg += "\n[dim]Note: Executable version uses 1Password CLI only (SDK not available)[/dim]"
+
+        console.print(
+            Panel(
+                auth_msg,
+                title="Authentication",
+                style="yellow",
             )
+        )
         secret_reference = "op://Home Server/ClickUp personal API token/credential"
         api_key = load_secret_with_fallback(secret_reference, "ClickUp API key")
         if not api_key:
@@ -267,10 +285,18 @@ def main():
                     )
                 )
             else:
+                help_msg = "[red][FAIL] Could not load API key from 1Password.[/red]\n\n[yellow]Options:[/yellow]\n"
+                help_msg += "  • Set environment variable: [cyan]CLICKUP_API_KEY=your_key[/cyan]\n"
+                help_msg += "  • Or use: [cyan]--api-key your_key[/cyan]\n"
+                if environment_id:
+                    help_msg += f"  • Check 1Password Environment: [cyan]{environment_id}[/cyan] has [cyan]CLICKUP_API_KEY[/cyan] variable\n"
+                    help_msg += "  • For SDK auth, you can set [cyan]OP_ACCOUNT_NAME[/cyan] to target a specific account\n"
+                    help_msg += "  • For automation, set [cyan]OP_SERVICE_ACCOUNT_TOKEN[/cyan]\n"
+                    help_msg += "  • For CLI auth, upgrade to a beta 1Password CLI that supports [cyan]op run --environments[/cyan]\n"
+                help_msg += "  • Verify 1Password CLI is installed and your account is signed in"
                 console.print(
                     Panel(
-                        "[red][FAIL] Could not load API key from 1Password.[/red]\n"
-                        "[dim]Please provide via --api-key or CLICKUP_API_KEY environment variable.[/dim]",
+                        help_msg,
                         title="Authentication Failed",
                         style="red",
                     )
