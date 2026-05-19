@@ -15,11 +15,63 @@ import unittest
 from unittest.mock import patch, MagicMock
 import subprocess
 
-from auth import load_secret_with_fallback, get_secret_from_1password
+from auth import (
+    load_secret_with_fallback,
+    get_secret_from_1password,
+    get_secret_from_environment,
+)
 
 
 class TestLoadSecretWithFallback(unittest.TestCase):
     """Tests for the load_secret_with_fallback function."""
+
+    def setUp(self):
+        self._env_patch = patch.dict(
+            "os.environ", {"OP_ENVIRONMENT_ID": ""}, clear=False
+        )
+        self._env_patch.start()
+
+    def tearDown(self):
+        self._env_patch.stop()
+
+    @patch.dict("os.environ", {"OP_ACCOUNT_NAME": "My 1Password Account"}, clear=True)
+    @patch("auth.OnePasswordDesktopAuth")
+    @patch("auth.OnePasswordClient")
+    def test_environment_sdk_desktop_auth_retrieval(
+        self, mock_client_class, mock_desktop_auth
+    ):
+        """Test 1Password Environment retrieval via SDK DesktopAuth."""
+
+        class DummyVariable:
+            def __init__(self, name: str, value: str, masked: bool = False):
+                self.name = name
+                self.value = value
+                self.masked = masked
+
+        class DummyResponse:
+            def __init__(self):
+                self.variables = [DummyVariable("CLICKUP_API_KEY", "env_secret_value")]
+
+        class DummyEnvironments:
+            async def get_variables(self, _environment_id: str):
+                return DummyResponse()
+
+        class DummyClient:
+            def __init__(self):
+                self.environments = DummyEnvironments()
+
+        async def fake_authenticate(*args, **kwargs):
+            return DummyClient()
+
+        mock_client_class.authenticate = fake_authenticate
+        mock_desktop_auth.return_value = object()
+
+        result = get_secret_from_environment(
+            "env123", "CLICKUP_API_KEY", "ClickUp API key"
+        )
+
+        self.assertEqual(result, "env_secret_value")
+        mock_desktop_auth.assert_called_once_with("My 1Password Account")
 
     @patch("auth.get_secret_from_1password")
     @patch("auth.logger")
@@ -34,25 +86,21 @@ class TestLoadSecretWithFallback(unittest.TestCase):
 
     @patch("auth.subprocess.run")
     @patch("auth.get_secret_from_1password")
+    @patch("auth.get_secret_from_environment")
     @patch("auth.logger")
-    def test_fallback_to_cli_on_import_error(
-        self, mock_logger, mock_get_secret, mock_subprocess
+    def test_environment_mode_skips_legacy_vault_fallback(
+        self, mock_logger, mock_get_env_secret, mock_get_secret, mock_subprocess
     ):
-        """Test fallback to CLI when SDK import fails."""
-        mock_get_secret.side_effect = ImportError("1Password SDK not available")
-        mock_subprocess.return_value = MagicMock(
-            returncode=0, stdout="secret_from_cli", stderr=""
-        )
+        """Test Environment mode does not fall back to old vault references."""
+        with patch.dict("os.environ", {"OP_ENVIRONMENT_ID": "env123"}, clear=False):
+            mock_get_env_secret.return_value = None
 
-        result = load_secret_with_fallback("op://vault/item/field", "Test Secret")
+            result = load_secret_with_fallback("op://vault/item/field", "Test Secret")
 
-        self.assertEqual(result, "secret_from_cli")
-        # SDK unavailability is logged at debug level, not warning
-        mock_logger.debug.assert_called()
-        mock_logger.info.assert_any_call(
-            "Falling back to 1Password CLI for Test Secret..."
-        )
-        mock_logger.info.assert_any_call("✅ Test Secret loaded from 1Password CLI.")
+        self.assertIsNone(result)
+        mock_get_secret.assert_not_called()
+        mock_subprocess.assert_not_called()
+        self.assertTrue(mock_get_env_secret.called)
 
     @patch("auth.subprocess.run")
     @patch("auth.get_secret_from_1password")
@@ -317,8 +365,79 @@ class TestAsyncSecretRetrieval(unittest.TestCase):
         self.assertIn("Failed to retrieve", str(context.exception))
 
 
+class TestGetSecretFromEnvironmentCLI(unittest.TestCase):
+    """Tests for Environment CLI fallback behavior."""
+
+    @patch("auth.subprocess.run")
+    @patch("auth.OnePasswordClient", None)
+    def test_environment_cli_fallback_reads_plain_assignment(self, mock_subprocess):
+        """Test CLI fallback parses KEY=value output."""
+        mock_subprocess.return_value = MagicMock(
+            returncode=0,
+            stdout="CLICKUP_API_KEY=cli_env_secret\nGEMINI_API_KEY=gem_key\n",
+            stderr="",
+        )
+
+        result = get_secret_from_environment(
+            "env123", "CLICKUP_API_KEY", "ClickUp API key"
+        )
+
+        self.assertEqual(result, "cli_env_secret")
+        mock_subprocess.assert_called_once_with(
+            ["op", "environment", "read", "env123"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+
+    @patch("auth.subprocess.run")
+    @patch("auth.OnePasswordClient", None)
+    def test_environment_cli_fallback_reads_export_and_quoted_value(
+        self, mock_subprocess
+    ):
+        """Test CLI fallback parses export KEY=\"value\" output."""
+        mock_subprocess.return_value = MagicMock(
+            returncode=0,
+            stdout='export CLICKUP_API_KEY="quoted secret value"\n',
+            stderr="",
+        )
+
+        result = get_secret_from_environment(
+            "env123", "CLICKUP_API_KEY", "ClickUp API key"
+        )
+
+        self.assertEqual(result, "quoted secret value")
+
+    @patch("auth.subprocess.run")
+    @patch("auth.OnePasswordClient", None)
+    def test_environment_cli_fallback_returns_none_when_missing_var(
+        self, mock_subprocess
+    ):
+        """Test CLI fallback returns None when requested variable is absent."""
+        mock_subprocess.return_value = MagicMock(
+            returncode=0,
+            stdout="OTHER_VAR=value\n",
+            stderr="",
+        )
+
+        result = get_secret_from_environment(
+            "env123", "CLICKUP_API_KEY", "ClickUp API key"
+        )
+
+        self.assertIsNone(result)
+
+
 class TestLoggingBehavior(unittest.TestCase):
     """Tests for logging behavior in auth module."""
+
+    def setUp(self):
+        self._env_patch = patch.dict(
+            "os.environ", {"OP_ENVIRONMENT_ID": ""}, clear=False
+        )
+        self._env_patch.start()
+
+    def tearDown(self):
+        self._env_patch.stop()
 
     @patch("auth.subprocess.run")
     @patch("auth.get_secret_from_1password")

@@ -9,7 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- No unreleased changes yet.
+- Updated 1Password authentication to use 1Password Environment loading through the Python SDK for `OP_ENVIRONMENT_ID`.
+- Documented the Environment-based flow in the README and setup guidance.
+- Added 1Password CLI Environment fallback using `op environment read <environment_id>` when SDK auth is unavailable.
+
+### Fixed
+
+- Removed the broken legacy vault-only fallback for Environment-based authentication.
+- Clarified the supported account selection flow for DesktopAuth and service-account auth.
+- Enabled executable workflows with `OP_ENVIRONMENT_ID` by reading Environment variables through 1Password CLI.
 
 ## [1.04] - 2026-04-07
 

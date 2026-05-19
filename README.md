@@ -29,7 +29,7 @@ A powerful, cross-platform Python application for extracting, processing, and ex
 
 - Python 3.11 or higher
 - ClickUp API token
-- Optional: 1Password CLI or SDK for secure credential management
+- Optional: 1Password Environment support for Python, or 1Password CLI for legacy secret references
 - Optional: Google Gemini API key for AI summaries
 
 ### Installation
@@ -50,7 +50,7 @@ A powerful, cross-platform Python application for extracting, processing, and ex
 3. **Set up your ClickUp API key** (choose one method):
    - Command line: `python main.py --api-key YOUR_API_KEY`
    - Environment variable: `export CLICKUP_API_KEY=YOUR_API_KEY`
-   - 1Password: Store in 1Password with reference `op://Home Server/ClickUp personal API token/credential`
+   - 1Password Environment: store `CLICKUP_API_KEY` in a 1Password Environment and set `OP_ENVIRONMENT_ID`
 
 > 💡 The CLI auto-relaunches inside `.venv/` when present, so activating the virtualenv manually is optional as long as dependencies live there.
 
@@ -83,7 +83,8 @@ The executable version does **not** include the 1Password SDK (due to bundling l
    Install the [1Password CLI](https://developer.1password.com/docs/cli/get-started/) and ensure it's in your PATH:
 
    ```bash
-   # The executable will automatically try to use 'op read' command
+   # Environment mode (if OP_ENVIRONMENT_ID is set): op environment read <id>
+   # Legacy secret references: op read <secret_reference>
    ClickUpTaskExtractor.exe
    ```
 
@@ -130,7 +131,7 @@ Each prompt provides clear options and defaults, making it easy to configure the
 
 - Install deps via `pip install -r requirements.txt`; optional features require `onepassword-sdk` and `google-genai` which are already listed.
 - Run the extractor with `python main.py` (defaults: workspace `KMS`, space `Kikkoman`, Markdown export). Override with `--output-format`, `--interactive`, `--include-completed`, `--date-filter`, `--ai-summary`, and `--gemini-api-key`.
-- Authentication falls back in this order: CLI flag → env var `CLICKUP_API_KEY` → 1Password SDK (requires `OP_SERVICE_ACCOUNT_TOKEN`) → `op read` CLI → manual prompt.
+- Authentication falls back in this order: CLI flag → env var `CLICKUP_API_KEY` → 1Password Environment (`OP_ENVIRONMENT_ID`: SDK first, then `op environment read`) → 1Password SDK secret references → `op read` CLI → manual prompt.
 - Logging comes from `logger_config.setup_logging`; pass `use_rich=False` for plain output or a `log_file` path to persist logs.
 - All exports land under `output/`, named with `default_output_path()` which strips leading zeros for cross-platform friendly filenames.
 
@@ -163,28 +164,33 @@ Each prompt provides clear options and defaults, making it easy to configure the
 
 1. **Command Line Argument**: `--api-key YOUR_KEY`
 2. **Environment Variable**: `CLICKUP_API_KEY=YOUR_KEY`
-3. **1Password SDK**: Requires `OP_SERVICE_ACCOUNT_TOKEN` environment variable
-4. **1Password CLI**: Uses `op read` command
-5. **Manual Prompt**: Rich console input as the final fallback
+3. **1Password Environment**: Requires `OP_ENVIRONMENT_ID` and a 1Password Environment containing `CLICKUP_API_KEY`
+   - Primary: Python SDK (DesktopAuth or service token)
+   - Fallback: 1Password CLI via `op environment read <environment_id>`
+4. **1Password SDK**: Requires `OP_SERVICE_ACCOUNT_TOKEN` environment variable for legacy secret references
+5. **1Password CLI**: Uses `op read` command for legacy secret references
+6. **Manual Prompt**: Rich console input as the final fallback
 
 #### For Executable (EXE) Users
 
 1. **Command Line Argument**: `--api-key YOUR_KEY`
 2. **Environment Variable**: `CLICKUP_API_KEY=YOUR_KEY`
-3. **1Password CLI**: Uses `op read` command (SDK not available in EXE)
-4. **Manual Prompt**: Rich console input as the final fallback
+3. **1Password Environment via CLI**: If `OP_ENVIRONMENT_ID` is set, uses `op environment read <environment_id>` (SDK not available in EXE)
+4. **1Password CLI**: Uses `op read` command for legacy secret references
+5. **Manual Prompt**: Rich console input as the final fallback
 
 **Note**: The 1Password SDK cannot be bundled in the executable due to native dependencies. EXE users should use environment variables, command line arguments, or install the [1Password CLI](https://developer.1password.com/docs/cli/get-started/) separately.
 
 Store secrets in 1Password for reuse:
 
-- ClickUp API key: `op://Home Server/ClickUp personal API token/credential`
-- Gemini API key: `op://Home Server/nftoo3gsi3wpx7z5bdmcsvr7p4/credential`
+- ClickUp API key: `CLICKUP_API_KEY` in a 1Password Environment
+- Gemini API key: `GEMINI_API_KEY` in the same 1Password Environment
 
-For Python users with 1Password SDK:
+For Python users with 1Password Environment SDK:
 
 ```bash
-export OP_SERVICE_ACCOUNT_TOKEN=your_service_account_token
+export OP_ENVIRONMENT_ID=your_environment_id
+export OP_ACCOUNT_NAME=my.1password.com
 ```
 
 ## 🏗️ Architecture
