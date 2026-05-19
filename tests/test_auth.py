@@ -365,6 +365,68 @@ class TestAsyncSecretRetrieval(unittest.TestCase):
         self.assertIn("Failed to retrieve", str(context.exception))
 
 
+class TestGetSecretFromEnvironmentCLI(unittest.TestCase):
+    """Tests for Environment CLI fallback behavior."""
+
+    @patch("auth.subprocess.run")
+    @patch("auth.OnePasswordClient", None)
+    def test_environment_cli_fallback_reads_plain_assignment(self, mock_subprocess):
+        """Test CLI fallback parses KEY=value output."""
+        mock_subprocess.return_value = MagicMock(
+            returncode=0,
+            stdout="CLICKUP_API_KEY=cli_env_secret\nGEMINI_API_KEY=gem_key\n",
+            stderr="",
+        )
+
+        result = get_secret_from_environment(
+            "env123", "CLICKUP_API_KEY", "ClickUp API key"
+        )
+
+        self.assertEqual(result, "cli_env_secret")
+        mock_subprocess.assert_called_once_with(
+            ["op", "environment", "read", "env123"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+
+    @patch("auth.subprocess.run")
+    @patch("auth.OnePasswordClient", None)
+    def test_environment_cli_fallback_reads_export_and_quoted_value(
+        self, mock_subprocess
+    ):
+        """Test CLI fallback parses export KEY=\"value\" output."""
+        mock_subprocess.return_value = MagicMock(
+            returncode=0,
+            stdout='export CLICKUP_API_KEY="quoted secret value"\n',
+            stderr="",
+        )
+
+        result = get_secret_from_environment(
+            "env123", "CLICKUP_API_KEY", "ClickUp API key"
+        )
+
+        self.assertEqual(result, "quoted secret value")
+
+    @patch("auth.subprocess.run")
+    @patch("auth.OnePasswordClient", None)
+    def test_environment_cli_fallback_returns_none_when_missing_var(
+        self, mock_subprocess
+    ):
+        """Test CLI fallback returns None when requested variable is absent."""
+        mock_subprocess.return_value = MagicMock(
+            returncode=0,
+            stdout="OTHER_VAR=value\n",
+            stderr="",
+        )
+
+        result = get_secret_from_environment(
+            "env123", "CLICKUP_API_KEY", "ClickUp API key"
+        )
+
+        self.assertIsNone(result)
+
+
 class TestLoggingBehavior(unittest.TestCase):
     """Tests for logging behavior in auth module."""
 

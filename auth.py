@@ -12,6 +12,7 @@ Contains:
 import os
 import asyncio
 import subprocess
+import re
 from typing import TypeAlias
 
 # Import logging infrastructure
@@ -49,8 +50,8 @@ def get_secret_from_environment(
     """
     Retrieve a secret from a 1Password Environment variable.
 
-    Attempts to read from 1Password Environment using SDK first (if OP_SERVICE_ACCOUNT_TOKEN is set),
-    then falls back to 1Password CLI (requires 'op' command and desktop app integration).
+    Attempts to read from 1Password Environment using SDK first, then
+    falls back to 1Password CLI using `op environment read`.
 
     Args:
         environment_id: The 1Password Environment ID (e.g., 'blgexucrwfr2dtsxe2q4uu7dp4')
@@ -136,11 +137,64 @@ def get_secret_from_environment(
                     f"Variable '{var_name}' not found in 1Password Environment {environment_id}"
                 )
         except Exception as e:
-            logger.debug(
-                "Neither OP_ACCOUNT_NAME nor OP_SERVICE_ACCOUNT_TOKEN is set; skipping SDK method for Environment"
-            )
-        except Exception as e:
             logger.debug(f"Could not read from 1Password Environment via SDK: {e}")
+
+    # CLI fallback for environments (critical for executable builds where SDK is
+    # disabled, and for SDK failures in Python mode).
+    try:
+        logger.debug(
+            f"Attempting to load {secret_name} from 1Password Environment via CLI - ID: {environment_id}"
+        )
+        result = subprocess.run(
+            ["op", "environment", "read", environment_id],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+
+        if result.returncode == 0:
+            output = result.stdout
+            # Support common output styles:
+            # KEY=value
+            # export KEY=value
+            # KEY="value with spaces"
+            pattern = re.compile(
+                rf"^\s*(?:export\s+)?{re.escape(var_name)}\s*=\s*(.*)\s*$",
+                re.MULTILINE,
+            )
+            match = pattern.search(output)
+            if match:
+                raw_value = match.group(1).strip()
+                if (
+                    len(raw_value) >= 2
+                    and raw_value[0] == raw_value[-1]
+                    and raw_value[0] in {'"', "'"}
+                ):
+                    raw_value = raw_value[1:-1]
+
+                secret = raw_value.strip()
+                if secret:
+                    logger.info(
+                        f"✅ {secret_name} loaded from 1Password Environment (CLI)."
+                    )
+                    return secret
+
+            logger.debug(
+                f"Variable '{var_name}' not found in 1Password Environment CLI output for {environment_id}"
+            )
+        else:
+            logger.debug(
+                f"1Password Environment CLI read failed for {secret_name}: {result.stderr.strip()}"
+            )
+    except FileNotFoundError:
+        logger.debug(
+            "1Password CLI ('op' command) not found while reading Environment variable"
+        )
+    except subprocess.TimeoutExpired:
+        logger.debug(f"1Password Environment CLI timed out while reading {secret_name}")
+    except Exception as cli_error:
+        logger.debug(f"Could not read from 1Password Environment via CLI: {cli_error}")
+
     return None
 
 
