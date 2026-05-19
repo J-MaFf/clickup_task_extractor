@@ -51,18 +51,30 @@ ClickUpAPIClient = None
 ClickUpTaskExtractor = None
 
 
-def _load_runtime_dependencies() -> None:
-    """Import runtime dependencies only when needed."""
-
-    global ClickUpAPIClient, ClickUpTaskExtractor
-    if ClickUpAPIClient is not None and ClickUpTaskExtractor is not None:
-        return
-
-    from api_client import ClickUpAPIClient as _ClickUpAPIClient
-    from extractor import ClickUpTaskExtractor as _ClickUpTaskExtractor
-
-    ClickUpAPIClient = _ClickUpAPIClient
-    ClickUpTaskExtractor = _ClickUpTaskExtractor
+def _load_runtime_dependencies() -> tuple:
+    """Import runtime dependencies only when needed.
+    
+    Returns:
+        tuple: (ClickUpAPIClient class, ClickUpTaskExtractor class)
+        
+    Raises:
+        ImportError: If runtime dependencies cannot be loaded
+    """
+    try:
+        from api_client import ClickUpAPIClient as _ClickUpAPIClient
+        from extractor import ClickUpTaskExtractor as _ClickUpTaskExtractor
+        return _ClickUpAPIClient, _ClickUpTaskExtractor
+    except ImportError as e:
+        console.print(
+            Panel(
+                f"[red]Error loading runtime dependencies: {e}[/red]\n"
+                "[yellow]Please ensure all dependencies are installed:[/yellow]\n"
+                "[dim]pip install -r requirements.txt[/dim]",
+                title="Import Error",
+                style="red",
+            )
+        )
+        raise
 
 
 def _configure_stdio_encoding() -> None:
@@ -119,14 +131,21 @@ def main():
     5. Manual input prompt
     """
     try:
-        _load_runtime_dependencies()
-    except KeyboardInterrupt:
+        _ClickUpAPIClient, _ClickUpTaskExtractor = _load_runtime_dependencies()
+    except (KeyboardInterrupt, ImportError):
         # VS Code's Run Python File may reuse a terminal and emit Ctrl+C once.
         # Retry one time so startup does not fail from a transient interrupt.
-        console.print(
-            "[yellow]Startup interrupted while loading dependencies. Retrying once...[/yellow]"
-        )
-        _load_runtime_dependencies()
+        if isinstance(sys.exc_info()[1], KeyboardInterrupt):
+            console.print(
+                "[yellow]Startup interrupted while loading dependencies. Retrying once...[/yellow]"
+            )
+            try:
+                _ClickUpAPIClient, _ClickUpTaskExtractor = _load_runtime_dependencies()
+            except (KeyboardInterrupt, ImportError) as e:
+                console.print(f"[red]Failed to load dependencies: {e}[/red]")
+                sys.exit(1)
+        else:
+            raise
 
     # Beautiful header
     header_text = Text()
@@ -483,8 +502,8 @@ def main():
             return True
         return False
 
-    client = ClickUpAPIClient(api_key)
-    extractor = ClickUpTaskExtractor(config, client, load_gemini_key_and_update_config)
+    client = _ClickUpAPIClient(api_key)
+    extractor = _ClickUpTaskExtractor(config, client, load_gemini_key_and_update_config)
     extractor.run()
 
 
