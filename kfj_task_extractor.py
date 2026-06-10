@@ -89,23 +89,23 @@ HEADER = ["Task", "Company", "Branch", "Priority", "Status", "ETA"]
 FALLBACK_BRANCH = "KFJ (213)"
 PRIORITY_MAP = {1: "Low", 2: "Normal", 3: "High", 4: "Urgent"}
 SCOPES = ["https://www.googleapis.com/auth/spreadsheets"]
-# Secret references use vault IDs (not names): the 1Password desktop SDK
-# integration only matches vaults by ID, and IDs work everywhere else too
-# (op CLI, op run, service-token SDK).
-# "Home Server" vault, personal account:
+# Both secrets live in the "Dev" vault (ksvblaaxovsjqoanl4dzo2apdu) of the
+# personal 1Password account, so a single authentication covers both.
+# References use vault/item IDs (not names): the 1Password desktop SDK
+# integration only matches vaults by ID, IDs survive renames, and they work
+# everywhere else too (op CLI, op run, service-token SDK).
+# Item "ClickUp personal API token":
 CLICKUP_SECRET_REFERENCE = (
     "op://ksvblaaxovsjqoanl4dzo2apdu/ClickUp personal API token/credential"
 )
-# "Employee" vault, work account:
+# Item "GC SDK service account":
 GOOGLE_SA_SECRET_REFERENCE = (
-    "op://jevyz4q6gbt7ldtuok5mzavjcq/G Cloud service account key/credential"
+    "op://ksvblaaxovsjqoanl4dzo2apdu/q6cioe2ngge2k2mpf2ojps77la/credential"
 )
 # DesktopAuth expects the account *display name* as shown in the 1Password
 # app; the op CLI expects the account URL.
 PERSONAL_ACCOUNT_NAME = "Maffiola Family"
 PERSONAL_ACCOUNT_URL = "my.1password.com"
-WORK_ACCOUNT_NAME = "KMS Service"
-WORK_ACCOUNT_URL = "kmsservice.1password.com"
 
 
 def read_secret_via_op_cli(
@@ -192,8 +192,8 @@ def load_google_credentials_json() -> str | None:
     return _resolve_secret(
         "GOOGLE_SHEETS_CREDENTIALS_JSON",
         GOOGLE_SA_SECRET_REFERENCE,
-        WORK_ACCOUNT_NAME,
-        WORK_ACCOUNT_URL,
+        PERSONAL_ACCOUNT_NAME,
+        PERSONAL_ACCOUNT_URL,
         "Google sheets credentials JSON",
     )
 
