@@ -52,6 +52,15 @@ if not sys.executable.startswith(os.path.join(script_dir, ".venv")) and os.path.
     print(f"Switching from {sys.executable} to virtual environment: {venv_python}")
     sys.exit(subprocess.call([venv_python] + sys.argv))
 
+# Force UTF-8 output so Unicode survives redirected/cp1252 consoles
+# (e.g. when run under `op run` on Windows)
+for stream in (sys.stdout, sys.stderr):
+    if hasattr(stream, "reconfigure") and (stream.encoding or "").lower() not in (
+        "utf-8",
+        "utf8",
+    ):
+        stream.reconfigure(encoding="utf-8")
+
 try:
     from rich.console import Console
     from rich.table import Table
