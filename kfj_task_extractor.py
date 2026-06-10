@@ -13,12 +13,15 @@ This script does not modify the main extractor workflow (main.py /
 extractor.py); it only imports shared components (API client, auth chain,
 TaskRecord, sorting, logging).
 
-Authentication:
-- ClickUp: CLICKUP_API_KEY env var (injected via `op run`), falling back to
-  the repo's 1Password chain in auth.load_secret_with_fallback.
-- Google Sheets: GOOGLE_SHEETS_CREDENTIALS_JSON env var containing the full
-  service account JSON as a string (injected via `op run`). The credentials
-  are passed directly to gspread from memory and never written to disk.
+Authentication (each secret, in order):
+1. Environment variable (CLICKUP_API_KEY / GOOGLE_SHEETS_CREDENTIALS_JSON),
+   e.g. injected via `op run --env-file=.env.kfj`
+2. 1Password Python SDK via desktop app auth (no token setup needed; the
+   unlocked 1Password app approves the access)
+3. Repo fallback chain (auth.load_secret_with_fallback): SDK with
+   OP_SERVICE_ACCOUNT_TOKEN, then `op read` CLI
+
+Credentials only ever exist in memory and are never written to disk.
 
 Notes:
 - ETA dates are converted from ClickUp epoch-ms due dates using UTC (repo
@@ -26,7 +29,8 @@ Notes:
 - A new tab is added each week; old tabs are left untouched and accumulate.
 
 Usage:
-    op run --env-file=<env> -- python kfj_task_extractor.py
+    python kfj_task_extractor.py                       # SDK/CLI auth
+    op run --env-file=.env.kfj -- python kfj_task_extractor.py  # env injection
     python kfj_task_extractor.py --dry-run
 """
 
@@ -70,7 +74,7 @@ except ImportError:
     sys.exit(1)
 
 from api_client import APIError, AuthenticationError, ClickUpAPIClient
-from auth import load_secret_with_fallback
+from auth import load_secret_with_fallback, resolve_secret_with_desktop_sdk
 from config import TaskRecord, format_datetime, sort_tasks_by_priority_and_eta
 from logger_config import get_logger, setup_logging
 from mappers import LocationMapper
@@ -85,42 +89,139 @@ HEADER = ["Task", "Company", "Branch", "Priority", "Status", "ETA"]
 FALLBACK_BRANCH = "KFJ (213)"
 PRIORITY_MAP = {1: "Low", 2: "Normal", 3: "High", 4: "Urgent"}
 SCOPES = ["https://www.googleapis.com/auth/spreadsheets"]
-CLICKUP_SECRET_REFERENCE = "op://Home Server/ClickUp personal API token/credential"
+# Secret references use vault IDs (not names): the 1Password desktop SDK
+# integration only matches vaults by ID, and IDs work everywhere else too
+# (op CLI, op run, service-token SDK).
+# "Home Server" vault, personal account:
+CLICKUP_SECRET_REFERENCE = (
+    "op://ksvblaaxovsjqoanl4dzo2apdu/ClickUp personal API token/credential"
+)
+# "Employee" vault, work account:
+GOOGLE_SA_SECRET_REFERENCE = (
+    "op://jevyz4q6gbt7ldtuok5mzavjcq/G Cloud service account key/credential"
+)
+# DesktopAuth expects the account *display name* as shown in the 1Password
+# app; the op CLI expects the account URL.
+PERSONAL_ACCOUNT_NAME = "Maffiola Family"
+PERSONAL_ACCOUNT_URL = "my.1password.com"
+WORK_ACCOUNT_NAME = "KMS Service"
+WORK_ACCOUNT_URL = "kmsservice.1password.com"
+
+
+def read_secret_via_op_cli(
+    secret_reference: str, account_url: str, secret_name: str
+) -> str | None:
+    """
+    Last-resort `op read` with an explicit account.
+
+    Exists because auth.load_secret_with_fallback short-circuits to the
+    1Password Environment path when OP_ENVIRONMENT_ID is set and never
+    reaches its own CLI fallback for vault references.
+
+    Returns:
+        The secret string, or None on any failure (never raises)
+    """
+    try:
+        result = subprocess.run(
+            ["op", "read", secret_reference, "--account", account_url],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        if result.returncode == 0 and result.stdout.strip():
+            logger.info(f"✅ {secret_name} loaded from 1Password CLI ({account_url}).")
+            return result.stdout.strip()
+        logger.debug(
+            f"op read failed for {secret_name}: {result.stderr.strip()[:200]}"
+        )
+    except (FileNotFoundError, subprocess.TimeoutExpired, OSError) as e:
+        logger.debug(f"op CLI unavailable for {secret_name}: {e}")
+    return None
+
+
+def _resolve_secret(
+    env_var: str,
+    secret_reference: str,
+    sdk_account_name: str,
+    cli_account_url: str,
+    secret_name: str,
+) -> str | None:
+    """
+    Resolve a secret through the full chain:
+
+    1. Environment variable (e.g. injected via `op run`)
+    2. 1Password Python SDK via desktop app auth
+    3. Repo fallback chain (1Password Environment / service-token SDK / CLI)
+    4. Direct `op read` with explicit account
+
+    Returns:
+        The secret string, or None if every source failed
+    """
+    value = os.environ.get(env_var)
+    if value:
+        logger.debug(f"Using {secret_name} from environment variable {env_var}")
+        return value
+    value = resolve_secret_with_desktop_sdk(
+        secret_reference, secret_name, [sdk_account_name]
+    )
+    if value:
+        return value
+    value = load_secret_with_fallback(secret_reference, secret_name)
+    if value:
+        return value
+    return read_secret_via_op_cli(secret_reference, cli_account_url, secret_name)
 
 
 def resolve_clickup_api_key() -> str | None:
-    """
-    Resolve the ClickUp API key: env var first (op run), then 1Password chain.
+    """Resolve the ClickUp API key (see _resolve_secret for the chain)."""
+    return _resolve_secret(
+        "CLICKUP_API_KEY",
+        CLICKUP_SECRET_REFERENCE,
+        PERSONAL_ACCOUNT_NAME,
+        PERSONAL_ACCOUNT_URL,
+        "ClickUp API key",
+    )
 
-    Returns:
-        API key string, or None if no source produced one
+
+def load_google_credentials_json() -> str | None:
     """
-    api_key = os.environ.get("CLICKUP_API_KEY")
-    if api_key:
-        logger.debug("Using ClickUp API key from environment variable")
-        return api_key
-    return load_secret_with_fallback(CLICKUP_SECRET_REFERENCE, "ClickUp API key")
+    Resolve the Google service account JSON as a string (see _resolve_secret
+    for the chain). The credential only ever exists in memory; nothing is
+    written to disk.
+    """
+    return _resolve_secret(
+        "GOOGLE_SHEETS_CREDENTIALS_JSON",
+        GOOGLE_SA_SECRET_REFERENCE,
+        WORK_ACCOUNT_NAME,
+        WORK_ACCOUNT_URL,
+        "Google sheets credentials JSON",
+    )
 
 
 def load_sheets_client():
     """
     Build an authorized gspread client from in-memory service account JSON.
 
-    Reads GOOGLE_SHEETS_CREDENTIALS_JSON from the environment (injected via
-    `op run`) and passes the parsed dict directly to gspread - the private
-    key is never written to the local filesystem.
-
     Returns:
-        Authorized gspread.Client
+        Tuple of (authorized gspread.Client, service account email)
 
     Raises:
-        KeyError: If GOOGLE_SHEETS_CREDENTIALS_JSON is not set
-        json.JSONDecodeError: If the env var does not contain valid JSON
+        ValueError: If no credential source produced the service account JSON
+        json.JSONDecodeError: If the credential is not valid JSON
     """
     import gspread
 
-    creds_dict = json.loads(os.environ["GOOGLE_SHEETS_CREDENTIALS_JSON"])
-    return gspread.service_account_from_dict(creds_dict, scopes=SCOPES)
+    raw = load_google_credentials_json()
+    if not raw:
+        raise ValueError(
+            "No Google service account credentials found. Either run via "
+            "`op run --env-file=.env.kfj` or ensure the 1Password desktop "
+            "app / `op` CLI can resolve "
+            f"'{GOOGLE_SA_SECRET_REFERENCE}'."
+        )
+    creds_dict = json.loads(raw)
+    client_email = creds_dict.get("client_email", "<service account email>")
+    return gspread.service_account_from_dict(creds_dict, scopes=SCOPES), client_email
 
 
 def fetch_open_tasks(client: ClickUpAPIClient, list_id: str) -> list[dict]:
@@ -355,16 +456,13 @@ def main() -> int:
         return 0
 
     try:
-        gc = load_sheets_client()
-    except KeyError:
-        console.print(
-            "[red]GOOGLE_SHEETS_CREDENTIALS_JSON is not set. Run via "
-            "`op run` with the service account JSON injected.[/red]"
-        )
+        gc, client_email = load_sheets_client()
+    except ValueError as e:
+        console.print(f"[red]{e}[/red]")
         return 1
     except json.JSONDecodeError as e:
         console.print(
-            f"[red]GOOGLE_SHEETS_CREDENTIALS_JSON is not valid JSON: {e}[/red]"
+            f"[red]Google service account credential is not valid JSON: {e}[/red]"
         )
         return 1
 
@@ -381,12 +479,6 @@ def main() -> int:
     except gspread.exceptions.APIError as e:
         console.print(f"[red]Google Sheets API error: {e}[/red]")
         if e.response.status_code == 403:
-            try:
-                client_email = json.loads(
-                    os.environ["GOOGLE_SHEETS_CREDENTIALS_JSON"]
-                ).get("client_email", "<service account email>")
-            except (KeyError, json.JSONDecodeError):
-                client_email = "<service account email>"
             console.print(
                 f"[yellow]Hint: share the sheet with {client_email} as Editor.[/yellow]"
             )

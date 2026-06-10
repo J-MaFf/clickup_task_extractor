@@ -6,8 +6,10 @@ closed-task filtering, and sorting integration with date-only ETAs. No
 network or Google Sheets calls are made.
 """
 
+import os
 import unittest
 from datetime import date
+from unittest import mock
 
 from config import sort_tasks_by_priority_and_eta
 from kfj_task_extractor import (
@@ -15,7 +17,9 @@ from kfj_task_extractor import (
     HEADER,
     build_tab_name,
     fetch_open_tasks,
+    load_google_credentials_json,
     record_to_row,
+    resolve_clickup_api_key,
     task_to_record,
 )
 
@@ -264,6 +268,94 @@ class TestSortingIntegration(unittest.TestCase):
             [r.Task for r in sorted_records],
             ["High", "Normal sooner", "Normal later", "Normal no ETA"],
         )
+
+
+class TestCredentialResolution(unittest.TestCase):
+    """Secrets resolve in order: env var -> desktop SDK -> fallback chain."""
+
+    def test_clickup_key_env_var_wins(self):
+        with mock.patch.dict(os.environ, {"CLICKUP_API_KEY": "pk_from_env"}):
+            with mock.patch(
+                "kfj_task_extractor.resolve_secret_with_desktop_sdk"
+            ) as sdk:
+                self.assertEqual(resolve_clickup_api_key(), "pk_from_env")
+                sdk.assert_not_called()
+
+    def test_clickup_key_sdk_before_fallback(self):
+        with mock.patch.dict(os.environ, {}, clear=True):
+            with (
+                mock.patch(
+                    "kfj_task_extractor.resolve_secret_with_desktop_sdk",
+                    return_value="pk_from_sdk",
+                ) as sdk,
+                mock.patch(
+                    "kfj_task_extractor.load_secret_with_fallback"
+                ) as fallback,
+            ):
+                self.assertEqual(resolve_clickup_api_key(), "pk_from_sdk")
+                sdk.assert_called_once()
+                fallback.assert_not_called()
+
+    def test_clickup_key_falls_back_when_sdk_fails(self):
+        with mock.patch.dict(os.environ, {}, clear=True):
+            with (
+                mock.patch(
+                    "kfj_task_extractor.resolve_secret_with_desktop_sdk",
+                    return_value=None,
+                ),
+                mock.patch(
+                    "kfj_task_extractor.load_secret_with_fallback",
+                    return_value="pk_from_cli",
+                ) as fallback,
+            ):
+                self.assertEqual(resolve_clickup_api_key(), "pk_from_cli")
+                fallback.assert_called_once()
+
+    def test_google_creds_env_var_wins(self):
+        with mock.patch.dict(
+            os.environ, {"GOOGLE_SHEETS_CREDENTIALS_JSON": '{"a": 1}'}
+        ):
+            with mock.patch(
+                "kfj_task_extractor.resolve_secret_with_desktop_sdk"
+            ) as sdk:
+                self.assertEqual(load_google_credentials_json(), '{"a": 1}')
+                sdk.assert_not_called()
+
+    def test_google_creds_sdk_before_fallback(self):
+        with mock.patch.dict(os.environ, {}, clear=True):
+            with (
+                mock.patch(
+                    "kfj_task_extractor.resolve_secret_with_desktop_sdk",
+                    return_value='{"type": "service_account"}',
+                ) as sdk,
+                mock.patch(
+                    "kfj_task_extractor.load_secret_with_fallback"
+                ) as fallback,
+            ):
+                self.assertEqual(
+                    load_google_credentials_json(), '{"type": "service_account"}'
+                )
+                sdk.assert_called_once()
+                fallback.assert_not_called()
+
+    def test_google_creds_all_sources_fail(self):
+        with mock.patch.dict(os.environ, {}, clear=True):
+            with (
+                mock.patch(
+                    "kfj_task_extractor.resolve_secret_with_desktop_sdk",
+                    return_value=None,
+                ),
+                mock.patch(
+                    "kfj_task_extractor.load_secret_with_fallback",
+                    return_value=None,
+                ),
+                mock.patch(
+                    "kfj_task_extractor.read_secret_via_op_cli",
+                    return_value=None,
+                ) as op_cli,
+            ):
+                self.assertIsNone(load_google_credentials_json())
+                op_cli.assert_called_once()
 
 
 if __name__ == "__main__":
