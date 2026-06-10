@@ -2,4 +2,5 @@ requests>=2.25.0
 onepassword-sdk>=0.4.1b1
 google-genai>=1.0.0  # Google Gemini API SDK
 rich>=14.0.0
+gspread>=6.1.0  # Google Sheets client (kfj_task_extractor.py)
 

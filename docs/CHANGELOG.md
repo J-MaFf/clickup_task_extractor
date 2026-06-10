@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **KFJ Task Extractor** (`kfj_task_extractor.py`): standalone weekly sync that pulls all open tasks from the ClickUp "KFI Jefferson" list into the tracking Google Sheet.
+  - Creates a dated tab `KFI Jefferson current tasks (M/D/YY)` at index 0 and renames the workbook title to match; same-day re-runs replace the tab's contents idempotently.
+  - Writes `Task | Company | Branch | Priority | Status | ETA` sorted by priority then ETA, normalized to the sheet's conventions (lowercase priority/status, date-only ETA).
+  - Resolves both the ClickUp key and Google service-account JSON via env var → 1Password SDK → CLI fallback; credentials are parsed in-memory and never written to disk.
+  - Reuses existing components (`ClickUpAPIClient`, `load_secret_with_fallback`, `TaskRecord`, `sort_tasks_by_priority_and_eta`, `LocationMapper`) without modifying the main extraction workflow.
+  - Supports `--dry-run`, `--list-id`, `--sheet-id`, and `--date M/D/YY` overrides.
+- Added `gspread>=6.1.0` dependency for the Google Sheets integration.
+
 ### Changed
 
 - Updated 1Password authentication to use 1Password Environment loading through the Python SDK for `OP_ENVIRONMENT_ID`.

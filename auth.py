@@ -339,6 +339,75 @@ def load_secret_with_fallback(secret_reference: str, secret_name: str) -> Secret
         return None
 
 
+def resolve_secret_with_desktop_sdk(
+    secret_reference: str,
+    secret_name: str,
+    account_candidates: list[str | None] | None = None,
+) -> SecretValue:
+    """
+    Resolve a 1Password secret reference via the SDK using Desktop App auth.
+
+    Unlike get_secret_from_1password (which requires OP_SERVICE_ACCOUNT_TOKEN),
+    this authenticates through the locally unlocked 1Password desktop app, so
+    no token needs to be provisioned. Useful for secrets that live in a
+    specific account when multiple accounts are signed in.
+
+    Args:
+        secret_reference: The 1Password secret reference
+                          (e.g., 'op://Employee/G Cloud service account key/credential')
+        secret_name: Human-readable name for the secret (for log messages)
+        account_candidates: Account URLs to try in order (e.g.,
+                            ['kmsservice.1password.com', 'my.1password.com']).
+                            Defaults to OP_ACCOUNT_NAME if set, else the known
+                            personal + work accounts.
+
+    Returns:
+        The secret string if successful, None if failed (never raises)
+    """
+    if OnePasswordClient is None or OnePasswordDesktopAuth is None:
+        logger.debug(
+            f"1Password SDK/DesktopAuth not available for {secret_name} (will use fallbacks)"
+        )
+        return None
+
+    if account_candidates is None:
+        explicit_account_name = os.environ.get("OP_ACCOUNT_NAME")
+        if explicit_account_name:
+            account_candidates = [explicit_account_name]
+        else:
+            account_candidates = ["my.1password.com", "kmsservice.1password.com"]
+
+    for account_name in account_candidates:
+        try:
+            logger.debug(
+                f"Attempting to resolve {secret_name} via 1Password SDK "
+                f"(DesktopAuth: {account_name or 'default'})..."
+            )
+
+            async def _resolve():
+                client = await OnePasswordClient.authenticate(
+                    auth=OnePasswordDesktopAuth(account_name),
+                    integration_name="ClickUp Task Extractor",
+                    integration_version="1.0.0",
+                )
+                return await client.secrets.resolve(secret_reference)
+
+            secret = asyncio.run(_resolve())
+            if secret and secret.strip():
+                logger.info(
+                    f"✅ {secret_name} loaded from 1Password SDK "
+                    f"(DesktopAuth: {account_name or 'default'})."
+                )
+                return secret.strip()
+        except Exception as auth_error:
+            logger.debug(
+                f"DesktopAuth failed for account '{account_name or 'default'}' "
+                f"while resolving {secret_name}: {auth_error}"
+            )
+
+    return None
+
+
 def get_secret_from_1password(
     secret_reference: str, secret_type: str = "API key"
 ) -> SecretValue:

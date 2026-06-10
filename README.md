@@ -127,6 +127,51 @@ When certain options are not specified via CLI arguments, the application will p
 
 Each prompt provides clear options and defaults, making it easy to configure the application on-the-fly without remembering all CLI flags.
 
+## 📅 Weekly KFI Jefferson Sheet Sync
+
+`kfj_task_extractor.py` is a standalone helper that pulls all open tasks from the
+ClickUp **KFI Jefferson** list and writes them into the weekly tracking Google
+Sheet. It reuses the main extractor's components (API client, sorting, branch
+mapping) but runs independently — the standard `main.py` workflow is untouched.
+
+Each run creates a new tab named `KFI Jefferson current tasks (M/D/YY)` (today's
+date, no leading zeros), writes the header and task rows
+(`Task | Company | Branch | Priority | Status | ETA`) sorted by priority then
+ETA, and renames the workbook title to match. Re-running on the same day is
+idempotent — the existing tab's contents are replaced rather than duplicated.
+
+```bash
+# Standard weekly run (1Password SDK desktop auth resolves both secrets)
+python kfj_task_extractor.py
+
+# Preview the rows without touching Google Sheets
+python kfj_task_extractor.py --dry-run
+
+# Inject secrets explicitly via op run (fallback path)
+op run --account my.1password.com --env-file=.env.kfj -- python kfj_task_extractor.py
+```
+
+| Option | Description | Default |
+| --- | --- | --- |
+| `--list-id` | ClickUp list ID to extract from | `901413205844` (KFI Jefferson) |
+| `--sheet-id` | Google Sheets workbook ID to write to | Built-in weekly sheet |
+| `--dry-run` | Fetch and print rows without writing to Sheets | `False` |
+| `--date M/D/YY` | Override the date used in the tab name (for backfill) | Today |
+
+**Authentication:** ClickUp uses `CLICKUP_API_KEY` from the environment first,
+then the 1Password SDK, then the repo's fallback chain. The Google service
+account JSON is resolved the same way (env var `GOOGLE_SHEETS_CREDENTIALS_JSON`
+→ 1Password SDK → CLI) and parsed in-memory — credentials are never written to
+disk.
+
+**One-time setup** before the first real run:
+
+1. Enable the **Google Sheets API** in the service account's GCP project.
+2. Share the spreadsheet with the service account's `client_email` as **Editor**.
+3. Make the ClickUp key and Google SA JSON available to 1Password (SDK desktop
+   auth, or an `op run` env file referencing the vault items).
+4. `pip install -r requirements.txt` to pick up `gspread`.
+
 ## 🔧 Development workflow
 
 - Install deps via `pip install -r requirements.txt`; optional features require `onepassword-sdk` and `google-genai` which are already listed.
