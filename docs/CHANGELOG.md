@@ -29,6 +29,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Clarified the supported account selection flow for DesktopAuth and service-account auth.
 - Enabled executable workflows with `OP_ENVIRONMENT_ID` by reading Environment variables through 1Password CLI.
 
+### Security
+
+- Disabled `show_locals` in the Rich traceback handler (`logger_config.py`) so unhandled exceptions no longer render local variable contents — a stack frame could hold an API key or other secret, which `show_locals=True` would have printed to the console/logs (#105).
+
 ## [1.04] - 2026-04-07
 
 ### Fixed
