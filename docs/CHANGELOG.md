@@ -29,6 +29,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Clarified the supported account selection flow for DesktopAuth and service-account auth.
 - Enabled executable workflows with `OP_ENVIRONMENT_ID` by reading Environment variables through 1Password CLI.
 - Corrected the Gemini model identifier from the invalid `gemini-flash-lite-latest` to the published `gemini-2.5-flash-lite` in `ai_summary.py` and `eta_calculator.py`; the value is now overridable via the `GEMINI_MODEL` environment variable. Added smoke tests that reject malformed model ids and the known-bad value (#109).
+- Guarded module-level side effects in `main.py` and `kfj_task_extractor.py` behind `if __name__ == "__main__"`. The virtualenv re-exec, UTF-8 stdio reconfiguration, and `setup_logging()` no longer run at import time, so the modules can be imported by tests and tooling without triggering a process re-exec, mutating `sys.stdout`/`sys.stderr`, or reconfiguring the shared logger (#107).
 
 ### Security
 
