@@ -94,30 +94,41 @@ from mappers import LocationMapper
 console = Console()
 logger = get_logger(__name__)
 
-DEFAULT_LIST_ID = "901413205844"  # ClickUp list "KFI Jefferson"
-DEFAULT_SHEET_ID = "13plvMvZDvF5qIEhdDzJIhgoM1TdNoe9KZ1673AiAJ50"
-TAB_PREFIX = "KFI Jefferson current tasks"
+# ---------------------------------------------------------------------------
+# Configuration.
+#
+# The values below were previously hardcoded as personal defaults (a ClickUp
+# list id, a Google Sheet id, 1Password vault/item references, and a 1Password
+# account name), which made this script single-tenant. They now read from
+# environment variables with non-personal (empty) defaults so the script can be
+# pointed at any list/sheet/account — typically via a local .env.kfj file (see
+# .env.kfj.example). The list/sheet ids can also be passed on the CLI with
+# --list-id / --sheet-id, which take precedence over these defaults.
+# ---------------------------------------------------------------------------
+
+# ClickUp list id and Google Sheets workbook id (empty by default).
+DEFAULT_LIST_ID = os.environ.get("KFJ_CLICKUP_LIST_ID", "")
+DEFAULT_SHEET_ID = os.environ.get("KFJ_GOOGLE_SHEET_ID", "")
+
+TAB_PREFIX = os.environ.get("KFJ_TAB_PREFIX", "KFI Jefferson current tasks")
 HEADER = ["Task", "Company", "Branch", "Priority", "Status", "ETA"]
-FALLBACK_BRANCH = "KFJ (213)"
+FALLBACK_BRANCH = os.environ.get("KFJ_FALLBACK_BRANCH", "")
 PRIORITY_MAP = {1: "Low", 2: "Normal", 3: "High", 4: "Urgent"}
 SCOPES = ["https://www.googleapis.com/auth/spreadsheets"]
-# Both secrets live in the "Dev" vault (ksvblaaxovsjqoanl4dzo2apdu) of the
-# personal 1Password account, so a single authentication covers both.
-# References use vault/item IDs (not names): the 1Password desktop SDK
-# integration only matches vaults by ID, IDs survive renames, and they work
-# everywhere else too (op CLI, op run, service-token SDK).
-# Item "ClickUp personal API token":
-CLICKUP_SECRET_REFERENCE = (
-    "op://ksvblaaxovsjqoanl4dzo2apdu/ClickUp personal API token/credential"
-)
-# Item "GC SDK service account":
-GOOGLE_SA_SECRET_REFERENCE = (
-    "op://ksvblaaxovsjqoanl4dzo2apdu/q6cioe2ngge2k2mpf2ojps77la/credential"
-)
-# DesktopAuth expects the account *display name* as shown in the 1Password
-# app; the op CLI expects the account URL.
-PERSONAL_ACCOUNT_NAME = "Maffiola Family"
-PERSONAL_ACCOUNT_URL = "my.1password.com"
+
+# 1Password secret references (op:// URIs) for the ClickUp API key and the
+# Google service-account JSON. Both default to empty; when unset, the resolver
+# falls back to the KFJ_*/standard environment variables (see _resolve_secret).
+# References may use vault/item IDs or names; IDs survive renames and work with
+# the desktop SDK, op CLI, op run, and service-token SDK.
+CLICKUP_SECRET_REFERENCE = os.environ.get("KFJ_CLICKUP_SECRET_REFERENCE", "")
+# Service-account JSON item:
+GOOGLE_SA_SECRET_REFERENCE = os.environ.get("KFJ_GOOGLE_SA_SECRET_REFERENCE", "")
+
+# 1Password account selectors. DesktopAuth expects the account *display name*
+# as shown in the 1Password app; the op CLI expects the account URL.
+PERSONAL_ACCOUNT_NAME = os.environ.get("KFJ_OP_ACCOUNT_NAME", "")
+PERSONAL_ACCOUNT_URL = os.environ.get("KFJ_OP_ACCOUNT_URL", "my.1password.com")
 
 
 def read_secret_via_op_cli(
@@ -173,8 +184,16 @@ def _resolve_secret(
     if value:
         logger.debug(f"Using {secret_name} from environment variable {env_var}")
         return value
+    # Without a configured 1Password reference, skip the 1Password lookups and
+    # rely on the environment variable above (e.g. injected via `op run`).
+    if not secret_reference:
+        logger.debug(
+            f"No 1Password reference configured for {secret_name}; "
+            f"set {env_var} or KFJ_*_SECRET_REFERENCE to enable 1Password lookup."
+        )
+        return None
     value = resolve_secret_with_desktop_sdk(
-        secret_reference, secret_name, [sdk_account_name]
+        secret_reference, secret_name, [sdk_account_name] if sdk_account_name else []
     )
     if value:
         return value
@@ -396,12 +415,14 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--list-id",
         default=DEFAULT_LIST_ID,
-        help=f"ClickUp list ID to extract from (default: {DEFAULT_LIST_ID})",
+        help="ClickUp list ID to extract from "
+        "(default: KFJ_CLICKUP_LIST_ID env var)",
     )
     parser.add_argument(
         "--sheet-id",
         default=DEFAULT_SHEET_ID,
-        help="Google Sheets workbook ID to write to",
+        help="Google Sheets workbook ID to write to "
+        "(default: KFJ_GOOGLE_SHEET_ID env var)",
     )
     parser.add_argument(
         "--dry-run",
@@ -421,6 +442,21 @@ def main() -> int:
     """Run the extraction and sheet update. Returns process exit code."""
     setup_logging(logging.INFO)
     args = parse_args()
+
+    # The list/sheet ids are no longer hardcoded; require them via --list-id /
+    # --sheet-id or the KFJ_CLICKUP_LIST_ID / KFJ_GOOGLE_SHEET_ID env vars.
+    if not args.list_id:
+        console.print(
+            "[red]No ClickUp list ID configured. Pass --list-id or set "
+            "KFJ_CLICKUP_LIST_ID (see .env.kfj.example).[/red]"
+        )
+        return 1
+    if not args.sheet_id and not args.dry_run:
+        console.print(
+            "[red]No Google Sheet ID configured. Pass --sheet-id or set "
+            "KFJ_GOOGLE_SHEET_ID (see .env.kfj.example), or use --dry-run.[/red]"
+        )
+        return 1
 
     if args.date:
         try:

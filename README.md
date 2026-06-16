@@ -174,12 +174,44 @@ date, no leading zeros), writes the header and task rows
 ETA, and renames the workbook title to match. Re-running on the same day is
 idempotent — the existing tab's contents are replaced rather than duplicated.
 
+### Configuration
+
+This script has **no hardcoded list, sheet, or account** — point it at your own
+by setting environment variables (copy the template and edit it):
+
 ```bash
-# Standard weekly run (1Password SDK desktop auth resolves both secrets)
+cp .env.kfj.example .env.kfj
+# then edit .env.kfj
+```
+
+`.env.kfj` is gitignored. Supported variables (see `.env.kfj.example` for the
+full list):
+
+| Variable | Purpose | Required? |
+| --- | --- | --- |
+| `KFJ_CLICKUP_LIST_ID` | ClickUp list ID to pull open tasks from (also `--list-id`) | Yes |
+| `KFJ_GOOGLE_SHEET_ID` | Google Sheets workbook ID to write to (also `--sheet-id`) | Yes (unless `--dry-run`) |
+| `KFJ_TAB_PREFIX` | Worksheet tab name prefix | No (default `KFI Jefferson current tasks`) |
+| `KFJ_FALLBACK_BRANCH` | Branch label when a task has no Branch field | No |
+| `CLICKUP_API_KEY` | ClickUp API key (resolved before 1Password) | Provide this or a 1Password reference |
+| `GOOGLE_SHEETS_CREDENTIALS_JSON` | Google service-account JSON (single line) | Provide this or a 1Password reference |
+| `KFJ_CLICKUP_SECRET_REFERENCE` | `op://` reference for the ClickUp key | No (skips 1Password if empty) |
+| `KFJ_GOOGLE_SA_SECRET_REFERENCE` | `op://` reference for the service-account JSON | No (skips 1Password if empty) |
+| `KFJ_OP_ACCOUNT_NAME` / `KFJ_OP_ACCOUNT_URL` | 1Password account display name / URL | No |
+
+> Finding the IDs: the **list ID** is the number in the ClickUp list URL; the
+> **sheet ID** is the long ID in the Google Sheets URL
+> (`https://docs.google.com/spreadsheets/d/<ID>/edit`).
+
+```bash
+# Standard weekly run (reads .env.kfj from your shell; 1Password resolves secrets)
 python kfj_task_extractor.py
 
-# Preview the rows without touching Google Sheets
+# Preview the rows without touching Google Sheets (no sheet ID required)
 python kfj_task_extractor.py --dry-run
+
+# Override the list/sheet on the CLI
+python kfj_task_extractor.py --list-id <LIST_ID> --sheet-id <SHEET_ID>
 
 # Inject secrets explicitly via op run (fallback path)
 op run --account my.1password.com --env-file=.env.kfj -- python kfj_task_extractor.py
@@ -187,16 +219,16 @@ op run --account my.1password.com --env-file=.env.kfj -- python kfj_task_extract
 
 | Option | Description | Default |
 | --- | --- | --- |
-| `--list-id` | ClickUp list ID to extract from | `901413205844` (KFI Jefferson) |
-| `--sheet-id` | Google Sheets workbook ID to write to | Built-in weekly sheet |
+| `--list-id` | ClickUp list ID to extract from | `KFJ_CLICKUP_LIST_ID` env var |
+| `--sheet-id` | Google Sheets workbook ID to write to | `KFJ_GOOGLE_SHEET_ID` env var |
 | `--dry-run` | Fetch and print rows without writing to Sheets | `False` |
 | `--date M/D/YY` | Override the date used in the tab name (for backfill) | Today |
 
 **Authentication:** ClickUp uses `CLICKUP_API_KEY` from the environment first,
-then the 1Password SDK, then the repo's fallback chain. The Google service
-account JSON is resolved the same way (env var `GOOGLE_SHEETS_CREDENTIALS_JSON`
-→ 1Password SDK → CLI) and parsed in-memory — credentials are never written to
-disk.
+then (if `KFJ_CLICKUP_SECRET_REFERENCE` is set) the 1Password SDK and the repo's
+fallback chain. The Google service account JSON is resolved the same way (env
+var `GOOGLE_SHEETS_CREDENTIALS_JSON` → 1Password if `KFJ_GOOGLE_SA_SECRET_REFERENCE`
+is set) and parsed in-memory — credentials are never written to disk.
 
 **One-time setup** before the first real run:
 
