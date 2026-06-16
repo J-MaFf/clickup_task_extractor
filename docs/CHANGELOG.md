@@ -16,8 +16,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Reuses existing components (`ClickUpAPIClient`, `load_secret_with_fallback`, `TaskRecord`, `sort_tasks_by_priority_and_eta`, `LocationMapper`) without modifying the main extraction workflow.
   - Supports `--dry-run`, `--list-id`, `--sheet-id`, and `--date M/D/YY` overrides.
 - Added `gspread>=6.1.0` dependency for the Google Sheets integration.
+- Added `requirements.lock` — a fully-resolved lock file (`pip freeze` output) for reproducible installs of the exact transitive versions the project is tested against (#108).
 
 ### Changed
+
+- Pinned dependencies with compatible-release (`~=`) specifiers instead of `>=` lower bounds, so breaking major releases of `requests`, `google-genai`, `rich`, or `gspread` cannot be picked up silently. `onepassword-sdk` (still a 0.x beta) is pinned exactly. Use `requirements.lock` for a byte-for-byte reproducible environment (#108).
 
 - Updated 1Password authentication to use 1Password Environment loading through the Python SDK for `OP_ENVIRONMENT_ID`.
 - Documented the Environment-based flow in the README and setup guidance.

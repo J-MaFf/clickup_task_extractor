@@ -44,7 +44,11 @@ A powerful, cross-platform Python application for extracting, processing, and ex
 2. **Install dependencies:**
 
    ```bash
+   # Normal install — compatible-release (`~=`) pins
    pip install -r requirements.txt
+
+   # Reproducible install — exact transitive versions this project is tested against
+   pip install -r requirements.lock
    ```
 
 3. **Set up your ClickUp API key** (choose one method):
@@ -204,7 +208,7 @@ disk.
 
 ## 🔧 Development workflow
 
-- Install deps via `pip install -r requirements.txt`; optional features require `onepassword-sdk` and `google-genai` which are already listed.
+- Install deps via `pip install -r requirements.txt` (compatible-release `~=` pins) or `pip install -r requirements.lock` for the exact tested versions; optional features require `onepassword-sdk` and `google-genai` which are already listed. Regenerate `requirements.lock` with `pip freeze` from a clean venv after changing `requirements.txt`.
 - Run the extractor with `python main.py` (Markdown export by default). Set the workspace and space via `--workspace`/`--space` or the `CLICKUP_WORKSPACE_NAME`/`CLICKUP_SPACE_NAME` environment variables (see [Configuration](#-configuration)). Other flags: `--output-format`, `--interactive`, `--include-completed`, `--date-filter`, `--ai-summary`, and `--gemini-api-key`.
 - Authentication falls back in this order: CLI flag → env var `CLICKUP_API_KEY` → 1Password Environment (`OP_ENVIRONMENT_ID`: SDK first, then `op environment read`) → 1Password SDK secret references → `op read` CLI → manual prompt.
 - Logging comes from `logger_config.setup_logging`; pass `use_rich=False` for plain output or a `log_file` path to persist logs.
