@@ -21,8 +21,11 @@ try:
 
     RICH_AVAILABLE = True
 
-    # Install rich tracebacks for beautiful error displays
-    install(show_locals=True, suppress=["logging"])
+    # Install rich tracebacks for beautiful error displays.
+    # show_locals is kept False so unhandled exceptions never render the
+    # contents of local variables — a stack frame may hold an API key or
+    # other secret, and show_locals=True would leak it to the console/logs.
+    install(show_locals=False, suppress=["logging"])
 except ImportError:
     RICH_AVAILABLE = False
     RichHandler = None
