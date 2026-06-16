@@ -394,6 +394,8 @@ class FetchProcessTasksTests(unittest.TestCase):
             config = ClickUpConfig(
                 api_key="dummy",
                 output_path=str(Path(tmpdir) / "out.md"),
+                workspace_name=workspace_name,
+                space_name=space_name,
                 team_id=team_id,
             )
             api_client = DummyAPIClient(responses)
@@ -459,6 +461,8 @@ class FetchProcessTasksTests(unittest.TestCase):
             config = ClickUpConfig(
                 api_key="dummy",
                 output_path=str(Path(tmpdir) / "out.md"),
+                workspace_name="KMS",
+                space_name="Kikkoman",
                 team_id="team1",
                 list_name="KFI Jefferson",
             )
@@ -531,6 +535,8 @@ class FetchProcessTasksTests(unittest.TestCase):
             config = ClickUpConfig(
                 api_key="dummy",
                 output_path=str(Path(tmpdir) / "out.md"),
+                workspace_name="KMS",
+                space_name="Kikkoman",
                 team_id="team1",
             )
             api_client = DummyAPIClient(responses)

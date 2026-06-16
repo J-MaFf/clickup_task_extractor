@@ -43,7 +43,8 @@ clickup_task_extractor/
 # Install dependencies
 pip install -r requirements.txt
 
-# Run extractor (defaults: workspace "KMS", space "Kikkoman", Markdown export)
+# Run extractor (Markdown export; workspace/space from --workspace/--space or
+# the CLICKUP_WORKSPACE_NAME/CLICKUP_SPACE_NAME env vars — see .env.example)
 python main.py
 
 # Interactive mode (review/select tasks before export)

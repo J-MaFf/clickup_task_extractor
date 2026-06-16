@@ -210,7 +210,7 @@ def load_secret_with_fallback(secret_reference: str, secret_name: str) -> Secret
 
     Args:
         secret_reference: The 1Password secret reference for vault-based lookups
-                         (e.g., 'op://Home Server/ClickUp personal API token/credential')
+                         (e.g., 'op://<vault>/<item>/credential')
         secret_name: Human-readable name for the secret (for error messages)
 
     Returns:
@@ -415,7 +415,7 @@ def get_secret_from_1password(
     Retrieve a secret from 1Password using the SDK.
 
     Args:
-        secret_reference: The 1Password secret reference (e.g., "op://Home Server/ClickUp personal API token/credential")
+        secret_reference: The 1Password secret reference (e.g., "op://<vault>/<item>/credential")
         secret_type: Description of the secret type for error messages (default: "API key")
 
     Returns:
@@ -477,7 +477,7 @@ def get_api_key_from_1password(secret_reference: str) -> SecretValue:
     Retrieve ClickUp API key from 1Password using the SDK.
 
     Args:
-        secret_reference: The 1Password secret reference (e.g., "op://Home Server/ClickUp personal API token/credential")
+        secret_reference: The 1Password secret reference (e.g., "op://<vault>/<item>/credential")
 
     Returns:
         The API key string if successful, None if failed
@@ -493,7 +493,7 @@ def get_gemini_api_key_from_1password(secret_reference: str) -> SecretValue:
     Retrieve Gemini API key from 1Password using the SDK.
 
     Args:
-        secret_reference: The 1Password secret reference (e.g., "op://Home Server/nftoo3gsi3wpx7z5bdmcsvr7p4/credential")
+        secret_reference: The 1Password secret reference (e.g., "op://<vault>/<item>/credential")
 
     Returns:
         The Gemini API key string if successful, None if failed
@@ -510,5 +510,12 @@ def load_gemini_api_key_from_environment():
     Helper to load Gemini API key from 1Password Environment.
     Uses load_secret_with_fallback which checks OP_ENVIRONMENT_ID automatically.
     """
-    gemini_secret_reference = "op://Home Server/nftoo3gsi3wpx7z5bdmcsvr7p4/credential"
+    # Read the secret reference from configuration (GEMINI_API_SECRET_REFERENCE
+    # env var) rather than hardcoding a personal 1Password path. Imported locally
+    # to avoid any import-order coupling with the config module.
+    from config import GEMINI_API_SECRET_REFERENCE
+
+    gemini_secret_reference = GEMINI_API_SECRET_REFERENCE
+    if not gemini_secret_reference:
+        return None
     return load_secret_with_fallback(gemini_secret_reference, "Gemini API key")

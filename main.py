@@ -39,6 +39,10 @@ from config import (
     AISource,
     format_datetime,
     CLICKUP_AI_SUMMARY_FIELD_ID,
+    CLICKUP_API_SECRET_REFERENCE,
+    GEMINI_API_SECRET_REFERENCE,
+    DEFAULT_WORKSPACE_NAME,
+    DEFAULT_SPACE_NAME,
 )
 from logger_config import setup_logging
 from mappers import get_choice_input, get_yes_no_input
@@ -183,7 +187,7 @@ def main():
     )
 
     parser = argparse.ArgumentParser(
-        description=f"ClickUp Task Extractor v{__version__} - {__description__}\n\nExtract and export ClickUp tasks to Markdown (default) or HTML. Default workspace: KMS.\nAPI keys can be provided via: 1Password Environment (OP_ENVIRONMENT_ID), environment variables (CLICKUP_API_KEY), or command-line arguments.\n\n1Password Environment Setup: Developer > View Environments > Create new > Add CLICKUP_API_KEY variable > Copy Environment ID > export OP_ENVIRONMENT_ID=<id>",
+        description=f"ClickUp Task Extractor v{__version__} - {__description__}\n\nExtract and export ClickUp tasks to Markdown (default) or HTML. The workspace and space are configured via --workspace/--space or the CLICKUP_WORKSPACE_NAME/CLICKUP_SPACE_NAME environment variables.\nAPI keys can be provided via: 1Password Environment (OP_ENVIRONMENT_ID), environment variables (CLICKUP_API_KEY), or command-line arguments.\n\n1Password Environment Setup: Developer > View Environments > Create new > Add CLICKUP_API_KEY variable > Copy Environment ID > export OP_ENVIRONMENT_ID=<id>",
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument(
@@ -201,8 +205,16 @@ def main():
         default=os.environ.get("CLICKUP_API_KEY"),
         help="ClickUp API Key (or set CLICKUP_API_KEY env var). Falls back to 1Password Environment or 1Password SDK (requires OP_SERVICE_ACCOUNT_TOKEN).",
     )
-    parser.add_argument("--workspace", type=str, help="Workspace name (default: KMS)")
-    parser.add_argument("--space", type=str, help="Space name (default: Kikkoman)")
+    parser.add_argument(
+        "--workspace",
+        type=str,
+        help="Workspace name (overrides the CLICKUP_WORKSPACE_NAME env var)",
+    )
+    parser.add_argument(
+        "--space",
+        type=str,
+        help="Space name (overrides the CLICKUP_SPACE_NAME env var)",
+    )
     parser.add_argument(
         "--list", type=str, help="Optional list name to extract from within the space"
     )
@@ -252,7 +264,9 @@ def main():
     )
     args = parser.parse_args()
 
-    # 1Password reference for API key: "op://Home Server/ClickUp personal API token/credential"
+    # The 1Password secret reference for the API key is configured via the
+    # CLICKUP_API_SECRET_REFERENCE environment variable (config module). It is
+    # empty by default so no personal vault path is baked into source.
     api_key = args.api_key or os.environ.get("CLICKUP_API_KEY")
 
     if not api_key:
@@ -284,8 +298,9 @@ def main():
                 style="yellow",
             )
         )
-        secret_reference = "op://Home Server/ClickUp personal API token/credential"
-        api_key = load_secret_with_fallback(secret_reference, "ClickUp API key")
+        secret_reference = CLICKUP_API_SECRET_REFERENCE
+        if secret_reference:
+            api_key = load_secret_with_fallback(secret_reference, "ClickUp API key")
         if not api_key:
             if is_frozen:
                 console.print(
@@ -330,13 +345,14 @@ def main():
         if gemini_api_key:
             return True  # Already have the key
 
-        # Try to get Gemini API key from 1Password with fallback
-        gemini_secret_reference = (
-            "op://Home Server/nftoo3gsi3wpx7z5bdmcsvr7p4/credential"
-        )
-        gemini_api_key = load_secret_with_fallback(
-            gemini_secret_reference, "Gemini API key"
-        )
+        # Try to get Gemini API key from 1Password with fallback. The secret
+        # reference comes from GEMINI_API_SECRET_REFERENCE (config module) and is
+        # empty by default so no personal vault path is baked into source.
+        gemini_secret_reference = GEMINI_API_SECRET_REFERENCE
+        if gemini_secret_reference:
+            gemini_api_key = load_secret_with_fallback(
+                gemini_secret_reference, "Gemini API key"
+            )
         if gemini_api_key:
             return True
         else:
@@ -492,8 +508,8 @@ def main():
 
     config = ClickUpConfig(
         api_key=api_key,
-        workspace_name=args.workspace or "KMS",
-        space_name=args.space or "Kikkoman",
+        workspace_name=args.workspace or DEFAULT_WORKSPACE_NAME,
+        space_name=args.space or DEFAULT_SPACE_NAME,
         list_name=args.list,
         output_path=args.output
         or f"output/WeeklyTaskList_{format_datetime(datetime.now(), TIMESTAMP_FORMAT)}.md",

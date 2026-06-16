@@ -90,7 +90,7 @@ This project leverages MCP (Model Context Protocol) tools for enhanced developme
 ## Integration Points
 
 - **ClickUp API v2**: All data via ClickUp API, robust error handling in `api_client.py`.
-- **1Password**: Secure API key storage/retrieval (SDK preferred, CLI fallback). Reference: `op://Home Server/ClickUp personal API token/credential`.
+- **1Password**: Secure API key storage/retrieval (SDK preferred, CLI fallback). The `op://` reference is configured via `CLICKUP_API_SECRET_REFERENCE` / `GEMINI_API_SECRET_REFERENCE` (see `.env.example`), e.g. `op://<vault>/<item>/credential`.
 - **Google Gemini AI**: Optional summaries, requires API key (see `ai_summary.py`).
 - **Rich**: All console UI (progress, tables, selection).
 
@@ -144,7 +144,7 @@ This project leverages MCP (Model Context Protocol) tools for enhanced developme
 ## Developer workflow
 
 - Requirements live in `requirements.txt`; core deps are `requests`, `rich`, with optional `onepassword-sdk` and `google-genai`—guard imports accordingly.
-- Typical runs: `python main.py` (Markdown export, workspace `KMS`, space `Kikkoman`), or override with `--output-format {Markdown|HTML}`, `--interactive`, `--include-completed`, `--date-filter {AllOpen|ThisWeek|LastWeek}`, and `--ai-summary/--gemini-api-key`.
+- Typical runs: `python main.py` (Markdown export; workspace/space from `--workspace`/`--space` or `CLICKUP_WORKSPACE_NAME`/`CLICKUP_SPACE_NAME`), or override with `--output-format {Markdown|HTML}`, `--interactive`, `--include-completed`, `--date-filter {AllOpen|ThisWeek|LastWeek}`, and `--ai-summary/--gemini-api-key`.
 - The extractor writes to `output/` using the timestamped path from `config.default_output_path()`; exporters adjust the extension per selected format.
 - Version bumps: update `version.py` (`__version__` and related metadata), refresh the README version badge URL, and add a new entry in `docs/CHANGELOG.md` summarizing changes since the previous release.
 - Release builds: Create a `release/v<version>` branch, commit version changes, tag with `v<version>`, and build exe with PyInstaller spec pointing to `dist/v<version>`.
