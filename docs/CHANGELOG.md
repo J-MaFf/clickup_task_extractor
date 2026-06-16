@@ -28,6 +28,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Removed the broken legacy vault-only fallback for Environment-based authentication.
 - Clarified the supported account selection flow for DesktopAuth and service-account auth.
 - Enabled executable workflows with `OP_ENVIRONMENT_ID` by reading Environment variables through 1Password CLI.
+- Corrected the Gemini model identifier from the invalid `gemini-flash-lite-latest` to the published `gemini-2.5-flash-lite` in `ai_summary.py` and `eta_calculator.py`; the value is now overridable via the `GEMINI_MODEL` environment variable. Added smoke tests that reject malformed model ids and the known-bad value (#109).
 
 ### Security
 
