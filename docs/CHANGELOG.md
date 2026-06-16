@@ -22,6 +22,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Updated 1Password authentication to use 1Password Environment loading through the Python SDK for `OP_ENVIRONMENT_ID`.
 - Documented the Environment-based flow in the README and setup guidance.
 - Added 1Password CLI Environment fallback using `op environment read <environment_id>` when SDK auth is unavailable.
+- Moved committed personal identifiers (1Password vault paths/item IDs, ClickUp team ID, and the workspace/space names) out of source into environment variables with non-personal (empty) defaults: `CLICKUP_API_SECRET_REFERENCE`, `GEMINI_API_SECRET_REFERENCE`, `CLICKUP_WORKSPACE_NAME`, `CLICKUP_SPACE_NAME`, `CLICKUP_TEAM_ID`, and `CLICKUP_AI_SUMMARY_FIELD_ID`. When a `*_SECRET_REFERENCE` is unset, `main.py` skips the 1Password lookup and falls back to env var / CLI flag / prompt. Added `.env.example` and a README **Configuration** section documenting the variables (#106).
 
 ### Fixed
 

@@ -54,6 +54,34 @@ A powerful, cross-platform Python application for extracting, processing, and ex
 
 > 💡 The CLI auto-relaunches inside `.venv/` when present, so activating the virtualenv manually is optional as long as dependencies live there.
 
+### ⚙️ Configuration
+
+Account-specific settings are read from environment variables (no personal
+identifiers are hardcoded in source). Copy the example file and fill in your own
+values:
+
+```bash
+cp .env.example .env
+# then edit .env
+```
+
+`.env` is gitignored. The supported variables:
+
+| Variable | Purpose | Default |
+| --- | --- | --- |
+| `CLICKUP_WORKSPACE_NAME` | Workspace (team) name to extract from | empty (use `--workspace` or be prompted) |
+| `CLICKUP_SPACE_NAME` | Space name within the workspace | empty (use `--space` or be prompted) |
+| `CLICKUP_TEAM_ID` | Numeric team ID; fallback when the workspace name can't be resolved | empty (prompted) |
+| `CLICKUP_API_KEY` | ClickUp API key | empty |
+| `CLICKUP_API_SECRET_REFERENCE` | `op://` reference for the ClickUp key in 1Password | empty (1Password lookup skipped) |
+| `GEMINI_API_SECRET_REFERENCE` | `op://` reference for the Gemini key in 1Password | empty (1Password lookup skipped) |
+| `CLICKUP_AI_SUMMARY_FIELD_ID` | Override the "Summary" custom-field ID | built-in field ID |
+| `OP_ENVIRONMENT_ID` | 1Password Environment ID, if you use Environments | empty |
+
+When the `*_SECRET_REFERENCE` variables are empty, the tool skips the 1Password
+lookup and relies on the `CLICKUP_API_KEY` env var, the `--api-key` /
+`--gemini-api-key` flags, or an interactive prompt.
+
 ### Using the Executable
 
 For users who prefer not to install Python, pre-built executables are available:
@@ -97,7 +125,9 @@ ClickUpTaskExtractor.exe --output-format Markdown --interactive
 ### Basic Usage
 
 ```bash
-# Run with default settings (Markdown output, KMS workspace, Kikkoman space)
+# Run with default settings (Markdown output). The workspace and space come
+# from --workspace/--space or the CLICKUP_WORKSPACE_NAME/CLICKUP_SPACE_NAME
+# environment variables (see Configuration below).
 python main.py
 
 # Interactive mode - review tasks before export
@@ -175,7 +205,7 @@ disk.
 ## 🔧 Development workflow
 
 - Install deps via `pip install -r requirements.txt`; optional features require `onepassword-sdk` and `google-genai` which are already listed.
-- Run the extractor with `python main.py` (defaults: workspace `KMS`, space `Kikkoman`, Markdown export). Override with `--output-format`, `--interactive`, `--include-completed`, `--date-filter`, `--ai-summary`, and `--gemini-api-key`.
+- Run the extractor with `python main.py` (Markdown export by default). Set the workspace and space via `--workspace`/`--space` or the `CLICKUP_WORKSPACE_NAME`/`CLICKUP_SPACE_NAME` environment variables (see [Configuration](#-configuration)). Other flags: `--output-format`, `--interactive`, `--include-completed`, `--date-filter`, `--ai-summary`, and `--gemini-api-key`.
 - Authentication falls back in this order: CLI flag → env var `CLICKUP_API_KEY` → 1Password Environment (`OP_ENVIRONMENT_ID`: SDK first, then `op environment read`) → 1Password SDK secret references → `op read` CLI → manual prompt.
 - Logging comes from `logger_config.setup_logging`; pass `use_rich=False` for plain output or a `log_file` path to persist logs.
 - All exports land under `output/`, named with `default_output_path()` which strips leading zeros for cross-platform friendly filenames.
@@ -193,8 +223,8 @@ disk.
 | Option | Description | Default |
 | --- | --- | --- |
 | `--api-key` | ClickUp API key | From environment or 1Password |
-| `--workspace` | Workspace name | `KMS` |
-| `--space` | Space name | `Kikkoman` |
+| `--workspace` | Workspace name | `CLICKUP_WORKSPACE_NAME` env var (else prompted) |
+| `--space` | Space name | `CLICKUP_SPACE_NAME` env var (else prompted) |
 | `--output` | Output file path | Auto-generated timestamp |
 | `--output-format` | Export format: `Markdown` or `HTML` | Prompted if not specified, defaults to `Markdown` |
 | `--include-completed` | Include completed/archived tasks | `False` |

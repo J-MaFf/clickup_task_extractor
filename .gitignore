@@ -15,6 +15,9 @@ node_modules/
 .env
 .env.local
 .env.*
+# Keep the committed example templates (they contain no real secrets)
+!.env.example
+!.env.kfj.example
 *.pem
 
 # OS
