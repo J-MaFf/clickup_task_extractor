@@ -21,6 +21,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - Pinned dependencies with compatible-release (`~=`) specifiers instead of `>=` lower bounds, so breaking major releases of `requests`, `google-genai`, `rich`, or `gspread` cannot be picked up silently. `onepassword-sdk` (still a 0.x beta) is pinned exactly. Use `requirements.lock` for a byte-for-byte reproducible environment (#108).
+- Made `kfj_task_extractor.py` configurable instead of single-tenant: the ClickUp list ID, Google Sheet ID, 1Password secret references, and 1Password account name/URL now read from `KFJ_*` environment variables with non-personal (empty) defaults. `--list-id`/`--sheet-id` still override, and `main()` now errors clearly when no list/sheet is configured. Added `.env.kfj.example` and a README **Configuration** subsection documenting every variable and where to find the IDs (#110).
 
 - Updated 1Password authentication to use 1Password Environment loading through the Python SDK for `OP_ENVIRONMENT_ID`.
 - Documented the Environment-based flow in the README and setup guidance.
