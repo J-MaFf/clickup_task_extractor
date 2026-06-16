@@ -42,28 +42,40 @@ import subprocess
 import sys
 from datetime import date, datetime, timezone
 
-# Re-launch inside the project venv when available (same convenience pattern
-# as main.py) so dependencies resolve regardless of the invoking interpreter.
-script_dir = os.path.dirname(os.path.abspath(__file__))
-if os.name == "nt":
-    venv_python = os.path.join(script_dir, ".venv", "Scripts", "python.exe")
-else:
-    venv_python = os.path.join(script_dir, ".venv", "bin", "python")
+def _reexec_in_venv() -> None:
+    """Re-launch inside the project venv when available (same convenience
+    pattern as main.py) so dependencies resolve regardless of the invoking
+    interpreter.
 
-if not sys.executable.startswith(os.path.join(script_dir, ".venv")) and os.path.exists(
-    venv_python
-):
-    print(f"Switching from {sys.executable} to virtual environment: {venv_python}")
-    sys.exit(subprocess.call([venv_python] + sys.argv))
+    No-op when already running from the venv or when the venv does not exist.
+    Called only from the ``__main__`` guard so importing this module never
+    triggers a process re-exec or re-exec loop.
+    """
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    if os.name == "nt":
+        venv_python = os.path.join(script_dir, ".venv", "Scripts", "python.exe")
+    else:
+        venv_python = os.path.join(script_dir, ".venv", "bin", "python")
 
-# Force UTF-8 output so Unicode survives redirected/cp1252 consoles
-# (e.g. when run under `op run` on Windows)
-for stream in (sys.stdout, sys.stderr):
-    if hasattr(stream, "reconfigure") and (stream.encoding or "").lower() not in (
-        "utf-8",
-        "utf8",
-    ):
-        stream.reconfigure(encoding="utf-8")
+    if not sys.executable.startswith(
+        os.path.join(script_dir, ".venv")
+    ) and os.path.exists(venv_python):
+        print(f"Switching from {sys.executable} to virtual environment: {venv_python}")
+        sys.exit(subprocess.call([venv_python] + sys.argv))
+
+
+def _configure_stdio_encoding() -> None:
+    """Force UTF-8 output so Unicode survives redirected/cp1252 consoles
+    (e.g. when run under ``op run`` on Windows). Mutates sys.stdout/stderr,
+    so it is only invoked from the ``__main__`` guard.
+    """
+    for stream in (sys.stdout, sys.stderr):
+        if hasattr(stream, "reconfigure") and (stream.encoding or "").lower() not in (
+            "utf-8",
+            "utf8",
+        ):
+            stream.reconfigure(encoding="utf-8")
+
 
 try:
     from rich.console import Console
@@ -492,4 +504,9 @@ def main() -> int:
 
 
 if __name__ == "__main__":
+    # Side effects that must only run when executed as a script, never on import:
+    #   1. Re-exec under the project venv if not already running from it.
+    #   2. Reconfigure stdio to UTF-8 (mutates sys.stdout/sys.stderr).
+    _reexec_in_venv()
+    _configure_stdio_encoding()
     sys.exit(main())
