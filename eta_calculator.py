@@ -9,6 +9,7 @@ Contains:
 - Fallback mechanisms for when AI is unavailable
 """
 
+import os
 from datetime import datetime, timedelta
 from typing import TypeAlias
 
@@ -62,8 +63,11 @@ except ImportError:
 # Type aliases
 ETAResult: TypeAlias = str
 
-# AI Model configuration
-GEMINI_MODEL = "gemini-flash-lite-latest"
+# AI Model configuration.
+# Must be a published Google model id. The previous "gemini-flash-lite-latest"
+# was not a real model id; "gemini-2.5-flash-lite" is the GA Flash-Lite tier.
+# Overridable via the GEMINI_MODEL environment variable.
+GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash-lite")
 
 # Priority-based default ETA offsets (in days)
 PRIORITY_ETA_DAYS = {
