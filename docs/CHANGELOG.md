@@ -16,18 +16,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Reuses existing components (`ClickUpAPIClient`, `load_secret_with_fallback`, `TaskRecord`, `sort_tasks_by_priority_and_eta`, `LocationMapper`) without modifying the main extraction workflow.
   - Supports `--dry-run`, `--list-id`, `--sheet-id`, and `--date M/D/YY` overrides.
 - Added `gspread>=6.1.0` dependency for the Google Sheets integration.
+- Added `requirements.lock` — a fully-resolved lock file (`pip freeze` output) for reproducible installs of the exact transitive versions the project is tested against (#108).
 
 ### Changed
+
+- Pinned dependencies with compatible-release (`~=`) specifiers instead of `>=` lower bounds, so breaking major releases of `requests`, `google-genai`, `rich`, or `gspread` cannot be picked up silently. `onepassword-sdk` (still a 0.x beta) is pinned exactly. Use `requirements.lock` for a byte-for-byte reproducible environment (#108).
+- Made `kfj_task_extractor.py` configurable instead of single-tenant: the ClickUp list ID, Google Sheet ID, 1Password secret references, and 1Password account name/URL now read from `KFJ_*` environment variables with non-personal (empty) defaults. `--list-id`/`--sheet-id` still override, and `main()` now errors clearly when no list/sheet is configured. Added `.env.kfj.example` and a README **Configuration** subsection documenting every variable and where to find the IDs (#110).
 
 - Updated 1Password authentication to use 1Password Environment loading through the Python SDK for `OP_ENVIRONMENT_ID`.
 - Documented the Environment-based flow in the README and setup guidance.
 - Added 1Password CLI Environment fallback using `op environment read <environment_id>` when SDK auth is unavailable.
+- Moved committed personal identifiers (1Password vault paths/item IDs, ClickUp team ID, and the workspace/space names) out of source into environment variables with non-personal (empty) defaults: `CLICKUP_API_SECRET_REFERENCE`, `GEMINI_API_SECRET_REFERENCE`, `CLICKUP_WORKSPACE_NAME`, `CLICKUP_SPACE_NAME`, `CLICKUP_TEAM_ID`, and `CLICKUP_AI_SUMMARY_FIELD_ID`. When a `*_SECRET_REFERENCE` is unset, `main.py` skips the 1Password lookup and falls back to env var / CLI flag / prompt. Added `.env.example` and a README **Configuration** section documenting the variables (#106).
 
 ### Fixed
 
 - Removed the broken legacy vault-only fallback for Environment-based authentication.
 - Clarified the supported account selection flow for DesktopAuth and service-account auth.
 - Enabled executable workflows with `OP_ENVIRONMENT_ID` by reading Environment variables through 1Password CLI.
+- Corrected the Gemini model identifier from the invalid `gemini-flash-lite-latest` to the published `gemini-2.5-flash-lite` in `ai_summary.py` and `eta_calculator.py`; the value is now overridable via the `GEMINI_MODEL` environment variable. Added smoke tests that reject malformed model ids and the known-bad value (#109).
+- Guarded module-level side effects in `main.py` and `kfj_task_extractor.py` behind `if __name__ == "__main__"`. The virtualenv re-exec, UTF-8 stdio reconfiguration, and `setup_logging()` no longer run at import time, so the modules can be imported by tests and tooling without triggering a process re-exec, mutating `sys.stdout`/`sys.stderr`, or reconfiguring the shared logger (#107).
+
+### Security
+
+- Disabled `show_locals` in the Rich traceback handler (`logger_config.py`) so unhandled exceptions no longer render local variable contents — a stack frame could hold an API key or other secret, which `show_locals=True` would have printed to the console/logs (#105).
 
 ## [1.04] - 2026-04-07
 

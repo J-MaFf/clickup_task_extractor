@@ -4,16 +4,26 @@
 AI Integration Module for ClickUp Task Extractor
 
 Contains:
-- AI summary generation using Google Gemini Flash-Latest API
+- AI summary generation using the Google Gemini API
 - Rate limiting and retry logic
 - Progress bar functionality for wait times
 """
 
+import os
 import time
 from typing import Callable, Mapping, Sequence, TypeAlias
 
-# Use Gemini Flash-Lite-Latest for AI summaries (paid tier)
-GEMINI_MODEL = "gemini-flash-lite-latest"
+# Gemini model used for AI summaries.
+#
+# Must be a published Google model id (see
+# https://ai.google.dev/gemini-api/docs/models). The previous value
+# "gemini-flash-lite-latest" was not a real model id and returned an
+# invalid-model error at runtime. "gemini-2.5-flash-lite" is the GA,
+# cost-efficient Flash-Lite tier documented in the README.
+#
+# Overridable via the GEMINI_MODEL environment variable so the model can be
+# bumped without a code change.
+GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash-lite")
 
 # Rich console imports - create singleton instance with proper encoding for Windows
 try:

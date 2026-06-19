@@ -44,7 +44,11 @@ A powerful, cross-platform Python application for extracting, processing, and ex
 2. **Install dependencies:**
 
    ```bash
+   # Normal install — compatible-release (`~=`) pins
    pip install -r requirements.txt
+
+   # Reproducible install — exact transitive versions this project is tested against
+   pip install -r requirements.lock
    ```
 
 3. **Set up your ClickUp API key** (choose one method):
@@ -53,6 +57,34 @@ A powerful, cross-platform Python application for extracting, processing, and ex
    - 1Password Environment: store `CLICKUP_API_KEY` in a 1Password Environment and set `OP_ENVIRONMENT_ID`
 
 > 💡 The CLI auto-relaunches inside `.venv/` when present, so activating the virtualenv manually is optional as long as dependencies live there.
+
+### ⚙️ Configuration
+
+Account-specific settings are read from environment variables (no personal
+identifiers are hardcoded in source). Copy the example file and fill in your own
+values:
+
+```bash
+cp .env.example .env
+# then edit .env
+```
+
+`.env` is gitignored. The supported variables:
+
+| Variable | Purpose | Default |
+| --- | --- | --- |
+| `CLICKUP_WORKSPACE_NAME` | Workspace (team) name to extract from | empty (use `--workspace` or be prompted) |
+| `CLICKUP_SPACE_NAME` | Space name within the workspace | empty (use `--space` or be prompted) |
+| `CLICKUP_TEAM_ID` | Numeric team ID; fallback when the workspace name can't be resolved | empty (prompted) |
+| `CLICKUP_API_KEY` | ClickUp API key | empty |
+| `CLICKUP_API_SECRET_REFERENCE` | `op://` reference for the ClickUp key in 1Password | empty (1Password lookup skipped) |
+| `GEMINI_API_SECRET_REFERENCE` | `op://` reference for the Gemini key in 1Password | empty (1Password lookup skipped) |
+| `CLICKUP_AI_SUMMARY_FIELD_ID` | Override the "Summary" custom-field ID | built-in field ID |
+| `OP_ENVIRONMENT_ID` | 1Password Environment ID, if you use Environments | empty |
+
+When the `*_SECRET_REFERENCE` variables are empty, the tool skips the 1Password
+lookup and relies on the `CLICKUP_API_KEY` env var, the `--api-key` /
+`--gemini-api-key` flags, or an interactive prompt.
 
 ### Using the Executable
 
@@ -97,7 +129,9 @@ ClickUpTaskExtractor.exe --output-format Markdown --interactive
 ### Basic Usage
 
 ```bash
-# Run with default settings (Markdown output, KMS workspace, Kikkoman space)
+# Run with default settings (Markdown output). The workspace and space come
+# from --workspace/--space or the CLICKUP_WORKSPACE_NAME/CLICKUP_SPACE_NAME
+# environment variables (see Configuration below).
 python main.py
 
 # Interactive mode - review tasks before export
@@ -140,12 +174,44 @@ date, no leading zeros), writes the header and task rows
 ETA, and renames the workbook title to match. Re-running on the same day is
 idempotent — the existing tab's contents are replaced rather than duplicated.
 
+### Configuration
+
+This script has **no hardcoded list, sheet, or account** — point it at your own
+by setting environment variables (copy the template and edit it):
+
 ```bash
-# Standard weekly run (1Password SDK desktop auth resolves both secrets)
+cp .env.kfj.example .env.kfj
+# then edit .env.kfj
+```
+
+`.env.kfj` is gitignored. Supported variables (see `.env.kfj.example` for the
+full list):
+
+| Variable | Purpose | Required? |
+| --- | --- | --- |
+| `KFJ_CLICKUP_LIST_ID` | ClickUp list ID to pull open tasks from (also `--list-id`) | Yes |
+| `KFJ_GOOGLE_SHEET_ID` | Google Sheets workbook ID to write to (also `--sheet-id`) | Yes (unless `--dry-run`) |
+| `KFJ_TAB_PREFIX` | Worksheet tab name prefix | No (default `KFI Jefferson current tasks`) |
+| `KFJ_FALLBACK_BRANCH` | Branch label when a task has no Branch field | No |
+| `CLICKUP_API_KEY` | ClickUp API key (resolved before 1Password) | Provide this or a 1Password reference |
+| `GOOGLE_SHEETS_CREDENTIALS_JSON` | Google service-account JSON (single line) | Provide this or a 1Password reference |
+| `KFJ_CLICKUP_SECRET_REFERENCE` | `op://` reference for the ClickUp key | No (skips 1Password if empty) |
+| `KFJ_GOOGLE_SA_SECRET_REFERENCE` | `op://` reference for the service-account JSON | No (skips 1Password if empty) |
+| `KFJ_OP_ACCOUNT_NAME` / `KFJ_OP_ACCOUNT_URL` | 1Password account display name / URL | No |
+
+> Finding the IDs: the **list ID** is the number in the ClickUp list URL; the
+> **sheet ID** is the long ID in the Google Sheets URL
+> (`https://docs.google.com/spreadsheets/d/<ID>/edit`).
+
+```bash
+# Standard weekly run (reads .env.kfj from your shell; 1Password resolves secrets)
 python kfj_task_extractor.py
 
-# Preview the rows without touching Google Sheets
+# Preview the rows without touching Google Sheets (no sheet ID required)
 python kfj_task_extractor.py --dry-run
+
+# Override the list/sheet on the CLI
+python kfj_task_extractor.py --list-id <LIST_ID> --sheet-id <SHEET_ID>
 
 # Inject secrets explicitly via op run (fallback path)
 op run --account my.1password.com --env-file=.env.kfj -- python kfj_task_extractor.py
@@ -153,16 +219,16 @@ op run --account my.1password.com --env-file=.env.kfj -- python kfj_task_extract
 
 | Option | Description | Default |
 | --- | --- | --- |
-| `--list-id` | ClickUp list ID to extract from | `901413205844` (KFI Jefferson) |
-| `--sheet-id` | Google Sheets workbook ID to write to | Built-in weekly sheet |
+| `--list-id` | ClickUp list ID to extract from | `KFJ_CLICKUP_LIST_ID` env var |
+| `--sheet-id` | Google Sheets workbook ID to write to | `KFJ_GOOGLE_SHEET_ID` env var |
 | `--dry-run` | Fetch and print rows without writing to Sheets | `False` |
 | `--date M/D/YY` | Override the date used in the tab name (for backfill) | Today |
 
 **Authentication:** ClickUp uses `CLICKUP_API_KEY` from the environment first,
-then the 1Password SDK, then the repo's fallback chain. The Google service
-account JSON is resolved the same way (env var `GOOGLE_SHEETS_CREDENTIALS_JSON`
-→ 1Password SDK → CLI) and parsed in-memory — credentials are never written to
-disk.
+then (if `KFJ_CLICKUP_SECRET_REFERENCE` is set) the 1Password SDK and the repo's
+fallback chain. The Google service account JSON is resolved the same way (env
+var `GOOGLE_SHEETS_CREDENTIALS_JSON` → 1Password if `KFJ_GOOGLE_SA_SECRET_REFERENCE`
+is set) and parsed in-memory — credentials are never written to disk.
 
 **One-time setup** before the first real run:
 
@@ -174,8 +240,8 @@ disk.
 
 ## 🔧 Development workflow
 
-- Install deps via `pip install -r requirements.txt`; optional features require `onepassword-sdk` and `google-genai` which are already listed.
-- Run the extractor with `python main.py` (defaults: workspace `KMS`, space `Kikkoman`, Markdown export). Override with `--output-format`, `--interactive`, `--include-completed`, `--date-filter`, `--ai-summary`, and `--gemini-api-key`.
+- Install deps via `pip install -r requirements.txt` (compatible-release `~=` pins) or `pip install -r requirements.lock` for the exact tested versions; optional features require `onepassword-sdk` and `google-genai` which are already listed. Regenerate `requirements.lock` with `pip freeze` from a clean venv after changing `requirements.txt`.
+- Run the extractor with `python main.py` (Markdown export by default). Set the workspace and space via `--workspace`/`--space` or the `CLICKUP_WORKSPACE_NAME`/`CLICKUP_SPACE_NAME` environment variables (see [Configuration](#-configuration)). Other flags: `--output-format`, `--interactive`, `--include-completed`, `--date-filter`, `--ai-summary`, and `--gemini-api-key`.
 - Authentication falls back in this order: CLI flag → env var `CLICKUP_API_KEY` → 1Password Environment (`OP_ENVIRONMENT_ID`: SDK first, then `op environment read`) → 1Password SDK secret references → `op read` CLI → manual prompt.
 - Logging comes from `logger_config.setup_logging`; pass `use_rich=False` for plain output or a `log_file` path to persist logs.
 - All exports land under `output/`, named with `default_output_path()` which strips leading zeros for cross-platform friendly filenames.
@@ -193,8 +259,8 @@ disk.
 | Option | Description | Default |
 | --- | --- | --- |
 | `--api-key` | ClickUp API key | From environment or 1Password |
-| `--workspace` | Workspace name | `KMS` |
-| `--space` | Space name | `Kikkoman` |
+| `--workspace` | Workspace name | `CLICKUP_WORKSPACE_NAME` env var (else prompted) |
+| `--space` | Space name | `CLICKUP_SPACE_NAME` env var (else prompted) |
 | `--output` | Output file path | Auto-generated timestamp |
 | `--output-format` | Export format: `Markdown` or `HTML` | Prompted if not specified, defaults to `Markdown` |
 | `--include-completed` | Include completed/archived tasks | `False` |

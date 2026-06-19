@@ -402,7 +402,9 @@ class TestRateLimitingAndRetry(unittest.TestCase):
     @patch('ai_summary.GenerativeModel')
     @patch('ai_summary.configure')
     def test_uses_correct_model(self, mock_configure, mock_model_class, mock_types):
-        """Test uses correct Gemini model (gemini-flash-lite-latest)."""
+        """Test uses the configured Gemini model (ai_summary.GEMINI_MODEL)."""
+        import ai_summary
+
         mock_model = Mock()
         mock_response = Mock()
         mock_response.text = 'Summary'
@@ -412,8 +414,8 @@ class TestRateLimitingAndRetry(unittest.TestCase):
         field_entries = [('Name', 'Task')]
         get_ai_summary('Task', field_entries, 'api_key')
 
-        # Verify GenerativeModel was called with the correct model
-        mock_model_class.assert_called_once_with('gemini-flash-lite-latest')
+        # Verify GenerativeModel was called with the module's configured model id.
+        mock_model_class.assert_called_once_with(ai_summary.GEMINI_MODEL)
 
     @patch('ai_summary.types')
     @patch('ai_summary.GenerativeModel')

@@ -1,6 +1,18 @@
-requests>=2.25.0
-onepassword-sdk>=0.4.1b1
-google-genai>=1.0.0  # Google Gemini API SDK
-rich>=14.0.0
-gspread>=6.1.0  # Google Sheets client (kfj_task_extractor.py)
+# Dependency pins for ClickUp Task Extractor.
+#
+# Uses compatible-release (`~=`) pins so patch/minor updates are allowed but a
+# breaking MAJOR release cannot be picked up silently. The versions below are
+# the ones this project is tested against (see docs/CHANGELOG.md). Bump the
+# floor deliberately after testing a newer release.
+#
+# `~=X.Y` means ">=X.Y, ==X.*" (any X.Y or newer within the same major).
 
+requests~=2.32          # HTTP client for the ClickUp API
+google-genai~=2.8       # Google Gemini API SDK
+rich~=15.0              # Console UI / logging
+gspread~=6.2            # Google Sheets client (kfj_task_extractor.py)
+
+# 1Password SDK is still a beta (0.x) release and no stable version above 0.4.0
+# is published, so it is pinned exactly rather than with `~=` (a 0.x `~=` pin is
+# effectively an exact pin anyway). Revisit when a stable >=0.4.1 ships.
+onepassword-sdk==0.4.1b1

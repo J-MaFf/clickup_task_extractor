@@ -15,7 +15,14 @@ node_modules/
 .env
 .env.local
 .env.*
+# Keep the committed example templates (they contain no real secrets)
+!.env.example
+!.env.kfj.example
 *.pem
+
+# Dependency lock file is intentionally tracked (some global gitignores
+# exclude *.lock; re-include it here so it is committed everywhere).
+!requirements.lock
 
 # OS
 *.swp

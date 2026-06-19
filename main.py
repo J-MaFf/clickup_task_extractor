@@ -39,6 +39,10 @@ from config import (
     AISource,
     format_datetime,
     CLICKUP_AI_SUMMARY_FIELD_ID,
+    CLICKUP_API_SECRET_REFERENCE,
+    GEMINI_API_SECRET_REFERENCE,
+    DEFAULT_WORKSPACE_NAME,
+    DEFAULT_SPACE_NAME,
 )
 from logger_config import setup_logging
 from mappers import get_choice_input, get_yes_no_input
@@ -91,29 +95,39 @@ def _configure_stdio_encoding() -> None:
                 continue
 
 
-_configure_stdio_encoding()
-
-# Initialize Rich console with proper encoding for cross-platform compatibility
-# This ensures proper rendering on Windows, macOS, and Linux
+# Initialize Rich console with proper encoding for cross-platform compatibility.
+# This ensures proper rendering on Windows, macOS, and Linux. Constructing a
+# Console is a side-effect-free object instantiation (no I/O, no subprocess),
+# so it is safe to do at import time and lets the module's helper functions
+# reference `console` as a module global.
 console = Console(force_terminal=None, legacy_windows=False)
 
-# Setup enhanced logging with Rich
-logger = setup_logging(logging.INFO, use_rich=True)
+# Logging is configured lazily in main() rather than at import time, because
+# setup_logging() mutates the shared "clickup_extractor" logger (clearing and
+# re-adding handlers) and may open a file handler — side effects that should
+# not fire merely from importing this module (e.g. under test/tooling).
+logger = None
 
-# Ensure we're using the virtual environment
-script_dir = os.path.dirname(os.path.abspath(__file__))
-if os.name == "nt":
-    venv_python = os.path.join(script_dir, ".venv", "Scripts", "python.exe")
-else:
-    venv_python = os.path.join(script_dir, ".venv", "bin", "python")
 
-# If we're not running from the venv and the venv exists, restart with the venv Python
-if not sys.executable.startswith(os.path.join(script_dir, ".venv")) and os.path.exists(
-    venv_python
-):
-    print(f"Switching from {sys.executable} to virtual environment: {venv_python}")
-    # Re-execute the script with the virtual environment Python
-    sys.exit(subprocess.call([venv_python] + sys.argv))
+def _reexec_in_venv() -> None:
+    """Re-launch this script under the project's virtualenv interpreter.
+
+    No-op when already running from the venv or when the venv does not exist.
+    Called only from the ``__main__`` guard so that importing this module
+    (for tests/tooling) never triggers a process re-exec or re-exec loop.
+    """
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    if os.name == "nt":
+        venv_python = os.path.join(script_dir, ".venv", "Scripts", "python.exe")
+    else:
+        venv_python = os.path.join(script_dir, ".venv", "bin", "python")
+
+    if not sys.executable.startswith(
+        os.path.join(script_dir, ".venv")
+    ) and os.path.exists(venv_python):
+        print(f"Switching from {sys.executable} to virtual environment: {venv_python}")
+        # Re-execute the script with the virtual environment Python
+        sys.exit(subprocess.call([venv_python] + sys.argv))
 
 
 def main():
@@ -135,6 +149,11 @@ def main():
     - Add variable: CLICKUP_API_KEY = your ClickUp API key
     - Copy Environment ID and set: export OP_ENVIRONMENT_ID=<environment_id>
     """
+    global logger
+    # Configure logging on first entry into main() rather than at import time.
+    if logger is None:
+        logger = setup_logging(logging.INFO, use_rich=True)
+
     try:
         _ClickUpAPIClient, _ClickUpTaskExtractor = _load_runtime_dependencies()
     except (KeyboardInterrupt, ImportError):
@@ -168,7 +187,7 @@ def main():
     )
 
     parser = argparse.ArgumentParser(
-        description=f"ClickUp Task Extractor v{__version__} - {__description__}\n\nExtract and export ClickUp tasks to Markdown (default) or HTML. Default workspace: KMS.\nAPI keys can be provided via: 1Password Environment (OP_ENVIRONMENT_ID), environment variables (CLICKUP_API_KEY), or command-line arguments.\n\n1Password Environment Setup: Developer > View Environments > Create new > Add CLICKUP_API_KEY variable > Copy Environment ID > export OP_ENVIRONMENT_ID=<id>",
+        description=f"ClickUp Task Extractor v{__version__} - {__description__}\n\nExtract and export ClickUp tasks to Markdown (default) or HTML. The workspace and space are configured via --workspace/--space or the CLICKUP_WORKSPACE_NAME/CLICKUP_SPACE_NAME environment variables.\nAPI keys can be provided via: 1Password Environment (OP_ENVIRONMENT_ID), environment variables (CLICKUP_API_KEY), or command-line arguments.\n\n1Password Environment Setup: Developer > View Environments > Create new > Add CLICKUP_API_KEY variable > Copy Environment ID > export OP_ENVIRONMENT_ID=<id>",
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument(
@@ -186,8 +205,16 @@ def main():
         default=os.environ.get("CLICKUP_API_KEY"),
         help="ClickUp API Key (or set CLICKUP_API_KEY env var). Falls back to 1Password Environment or 1Password SDK (requires OP_SERVICE_ACCOUNT_TOKEN).",
     )
-    parser.add_argument("--workspace", type=str, help="Workspace name (default: KMS)")
-    parser.add_argument("--space", type=str, help="Space name (default: Kikkoman)")
+    parser.add_argument(
+        "--workspace",
+        type=str,
+        help="Workspace name (overrides the CLICKUP_WORKSPACE_NAME env var)",
+    )
+    parser.add_argument(
+        "--space",
+        type=str,
+        help="Space name (overrides the CLICKUP_SPACE_NAME env var)",
+    )
     parser.add_argument(
         "--list", type=str, help="Optional list name to extract from within the space"
     )
@@ -237,7 +264,9 @@ def main():
     )
     args = parser.parse_args()
 
-    # 1Password reference for API key: "op://Home Server/ClickUp personal API token/credential"
+    # The 1Password secret reference for the API key is configured via the
+    # CLICKUP_API_SECRET_REFERENCE environment variable (config module). It is
+    # empty by default so no personal vault path is baked into source.
     api_key = args.api_key or os.environ.get("CLICKUP_API_KEY")
 
     if not api_key:
@@ -269,8 +298,9 @@ def main():
                 style="yellow",
             )
         )
-        secret_reference = "op://Home Server/ClickUp personal API token/credential"
-        api_key = load_secret_with_fallback(secret_reference, "ClickUp API key")
+        secret_reference = CLICKUP_API_SECRET_REFERENCE
+        if secret_reference:
+            api_key = load_secret_with_fallback(secret_reference, "ClickUp API key")
         if not api_key:
             if is_frozen:
                 console.print(
@@ -315,13 +345,14 @@ def main():
         if gemini_api_key:
             return True  # Already have the key
 
-        # Try to get Gemini API key from 1Password with fallback
-        gemini_secret_reference = (
-            "op://Home Server/nftoo3gsi3wpx7z5bdmcsvr7p4/credential"
-        )
-        gemini_api_key = load_secret_with_fallback(
-            gemini_secret_reference, "Gemini API key"
-        )
+        # Try to get Gemini API key from 1Password with fallback. The secret
+        # reference comes from GEMINI_API_SECRET_REFERENCE (config module) and is
+        # empty by default so no personal vault path is baked into source.
+        gemini_secret_reference = GEMINI_API_SECRET_REFERENCE
+        if gemini_secret_reference:
+            gemini_api_key = load_secret_with_fallback(
+                gemini_secret_reference, "Gemini API key"
+            )
         if gemini_api_key:
             return True
         else:
@@ -477,8 +508,8 @@ def main():
 
     config = ClickUpConfig(
         api_key=api_key,
-        workspace_name=args.workspace or "KMS",
-        space_name=args.space or "Kikkoman",
+        workspace_name=args.workspace or DEFAULT_WORKSPACE_NAME,
+        space_name=args.space or DEFAULT_SPACE_NAME,
         list_name=args.list,
         output_path=args.output
         or f"output/WeeklyTaskList_{format_datetime(datetime.now(), TIMESTAMP_FORMAT)}.md",
@@ -534,4 +565,9 @@ def main():
 
 
 if __name__ == "__main__":
+    # Side effects that must only run when executed as a script, never on import:
+    #   1. Reconfigure stdio to UTF-8 (mutates sys.stdout/sys.stderr).
+    #   2. Re-exec under the project venv if not already running from it.
+    _configure_stdio_encoding()
+    _reexec_in_venv()
     main()

@@ -285,6 +285,10 @@ class TestCredentialResolution(unittest.TestCase):
         with mock.patch.dict(os.environ, {}, clear=True):
             with (
                 mock.patch(
+                    "kfj_task_extractor.CLICKUP_SECRET_REFERENCE",
+                    "op://vault/item/credential",
+                ),
+                mock.patch(
                     "kfj_task_extractor.resolve_secret_with_desktop_sdk",
                     return_value="pk_from_sdk",
                 ) as sdk,
@@ -299,6 +303,10 @@ class TestCredentialResolution(unittest.TestCase):
     def test_clickup_key_falls_back_when_sdk_fails(self):
         with mock.patch.dict(os.environ, {}, clear=True):
             with (
+                mock.patch(
+                    "kfj_task_extractor.CLICKUP_SECRET_REFERENCE",
+                    "op://vault/item/credential",
+                ),
                 mock.patch(
                     "kfj_task_extractor.resolve_secret_with_desktop_sdk",
                     return_value=None,
@@ -325,6 +333,10 @@ class TestCredentialResolution(unittest.TestCase):
         with mock.patch.dict(os.environ, {}, clear=True):
             with (
                 mock.patch(
+                    "kfj_task_extractor.GOOGLE_SA_SECRET_REFERENCE",
+                    "op://vault/item/credential",
+                ),
+                mock.patch(
                     "kfj_task_extractor.resolve_secret_with_desktop_sdk",
                     return_value='{"type": "service_account"}',
                 ) as sdk,
@@ -342,6 +354,10 @@ class TestCredentialResolution(unittest.TestCase):
         with mock.patch.dict(os.environ, {}, clear=True):
             with (
                 mock.patch(
+                    "kfj_task_extractor.GOOGLE_SA_SECRET_REFERENCE",
+                    "op://vault/item/credential",
+                ),
+                mock.patch(
                     "kfj_task_extractor.resolve_secret_with_desktop_sdk",
                     return_value=None,
                 ),
@@ -356,6 +372,25 @@ class TestCredentialResolution(unittest.TestCase):
             ):
                 self.assertIsNone(load_google_credentials_json())
                 op_cli.assert_called_once()
+
+    def test_clickup_key_skips_1password_when_reference_unset(self):
+        """With no env var and an empty secret reference, the 1Password chain is
+        skipped and resolution returns None (issue #110)."""
+        with mock.patch.dict(os.environ, {}, clear=True):
+            with (
+                mock.patch("kfj_task_extractor.CLICKUP_SECRET_REFERENCE", ""),
+                mock.patch(
+                    "kfj_task_extractor.resolve_secret_with_desktop_sdk",
+                    return_value="should_not_be_used",
+                ) as sdk,
+                mock.patch(
+                    "kfj_task_extractor.load_secret_with_fallback",
+                    return_value="should_not_be_used",
+                ) as fallback,
+            ):
+                self.assertIsNone(resolve_clickup_api_key())
+                sdk.assert_not_called()
+                fallback.assert_not_called()
 
 
 if __name__ == "__main__":

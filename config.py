@@ -9,6 +9,7 @@ Contains:
 - Date/time formatting constants and utilities
 """
 
+import os
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any
@@ -51,8 +52,37 @@ PRIORITY_ORDER = {
 }
 
 
-# Default ClickUp AI summary custom field identifier ("Summary")
-CLICKUP_AI_SUMMARY_FIELD_ID = "d7426f47-27f0-494b-b3a2-7d254132ee1a"
+# Default ClickUp AI summary custom field identifier ("Summary"), overridable
+# via the CLICKUP_AI_SUMMARY_FIELD_ID environment variable.
+CLICKUP_AI_SUMMARY_FIELD_ID = os.environ.get(
+    "CLICKUP_AI_SUMMARY_FIELD_ID", "d7426f47-27f0-494b-b3a2-7d254132ee1a"
+)
+
+
+# ---------------------------------------------------------------------------
+# Account-specific configuration.
+#
+# These values were previously hardcoded as personal defaults in source
+# (a 1Password vault path, a 1Password item id, a ClickUp team id, and the
+# workspace/space names). Hardcoding them exposed internal account structure
+# and made the tool single-tenant. They now read from environment variables
+# with non-personal defaults (empty strings), so anyone can configure the tool
+# for their own account — typically via a local .env file (see .env.example).
+# The owner's previous values can be restored by exporting these variables.
+# ---------------------------------------------------------------------------
+
+# 1Password secret references (op:// URIs) for the API keys. Empty by default;
+# when unset, main.py skips the 1Password lookup and falls back to the
+# CLICKUP_API_KEY / --api-key paths (and a manual prompt) instead.
+CLICKUP_API_SECRET_REFERENCE = os.environ.get("CLICKUP_API_SECRET_REFERENCE", "")
+GEMINI_API_SECRET_REFERENCE = os.environ.get("GEMINI_API_SECRET_REFERENCE", "")
+
+# ClickUp workspace/space names and team id. The extractor resolves the team
+# from the workspace name via the API first, falling back to CLICKUP_TEAM_ID /
+# this team id, then prompting interactively — so empty defaults are safe.
+DEFAULT_WORKSPACE_NAME = os.environ.get("CLICKUP_WORKSPACE_NAME", "")
+DEFAULT_SPACE_NAME = os.environ.get("CLICKUP_SPACE_NAME", "")
+DEFAULT_TEAM_ID = os.environ.get("CLICKUP_TEAM_ID", "")
 
 
 class OutputFormat(Enum):
@@ -289,15 +319,15 @@ class ClickUpConfig:
         ...     api_key="pk_123456789",
         ...     workspace_name="My Workspace",
         ...     space_name="Development",
-        ...     team_id="9014534294"
+        ...     team_id="1234567"
         ... )
     """
 
     api_key: str
-    workspace_name: str = "KMS"
-    space_name: str = "Kikkoman"
+    workspace_name: str = DEFAULT_WORKSPACE_NAME
+    space_name: str = DEFAULT_SPACE_NAME
     list_name: str | None = None
-    team_id: str = "9014534294"
+    team_id: str = DEFAULT_TEAM_ID
     output_path: str = field(default_factory=default_output_path)
     include_completed: bool = False
     date_filter: DateFilter = DateFilter.ALL_OPEN
