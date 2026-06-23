@@ -47,7 +47,7 @@ class TestInteractiveAISummary(unittest.TestCase):
             f"/space/{self.space_id}/list?archived=false": {
                 "lists": [{"id": self.list_id, "name": "Test List"}]
             },
-            f"/list/{self.list_id}/task?archived=false": {
+            f"/list/{self.list_id}/task?archived=false&subtasks=true": {
                 "tasks": [
                     {"id": "task_1", "name": "Task 1", "date_created": "1609459200000"},
                     {"id": "task_2", "name": "Task 2", "date_created": "1609459200000"},
