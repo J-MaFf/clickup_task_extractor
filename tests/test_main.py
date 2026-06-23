@@ -26,6 +26,8 @@ class MainEntrypointTests(unittest.TestCase):
 
         mock_console = MagicMock()
         mock_console.input.return_value = ""
+        mock_api_client_cls = MagicMock()
+        mock_extractor_cls = MagicMock()
 
         with (
             patch.object(main_module, "console", mock_console),
@@ -36,8 +38,11 @@ class MainEntrypointTests(unittest.TestCase):
                 main_module, "get_choice_input", return_value="HTML"
             ) as mock_choice_input,
             patch.object(main_module, "load_secret_with_fallback") as mock_load_secret,
-            patch.object(main_module, "ClickUpTaskExtractor") as mock_extractor_cls,
-            patch.object(main_module, "ClickUpAPIClient") as mock_api_client_cls,
+            patch.object(
+                main_module,
+                "_load_runtime_dependencies",
+                return_value=(mock_api_client_cls, mock_extractor_cls),
+            ),
         ):
             extractor_instance = mock_extractor_cls.return_value
             extractor_instance.run = MagicMock()
@@ -97,6 +102,8 @@ class MainEntrypointTests(unittest.TestCase):
 
         mock_console = MagicMock()
         mock_console.input.return_value = ""
+        mock_api_client_cls = MagicMock()
+        mock_extractor_cls = MagicMock()
 
         with (
             patch.object(main_module, "console", mock_console),
@@ -107,8 +114,11 @@ class MainEntrypointTests(unittest.TestCase):
                 main_module, "get_choice_input", return_value="CSV"
             ) as mock_choice_input,
             patch.object(main_module, "load_secret_with_fallback") as mock_load_secret,
-            patch.object(main_module, "ClickUpTaskExtractor") as mock_extractor_cls,
-            patch.object(main_module, "ClickUpAPIClient") as mock_api_client_cls,
+            patch.object(
+                main_module,
+                "_load_runtime_dependencies",
+                return_value=(mock_api_client_cls, mock_extractor_cls),
+            ),
         ):
             extractor_instance = mock_extractor_cls.return_value
             extractor_instance.run = MagicMock()

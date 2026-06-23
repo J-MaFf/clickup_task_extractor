@@ -24,6 +24,17 @@ from logger_config import setup_logging, get_logger
 class TestSetupLogging(unittest.TestCase):
     """Tests for the setup_logging function."""
 
+    def setUp(self):
+        """Clear any handlers left by other modules before each test."""
+        logger = logging.getLogger("clickup_extractor")
+        for handler in list(logger.handlers):
+            try:
+                handler.flush()
+            except Exception:
+                pass
+            handler.close()
+            logger.removeHandler(handler)
+
     def tearDown(self):
         """Clean up logger handlers after each test."""
         logger = logging.getLogger("clickup_extractor")
