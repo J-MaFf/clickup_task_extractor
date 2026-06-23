@@ -35,12 +35,14 @@ Usage:
 """
 
 import argparse
+import io
 import json
 import logging
 import os
 import subprocess
 import sys
 from datetime import date, datetime, timezone
+
 
 def _reexec_in_venv() -> None:
     """Re-launch inside the project venv when available (same convenience
@@ -70,7 +72,7 @@ def _configure_stdio_encoding() -> None:
     so it is only invoked from the ``__main__`` guard.
     """
     for stream in (sys.stdout, sys.stderr):
-        if hasattr(stream, "reconfigure") and (stream.encoding or "").lower() not in (
+        if isinstance(stream, io.TextIOWrapper) and (stream.encoding or "").lower() not in (
             "utf-8",
             "utf8",
         ):
@@ -85,11 +87,11 @@ except ImportError:
     print("Please install it using: pip install -r requirements.txt")
     sys.exit(1)
 
-from api_client import APIError, AuthenticationError, ClickUpAPIClient
-from auth import load_secret_with_fallback, resolve_secret_with_desktop_sdk
-from config import TaskRecord, format_datetime, sort_tasks_by_priority_and_eta
-from logger_config import get_logger, setup_logging
-from mappers import LocationMapper
+from api_client import APIError, AuthenticationError, ClickUpAPIClient  # noqa: E402
+from auth import load_secret_with_fallback, resolve_secret_with_desktop_sdk  # noqa: E402
+from config import TaskRecord, format_datetime, sort_tasks_by_priority_and_eta  # noqa: E402
+from logger_config import get_logger, setup_logging  # noqa: E402
+from mappers import LocationMapper  # noqa: E402
 
 console = Console()
 logger = get_logger(__name__)
@@ -154,9 +156,7 @@ def read_secret_via_op_cli(
         if result.returncode == 0 and result.stdout.strip():
             logger.info(f"✅ {secret_name} loaded from 1Password CLI ({account_url}).")
             return result.stdout.strip()
-        logger.debug(
-            f"op read failed for {secret_name}: {result.stderr.strip()[:200]}"
-        )
+        logger.debug(f"op read failed for {secret_name}: {result.stderr.strip()[:200]}")
     except (FileNotFoundError, subprocess.TimeoutExpired, OSError) as e:
         logger.debug(f"op CLI unavailable for {secret_name}: {e}")
     return None
@@ -415,8 +415,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--list-id",
         default=DEFAULT_LIST_ID,
-        help="ClickUp list ID to extract from "
-        "(default: KFJ_CLICKUP_LIST_ID env var)",
+        help="ClickUp list ID to extract from (default: KFJ_CLICKUP_LIST_ID env var)",
     )
     parser.add_argument(
         "--sheet-id",
@@ -505,13 +504,13 @@ def main() -> int:
 
     try:
         gc, client_email = load_sheets_client()
-    except ValueError as e:
-        console.print(f"[red]{e}[/red]")
-        return 1
     except json.JSONDecodeError as e:
         console.print(
             f"[red]Google service account credential is not valid JSON: {e}[/red]"
         )
+        return 1
+    except ValueError as e:
+        console.print(f"[red]{e}[/red]")
         return 1
 
     import gspread
