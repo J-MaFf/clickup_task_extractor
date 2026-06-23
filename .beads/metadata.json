@@ -1,0 +1,7 @@
+{
+  "database": "dolt",
+  "backend": "dolt",
+  "dolt_mode": "embedded",
+  "dolt_database": "clickup_task_extractor",
+  "project_id": "15818da5-f231-4421-8ed8-e03d26293aec"
+}
