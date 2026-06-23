@@ -286,6 +286,15 @@ class ClickUpTaskExtractor:
                 )
                 if not space:
                     space_names = [s["name"] for s in spaces]
+                    if not space_names:
+                        console.print(
+                            Panel(
+                                "[red]No spaces found in this workspace.[/red]",
+                                title="❌ Space Error",
+                                style="red",
+                            )
+                        )
+                        return
                     if self.config.space_name:
                         console.print(
                             f"[yellow]⚠️  Space '{self.config.space_name}' not found.[/yellow]"
