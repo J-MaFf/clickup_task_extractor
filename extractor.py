@@ -697,8 +697,8 @@ class ClickUpTaskExtractor:
             branch_field = cf.get("Branch")
             if branch_field:
                 val = branch_field.get("value")
-                type_config = branch_field.get("type_config", {})
-                options = type_config.get("options", [])
+                type_config = branch_field.get("type_config") or {}
+                options = type_config.get("options") or []
                 branch_value = LocationMapper.map_location(val, type_config, options)
 
             def extract_field_value(field: dict | None) -> str:
