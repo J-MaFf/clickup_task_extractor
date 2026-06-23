@@ -7,10 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.05] - 2026-06-23
+
 ### Added
 
-- Adopted **beads** (`bd` v1.0.4, Dolt-backed) as the dependency-graph task/memory layer beneath GitHub Issues. `bd init` wires `.beads/` into the repo; `bd dolt push` syncs issue state to `refs/dolt/data` on origin. CLAUDE.md and AGENTS.md reconciled with `git-policies` (feature-branch + `bd dolt push` at session close; merges to main stay human-gated via PR; `bd remember` scoped to repo-level knowledge). (#119)
-- Added `STATUS.md` — project state snapshot with component table, resolved/open issues, and natural next steps. (#119)
+- Adopted **beads** (`bd` v1.0.4, Dolt-backed) as the dependency-graph task/memory layer beneath GitHub Issues. `bd init` wires `.beads/` into the repo; `bd dolt push` syncs issue state to `refs/dolt/data` on origin. CLAUDE.md and AGENTS.md reconciled with `git-policies` (feature-branch + `bd dolt push` at session close; merges to main stay human-gated via PR; `bd remember` scoped to repo-level knowledge). ([#119](https://github.com/J-MaFf/clickup_task_extractor/pull/119))
+- Added `STATUS.md` — project state snapshot with component table, resolved/open issues, and natural next steps. ([#119](https://github.com/J-MaFf/clickup_task_extractor/pull/119))
 
 - **KFJ Task Extractor** (`kfj_task_extractor.py`): standalone weekly sync that pulls all open tasks from the ClickUp "KFI Jefferson" list into the tracking Google Sheet.
   - Creates a dated tab `KFI Jefferson current tasks (M/D/YY)` at index 0 and renames the workbook title to match; same-day re-runs replace the tab's contents idempotently.
@@ -19,7 +21,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Reuses existing components (`ClickUpAPIClient`, `load_secret_with_fallback`, `TaskRecord`, `sort_tasks_by_priority_and_eta`, `LocationMapper`) without modifying the main extraction workflow.
   - Supports `--dry-run`, `--list-id`, `--sheet-id`, and `--date M/D/YY` overrides.
 - Added `gspread>=6.1.0` dependency for the Google Sheets integration.
-- Added `requirements.lock` — a fully-resolved lock file (`pip freeze` output) for reproducible installs of the exact transitive versions the project is tested against (#108).
+- Added `requirements.lock` — a fully-resolved lock file (`pip freeze` output) for reproducible installs of the exact transitive versions the project is tested against. ([#108](https://github.com/J-MaFf/clickup_task_extractor/pull/108))
+- Added GitHub Actions CI workflow (`.github/workflows/tests.yml`) that runs `pytest tests/ -v` on every push and pull request to `main`. ([#123](https://github.com/J-MaFf/clickup_task_extractor/pull/123))
+- `ClickUpAPIClient` now accepts an optional `timeout` parameter (default: 30 s) so callers can tune the request deadline without modifying source. ([#127](https://github.com/J-MaFf/clickup_task_extractor/pull/127))
 
 ### Changed
 
@@ -39,9 +43,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Corrected the Gemini model identifier from the invalid `gemini-flash-lite-latest` to the published `gemini-2.5-flash-lite` in `ai_summary.py` and `eta_calculator.py`; the value is now overridable via the `GEMINI_MODEL` environment variable. Added smoke tests that reject malformed model ids and the known-bad value (#109).
 - Guarded module-level side effects in `main.py` and `kfj_task_extractor.py` behind `if __name__ == "__main__"`. The virtualenv re-exec, UTF-8 stdio reconfiguration, and `setup_logging()` no longer run at import time, so the modules can be imported by tests and tooling without triggering a process re-exec, mutating `sys.stdout`/`sys.stderr`, or reconfiguring the shared logger (#107).
 
+### Fixed (continued)
+
+- Guarded `type_config` and `options` access in `extractor.py` against explicit `null` from the ClickUp API. Previously `branch_field.get("type_config", {})` returned `None` when the key was present but null, causing `AttributeError` on the subsequent `.get("options")` call. ([#126](https://github.com/J-MaFf/clickup_task_extractor/pull/126))
+- Fixed three pre-existing test failures surfaced by the new CI workflow: `test_interactive_ai_summary` stub endpoint was missing `&subtasks=true`; `test_logger_config` handler isolation broken by module-level `setup_logging()` call in another test file; `test_main` was patching the module-level `None` rather than `_load_runtime_dependencies`. ([#123](https://github.com/J-MaFf/clickup_task_extractor/pull/123))
+
 ### Security
 
-- Disabled `show_locals` in the Rich traceback handler (`logger_config.py`) so unhandled exceptions no longer render local variable contents — a stack frame could hold an API key or other secret, which `show_locals=True` would have printed to the console/logs (#105).
+- Disabled `show_locals` in the Rich traceback handler (`logger_config.py`) so unhandled exceptions no longer render local variable contents — a stack frame could hold an API key or other secret, which `show_locals=True` would have printed to the console/logs. ([#105](https://github.com/J-MaFf/clickup_task_extractor/pull/105))
 
 ## [1.04] - 2026-04-07
 
