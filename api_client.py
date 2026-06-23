@@ -61,14 +61,18 @@ class ClickUpAPIClient:
         429,
     }  # Bad Gateway, Service Unavailable, Gateway Timeout, Rate Limit
 
-    def __init__(self, api_key: str) -> None:
+    DEFAULT_TIMEOUT = 30  # seconds
+
+    def __init__(self, api_key: str, timeout: int = DEFAULT_TIMEOUT) -> None:
         """
         Initialize the ClickUp API client.
 
         Args:
             api_key: ClickUp API key for authentication
+            timeout: Request timeout in seconds (default: 30)
         """
         self.headers = {"Authorization": api_key, "Content-Type": "application/json"}
+        self.timeout = timeout
 
     def _exponential_backoff_with_jitter(self, attempt: int) -> float:
         """
@@ -105,7 +109,7 @@ class ClickUpAPIClient:
 
         for attempt in range(self.MAX_RETRIES):
             try:
-                resp = requests.get(url, headers=self.headers, timeout=30)
+                resp = requests.get(url, headers=self.headers, timeout=self.timeout)
 
                 # Check if this is a retryable error
                 if (
