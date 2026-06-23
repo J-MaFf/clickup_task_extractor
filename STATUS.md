@@ -6,7 +6,7 @@ Python CLI for extracting, processing, and exporting tasks from the ClickUp API.
 
 ## Current State — 2026-06-23
 
-Main branch is clean. All known issues resolved. Beads (`bd`) is now active as the task/memory layer beneath GitHub Issues.
+v1.05 release branch open (PRs #126, #127 pending merge before EXE build). CI is green. Beads (`bd`) is active as the task/memory layer beneath GitHub Issues.
 
 ### Components
 
@@ -36,16 +36,19 @@ Main branch is clean. All known issues resolved. Beads (`bd`) is now active as t
 | [#109](https://github.com/J-MaFf/clickup_task_extractor/issues/109) | Fix invalid Gemini model identifier | [#117](https://github.com/J-MaFf/clickup_task_extractor/pull/117) |
 | [#110](https://github.com/J-MaFf/clickup_task_extractor/issues/110) | Make kfj_task_extractor configurable | [#120](https://github.com/J-MaFf/clickup_task_extractor/pull/120) |
 | [#119](https://github.com/J-MaFf/clickup_task_extractor/issues/119) | Adopt beads (bd) for AI task tracking | [#121](https://github.com/J-MaFf/clickup_task_extractor/pull/121) |
+| [#122](https://github.com/J-MaFf/clickup_task_extractor/issues/122) | Add GitHub Actions CI (pytest on push) | [#123](https://github.com/J-MaFf/clickup_task_extractor/pull/123) |
+| [#124](https://github.com/J-MaFf/clickup_task_extractor/issues/124) | Fix null type_config AttributeError | [#126](https://github.com/J-MaFf/clickup_task_extractor/pull/126) |
+| [#125](https://github.com/J-MaFf/clickup_task_extractor/issues/125) | Make API timeout configurable | [#127](https://github.com/J-MaFf/clickup_task_extractor/pull/127) |
 
 ### Open Issues
 
-None.
+PRs #126 and #127 open, awaiting merge.
 
 ## Natural Next Steps
 
-- Add more beads issues as new work is identified (`bd ready` to see queue)
-- Build EXE release for v1.05 once changelog entries are finalized
-- Consider adding GitHub Actions CI for pytest on push
+- Merge PR #126 (bug fix) and PR #127 (timeout) into main
+- Merge this release PR (#128) — bumps version to 1.05, closes changelog
+- Build EXE: `.venv\Scripts\pyinstaller.exe ClickUpTaskExtractor.spec --distpath .\dist\v1.05` (requires Windows + PyInstaller)
 
 ## Prerequisites to Run
 
