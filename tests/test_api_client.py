@@ -232,6 +232,20 @@ class TestClickUpAPIClient(unittest.TestCase):
         self.assertEqual(mock_get.call_args[1]['timeout'], 30)
 
     @patch('api_client.requests.get')
+    def test_custom_timeout_is_used(self, mock_get):
+        """Test that a custom timeout value is forwarded to requests."""
+        mock_response = Mock()
+        mock_response.ok = True
+        mock_response.status_code = 200
+        mock_response.json.return_value = {}
+        mock_get.return_value = mock_response
+
+        client = ClickUpAPIClient('test_key', timeout=60)
+        client.get('/test')
+
+        self.assertEqual(mock_get.call_args[1]['timeout'], 60)
+
+    @patch('api_client.requests.get')
     @patch('builtins.print')
     def test_shard_routing_error_shard_006(self, mock_print, mock_get):
         """Test 404 with SHARD_006 raises ShardRoutingError."""
