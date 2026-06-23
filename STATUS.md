@@ -6,7 +6,7 @@ Python CLI for extracting, processing, and exporting tasks from the ClickUp API.
 
 ## Current State — 2026-06-23
 
-v1.05 release branch open (PRs #126, #127 pending merge before EXE build). CI is green. Beads (`bd`) is active as the task/memory layer beneath GitHub Issues.
+**v1.05 shipped** — EXE built and published to GitHub Releases. Main is clean. No open issues. Beads (`bd`) is active as the task/memory layer beneath GitHub Issues.
 
 ### Components
 
@@ -42,13 +42,12 @@ v1.05 release branch open (PRs #126, #127 pending merge before EXE build). CI is
 
 ### Open Issues
 
-PRs #126 and #127 open, awaiting merge.
+None.
 
 ## Natural Next Steps
 
-- Merge PR #126 (bug fix) and PR #127 (timeout) into main
-- Merge this release PR (#128) — bumps version to 1.05, closes changelog
-- Build EXE: `.venv\Scripts\pyinstaller.exe ClickUpTaskExtractor.spec --distpath .\dist\v1.05` (requires Windows + PyInstaller)
+- File new beads issues as work is identified (`bd create`)
+- Identify any bugs or improvements from v1.05 usage
 
 ## Prerequisites to Run
 
