@@ -20,7 +20,9 @@ jobs:
           python-version: "3.11"
 
       - name: Install dependencies
-        run: pip install -r requirements.txt pytest
+        run: |
+          grep -v 'onepassword' requirements.txt | pip install -r /dev/stdin
+          pip install pytest
 
       - name: Run tests
         run: pytest tests/ -v
