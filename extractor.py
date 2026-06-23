@@ -54,7 +54,7 @@ from api_client import (
     ShardRoutingError,
 )
 from ai_summary import get_ai_summary
-from mappers import get_yes_no_input, get_date_range, extract_images, LocationMapper
+from mappers import get_yes_no_input, get_choice_input, get_date_range, extract_images, LocationMapper
 from eta_calculator import calculate_eta
 
 # Get the directory of this script for output path resolution
@@ -245,7 +245,10 @@ class ClickUpTaskExtractor:
                     if team:
                         team_id = team["id"]
                 except (ShardRoutingError, KeyError, StopIteration):
-                    # If /team fails, fall back to config/environment
+                    pass
+
+                # If /team didn't find the workspace by name (or failed), check env/config
+                if not team_id:
                     team_id = os.environ.get("CLICKUP_TEAM_ID") or self.config.team_id
 
                 # If still no team_id, prompt user
@@ -282,15 +285,21 @@ class ClickUpTaskExtractor:
                     (s for s in spaces if s["name"] == self.config.space_name), None
                 )
                 if not space:
-                    console.print(
-                        Panel(
-                            f"[red]Space '{self.config.space_name}' not found.[/red]\n"
-                            f"[dim]Available spaces: {', '.join([s['name'] for s in spaces[:3]])}{'...' if len(spaces) > 3 else ''}[/dim]",
-                            title="❌ Space Error",
-                            style="red",
+                    space_names = [s["name"] for s in spaces]
+                    if self.config.space_name:
+                        console.print(
+                            f"[yellow]⚠️  Space '{self.config.space_name}' not found.[/yellow]"
                         )
+                    console.print(
+                        f"[dim]Available spaces: {', '.join(space_names)}[/dim]"
                     )
-                    return
+                    selected = get_choice_input(
+                        "Select a space: ",
+                        space_names,
+                        default_index=0,
+                    )
+                    space = next(s for s in spaces if s["name"] == selected)
+                    self.config.space_name = selected
                 console.print(
                     f"✅ [green]Space found:[/green] [bold]{space['name']}[/bold]"
                 )
