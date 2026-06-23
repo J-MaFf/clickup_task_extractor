@@ -122,12 +122,38 @@ def _reexec_in_venv() -> None:
     else:
         venv_python = os.path.join(script_dir, ".venv", "bin", "python")
 
-    if not sys.executable.startswith(
-        os.path.join(script_dir, ".venv")
+    if not sys.executable.lower().startswith(
+        os.path.join(script_dir, ".venv").lower()
     ) and os.path.exists(venv_python):
         print(f"Switching from {sys.executable} to virtual environment: {venv_python}")
         # Re-execute the script with the virtual environment Python
         sys.exit(subprocess.call([venv_python] + sys.argv))
+
+
+def _reexec_under_op_run() -> None:
+    """Re-launch under 'op run --environment' to inject 1Password secrets.
+
+    When OP_ENVIRONMENT_ID is set, the 1Password CLI beta hangs when called
+    from Python subprocess with any handle redirection (STARTF_USESTDHANDLES
+    strips console attachment, which op requires for authentication). Using
+    subprocess.call (no handle redirection) lets op authenticate and inject
+    env vars into the child process, where os.environ picks them up directly.
+
+    A sentinel env var (_OP_RUN_INJECTED) prevents re-exec loops in case
+    CLICKUP_API_KEY is not defined in the 1Password environment.
+    """
+    if os.environ.get("_OP_RUN_INJECTED") or os.environ.get("CLICKUP_API_KEY"):
+        return
+    environment_id = os.environ.get("OP_ENVIRONMENT_ID")
+    if not environment_id:
+        return
+    import shutil
+    if not shutil.which("op"):
+        return
+    os.environ["_OP_RUN_INJECTED"] = "1"
+    sys.exit(subprocess.call(
+        ["op", "run", "--environment", environment_id, "--", sys.executable] + sys.argv
+    ))
 
 
 def main():
@@ -568,6 +594,9 @@ if __name__ == "__main__":
     # Side effects that must only run when executed as a script, never on import:
     #   1. Reconfigure stdio to UTF-8 (mutates sys.stdout/sys.stderr).
     #   2. Re-exec under the project venv if not already running from it.
+    #   3. Re-exec under 'op run' to inject 1Password env vars without
+    #      handle redirection (which would hang the op CLI on Windows).
     _configure_stdio_encoding()
     _reexec_in_venv()
+    _reexec_under_op_run()
     main()
