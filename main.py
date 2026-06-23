@@ -100,7 +100,7 @@ def _configure_stdio_encoding() -> None:
 # Console is a side-effect-free object instantiation (no I/O, no subprocess),
 # so it is safe to do at import time and lets the module's helper functions
 # reference `console` as a module global.
-console = Console(force_terminal=None, legacy_windows=False)
+console = Console(force_terminal=True, legacy_windows=False)
 
 # Logging is configured lazily in main() rather than at import time, because
 # setup_logging() mutates the shared "clickup_extractor" logger (clearing and
@@ -150,6 +150,15 @@ def _reexec_under_op_run() -> None:
     import shutil
     if not shutil.which("op"):
         return
+    # Preserve terminal dimensions so Rich renders correctly in the child
+    # process. op run on Windows doesn't propagate console size to its child,
+    # causing Rich to fall back to the 80-column default and strip color markup.
+    if "COLUMNS" not in os.environ:
+        cols, lines = shutil.get_terminal_size(fallback=(0, 0))
+        if cols:
+            os.environ["COLUMNS"] = str(cols)
+        if lines:
+            os.environ["LINES"] = str(lines)
     os.environ["_OP_RUN_INJECTED"] = "1"
     sys.exit(subprocess.call(
         ["op", "run", "--environment", environment_id, "--", sys.executable] + sys.argv
@@ -370,6 +379,13 @@ def main():
         nonlocal gemini_api_key
         if gemini_api_key:
             return True  # Already have the key
+
+        # Check env var directly — op run --environment injects GEMINI_API_KEY
+        # into os.environ, and load_secret_with_fallback would hang on Windows
+        # trying op environment read from subprocess.
+        gemini_api_key = os.environ.get("GEMINI_API_KEY")
+        if gemini_api_key:
+            return True
 
         # Try to get Gemini API key from 1Password with fallback. The secret
         # reference comes from GEMINI_API_SECRET_REFERENCE (config module) and is
