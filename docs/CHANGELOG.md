@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Adopted **beads** (`bd` v1.0.4, Dolt-backed) as the dependency-graph task/memory layer beneath GitHub Issues. `bd init` wires `.beads/` into the repo; `bd dolt push` syncs issue state to `refs/dolt/data` on origin. CLAUDE.md and AGENTS.md reconciled with `git-policies` (feature-branch + `bd dolt push` at session close; merges to main stay human-gated via PR; `bd remember` scoped to repo-level knowledge). (#119)
+- Added `STATUS.md` — project state snapshot with component table, resolved/open issues, and natural next steps. (#119)
+
 - **KFJ Task Extractor** (`kfj_task_extractor.py`): standalone weekly sync that pulls all open tasks from the ClickUp "KFI Jefferson" list into the tracking Google Sheet.
   - Creates a dated tab `KFI Jefferson current tasks (M/D/YY)` at index 0 and renames the workbook title to match; same-day re-runs replace the tab's contents idempotently.
   - Writes `Task | Company | Branch | Priority | Status | ETA` sorted by priority then ETA, normalized to the sheet's conventions (lowercase priority/status, date-only ETA).

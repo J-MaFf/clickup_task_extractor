@@ -300,38 +300,36 @@ bd ready              # Find available work
 bd show <id>          # View issue details
 bd update <id> --claim  # Claim work
 bd close <id>         # Complete work
+bd dolt push          # Sync beads data to remote
 ```
 
 ### Rules
 
 - Use `bd` for ALL task tracking — do NOT use TodoWrite, TaskCreate, or markdown TODO lists
 - Run `bd prime` for detailed command reference and session close protocol
-- Use `bd remember` for persistent knowledge — do NOT use MEMORY.md files
+- Use `bd remember` for **repo-level** persistent knowledge; the global `~/.claude/` MEMORY.md remains for cross-repo and user-level context
 
 **Architecture in one line:** issues live in a local Dolt DB; sync uses `refs/dolt/data` on your git remote; `.beads/issues.jsonl` is a passive export. See https://github.com/gastownhall/beads/blob/main/docs/SYNC_CONCEPTS.md for details and anti-patterns.
 
 ## Session Completion
 
-**When ending a work session**, you MUST complete ALL steps below. Work is NOT complete until `git push` succeeds.
+**When ending a work session**, make work durable without merging to main:
 
 **MANDATORY WORKFLOW:**
 
 1. **File issues for remaining work** - Create issues for anything that needs follow-up
 2. **Run quality gates** (if code changed) - Tests, linters, builds
 3. **Update issue status** - Close finished work, update in-progress items
-4. **PUSH TO REMOTE** - This is MANDATORY:
+4. **Push the feature branch** (NOT main — merges stay human-gated via PR):
    ```bash
-   git pull --rebase
-   git push
-   git status  # MUST show "up to date with origin"
+   git push -u origin <feature-branch>
+   bd dolt push
    ```
-5. **Clean up** - Clear stashes, prune remote branches
-6. **Verify** - All changes committed AND pushed
-7. **Hand off** - Provide context for next session
+5. **Open or update the PR** referencing `Fixes #N` — then stop; wait for human approval to merge
+6. **Hand off** - Provide context for next session
 
 **CRITICAL RULES:**
-- Work is NOT complete until `git push` succeeds
-- NEVER stop before pushing - that leaves work stranded locally
-- NEVER say "ready to push when you are" - YOU must push
+- Push the *feature branch* + `bd dolt push` at session close; never push directly to main
+- Merges to main require a PR and human approval — never auto-merge
 - If push fails, resolve and retry until it succeeds
 <!-- END BEADS INTEGRATION -->
