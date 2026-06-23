@@ -100,7 +100,7 @@ def _configure_stdio_encoding() -> None:
 # Console is a side-effect-free object instantiation (no I/O, no subprocess),
 # so it is safe to do at import time and lets the module's helper functions
 # reference `console` as a module global.
-console = Console(force_terminal=None, legacy_windows=False)
+console = Console(force_terminal=True, legacy_windows=False)
 
 # Logging is configured lazily in main() rather than at import time, because
 # setup_logging() mutates the shared "clickup_extractor" logger (clearing and
@@ -122,12 +122,47 @@ def _reexec_in_venv() -> None:
     else:
         venv_python = os.path.join(script_dir, ".venv", "bin", "python")
 
-    if not sys.executable.startswith(
-        os.path.join(script_dir, ".venv")
+    if not sys.executable.lower().startswith(
+        os.path.join(script_dir, ".venv").lower()
     ) and os.path.exists(venv_python):
         print(f"Switching from {sys.executable} to virtual environment: {venv_python}")
         # Re-execute the script with the virtual environment Python
         sys.exit(subprocess.call([venv_python] + sys.argv))
+
+
+def _reexec_under_op_run() -> None:
+    """Re-launch under 'op run --environment' to inject 1Password secrets.
+
+    When OP_ENVIRONMENT_ID is set, the 1Password CLI beta hangs when called
+    from Python subprocess with any handle redirection (STARTF_USESTDHANDLES
+    strips console attachment, which op requires for authentication). Using
+    subprocess.call (no handle redirection) lets op authenticate and inject
+    env vars into the child process, where os.environ picks them up directly.
+
+    A sentinel env var (_OP_RUN_INJECTED) prevents re-exec loops in case
+    CLICKUP_API_KEY is not defined in the 1Password environment.
+    """
+    if os.environ.get("_OP_RUN_INJECTED") or os.environ.get("CLICKUP_API_KEY"):
+        return
+    environment_id = os.environ.get("OP_ENVIRONMENT_ID")
+    if not environment_id:
+        return
+    import shutil
+    if not shutil.which("op"):
+        return
+    # Preserve terminal dimensions so Rich renders correctly in the child
+    # process. op run on Windows doesn't propagate console size to its child,
+    # causing Rich to fall back to the 80-column default and strip color markup.
+    if "COLUMNS" not in os.environ:
+        cols, lines = shutil.get_terminal_size(fallback=(0, 0))
+        if cols:
+            os.environ["COLUMNS"] = str(cols)
+        if lines:
+            os.environ["LINES"] = str(lines)
+    os.environ["_OP_RUN_INJECTED"] = "1"
+    sys.exit(subprocess.call(
+        ["op", "run", "--environment", environment_id, "--", sys.executable] + sys.argv
+    ))
 
 
 def main():
@@ -344,6 +379,13 @@ def main():
         nonlocal gemini_api_key
         if gemini_api_key:
             return True  # Already have the key
+
+        # Check env var directly — op run --environment injects GEMINI_API_KEY
+        # into os.environ, and load_secret_with_fallback would hang on Windows
+        # trying op environment read from subprocess.
+        gemini_api_key = os.environ.get("GEMINI_API_KEY")
+        if gemini_api_key:
+            return True
 
         # Try to get Gemini API key from 1Password with fallback. The secret
         # reference comes from GEMINI_API_SECRET_REFERENCE (config module) and is
@@ -568,6 +610,9 @@ if __name__ == "__main__":
     # Side effects that must only run when executed as a script, never on import:
     #   1. Reconfigure stdio to UTF-8 (mutates sys.stdout/sys.stderr).
     #   2. Re-exec under the project venv if not already running from it.
+    #   3. Re-exec under 'op run' to inject 1Password env vars without
+    #      handle redirection (which would hang the op CLI on Windows).
     _configure_stdio_encoding()
     _reexec_in_venv()
+    _reexec_under_op_run()
     main()
