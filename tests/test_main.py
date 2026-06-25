@@ -146,6 +146,92 @@ class MainEntrypointTests(unittest.TestCase):
         config_arg = mock_extractor_cls.call_args.args[0]
         self.assertEqual(config_arg.output_format, OutputFormat.CSV)
 
+    def test_environment_auth_attempted_without_secret_reference(self) -> None:
+        """Regression: an OP_ENVIRONMENT_ID-only setup must still attempt 1Password.
+
+        With CLICKUP_API_SECRET_REFERENCE empty (the default), the lookup was
+        previously gated on the secret reference, so load_secret_with_fallback
+        was never called and Environment auth was skipped entirely.
+        """
+        main_module = self._import_main_module()
+
+        mock_console = MagicMock()
+        mock_console.input.return_value = ""
+        mock_api_client_cls = MagicMock()
+        mock_extractor_cls = MagicMock()
+
+        with (
+            patch.dict(
+                main_module.os.environ, {"OP_ENVIRONMENT_ID": "envid"}, clear=True
+            ),
+            patch.object(main_module, "CLICKUP_API_SECRET_REFERENCE", ""),
+            patch.object(main_module, "console", mock_console),
+            patch.object(main_module, "get_yes_no_input", return_value=False),
+            patch.object(main_module, "get_choice_input", return_value="Markdown"),
+            patch.object(
+                main_module, "load_secret_with_fallback", return_value="env-key"
+            ) as mock_load_secret,
+            patch.object(
+                main_module,
+                "_load_runtime_dependencies",
+                return_value=(mock_api_client_cls, mock_extractor_cls),
+            ),
+        ):
+            extractor_instance = mock_extractor_cls.return_value
+            extractor_instance.run = MagicMock()
+
+            argv = [
+                str(Path(__file__).resolve().parents[1] / "main.py"),
+                "--workspace",
+                "WS",
+            ]
+            self._run_main_with_args(main_module, argv)
+
+        # The Environment lookup is keyed on OP_ENVIRONMENT_ID and needs no
+        # op:// reference, so it must be attempted with an empty reference.
+        mock_load_secret.assert_called_once_with("", "ClickUp API key")
+        # Key resolved from the Environment — no manual prompt, key flows through.
+        mock_console.input.assert_not_called()
+        mock_api_client_cls.assert_called_once_with("env-key")
+
+    def test_no_op_lookup_when_no_reference_and_no_environment(self) -> None:
+        """Without a reference or OP_ENVIRONMENT_ID, skip 1Password and prompt."""
+        main_module = self._import_main_module()
+
+        mock_console = MagicMock()
+        mock_console.input.return_value = "typed-key"
+        mock_api_client_cls = MagicMock()
+        mock_extractor_cls = MagicMock()
+
+        with (
+            patch.dict(main_module.os.environ, {}, clear=True),
+            patch.object(main_module, "CLICKUP_API_SECRET_REFERENCE", ""),
+            patch.object(main_module, "console", mock_console),
+            patch.object(main_module, "get_yes_no_input", return_value=False),
+            patch.object(main_module, "get_choice_input", return_value="Markdown"),
+            patch.object(
+                main_module, "load_secret_with_fallback", return_value=None
+            ) as mock_load_secret,
+            patch.object(
+                main_module,
+                "_load_runtime_dependencies",
+                return_value=(mock_api_client_cls, mock_extractor_cls),
+            ),
+        ):
+            extractor_instance = mock_extractor_cls.return_value
+            extractor_instance.run = MagicMock()
+
+            argv = [
+                str(Path(__file__).resolve().parents[1] / "main.py"),
+                "--workspace",
+                "WS",
+            ]
+            self._run_main_with_args(main_module, argv)
+
+        mock_load_secret.assert_not_called()
+        mock_console.input.assert_called_once()
+        mock_api_client_cls.assert_called_once_with("typed-key")
+
 
 class OpRunReexecTests(unittest.TestCase):
     """Cover the op-run re-exec gating (issue #138).

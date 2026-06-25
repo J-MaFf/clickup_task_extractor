@@ -372,7 +372,12 @@ def main():
             )
         )
         secret_reference = CLICKUP_API_SECRET_REFERENCE
-        if secret_reference:
+        # The Environment path inside load_secret_with_fallback() is keyed on
+        # OP_ENVIRONMENT_ID and needs no op:// reference. Attempt the lookup
+        # whenever a secret reference is configured OR an Environment ID is set;
+        # gating on secret_reference alone skipped Environment auth entirely for
+        # the recommended OP_ENVIRONMENT_ID-only setup.
+        if secret_reference or environment_id:
             api_key = load_secret_with_fallback(secret_reference, "ClickUp API key")
         if not api_key:
             if is_frozen:
@@ -429,7 +434,11 @@ def main():
         # reference comes from GEMINI_API_SECRET_REFERENCE (config module) and is
         # empty by default so no personal vault path is baked into source.
         gemini_secret_reference = GEMINI_API_SECRET_REFERENCE
-        if gemini_secret_reference:
+        # As with the ClickUp key, the Environment lookup is keyed on
+        # OP_ENVIRONMENT_ID and needs no op:// reference. Attempt it when either
+        # is configured (compute the ID locally — this nested function can run
+        # even when the enclosing api_key branch was skipped).
+        if gemini_secret_reference or os.environ.get("OP_ENVIRONMENT_ID"):
             gemini_api_key = load_secret_with_fallback(
                 gemini_secret_reference, "Gemini API key"
             )
