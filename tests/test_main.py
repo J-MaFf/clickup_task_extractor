@@ -147,5 +147,94 @@ class MainEntrypointTests(unittest.TestCase):
         self.assertEqual(config_arg.output_format, OutputFormat.CSV)
 
 
+class OpRunReexecTests(unittest.TestCase):
+    """Cover the op-run re-exec gating (issue #138).
+
+    The 1Password Environments flag is beta-only; on a stable `op` CLI the
+    re-exec must be skipped instead of crashing with "unknown flag".
+    """
+
+    def setUp(self) -> None:
+        project_root = Path(__file__).resolve().parents[1]
+        sys.modules.pop("main", None)
+        mocked_executable = str(project_root / ".venv" / "Scripts" / "python.exe")
+        with patch.object(sys, "executable", mocked_executable):
+            self.main = importlib.import_module("main")
+
+    # --- _op_run_environments_flag --------------------------------------
+
+    def test_flag_probe_prefers_plural(self) -> None:
+        proc = MagicMock(stdout="Flags:\n  --environments\n  --environment", stderr="")
+        with patch.object(self.main.subprocess, "run", return_value=proc):
+            self.assertEqual(self.main._op_run_environments_flag(), "--environments")
+
+    def test_flag_probe_accepts_singular(self) -> None:
+        proc = MagicMock(stdout="usage: op run --environment <id>", stderr="")
+        with patch.object(self.main.subprocess, "run", return_value=proc):
+            self.assertEqual(self.main._op_run_environments_flag(), "--environment")
+
+    def test_flag_probe_returns_none_on_stable_cli(self) -> None:
+        # Stable op 2.34.x: only --env-file / --no-masking, no Environments flag.
+        proc = MagicMock(stdout="Flags:\n  --env-file\n  --no-masking", stderr="")
+        with patch.object(self.main.subprocess, "run", return_value=proc):
+            self.assertIsNone(self.main._op_run_environments_flag())
+
+    def test_flag_probe_returns_none_when_op_missing(self) -> None:
+        with patch.object(
+            self.main.subprocess, "run", side_effect=FileNotFoundError("op")
+        ):
+            self.assertIsNone(self.main._op_run_environments_flag())
+
+    # --- _reexec_under_op_run -------------------------------------------
+
+    def test_reexec_skipped_when_flag_unsupported(self) -> None:
+        """The fix for #138: no crash, no re-exec on a stable CLI."""
+        with (
+            patch.dict(self.main.os.environ, {"OP_ENVIRONMENT_ID": "envid"}, clear=True),
+            patch("shutil.which", return_value="C:/op.exe"),
+            patch.object(self.main, "_op_run_environments_flag", return_value=None),
+            patch.object(self.main.subprocess, "call") as mock_call,
+        ):
+            # Must return normally — not raise SystemExit.
+            self.main._reexec_under_op_run()
+        mock_call.assert_not_called()
+
+    def test_reexec_runs_with_detected_flag(self) -> None:
+        with (
+            patch.dict(self.main.os.environ, {"OP_ENVIRONMENT_ID": "envid"}, clear=True),
+            patch.object(self.main.sys, "argv", ["main.py", "--workspace", "X"]),
+            patch("shutil.which", return_value="C:/op.exe"),
+            patch.object(
+                self.main, "_op_run_environments_flag", return_value="--environments"
+            ),
+            patch.object(self.main.subprocess, "call", return_value=0) as mock_call,
+        ):
+            with self.assertRaises(SystemExit):
+                self.main._reexec_under_op_run()
+        cmd = mock_call.call_args.args[0]
+        self.assertEqual(cmd[:4], ["op", "run", "--environments", "envid"])
+        self.assertIn("--", cmd)
+
+    def test_reexec_skipped_when_api_key_present(self) -> None:
+        with (
+            patch.dict(
+                self.main.os.environ,
+                {"OP_ENVIRONMENT_ID": "envid", "CLICKUP_API_KEY": "key"},
+                clear=True,
+            ),
+            patch.object(self.main.subprocess, "call") as mock_call,
+        ):
+            self.main._reexec_under_op_run()
+        mock_call.assert_not_called()
+
+    def test_reexec_skipped_when_no_environment_id(self) -> None:
+        with (
+            patch.dict(self.main.os.environ, {}, clear=True),
+            patch.object(self.main.subprocess, "call") as mock_call,
+        ):
+            self.main._reexec_under_op_run()
+        mock_call.assert_not_called()
+
+
 if __name__ == "__main__":  # pragma: no cover - manual execution safeguard
     unittest.main()
