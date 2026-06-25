@@ -130,14 +130,45 @@ def _reexec_in_venv() -> None:
         sys.exit(subprocess.call([venv_python] + sys.argv))
 
 
+def _op_run_environments_flag():
+    """Return the flag `op run` accepts for 1Password Environments, else None.
+
+    The Environments feature ships only in beta builds of the 1Password CLI;
+    stable releases (e.g. 2.34.x) reject the flag with "unknown flag" and exit
+    non-zero, which would abort the re-exec before the normal auth chain runs.
+    Probe the fast, auth-free ``op run --help`` output so we re-exec only when
+    the installed CLI actually supports it. Prefer the documented plural
+    ``--environments``; accept the singular spelling for compatibility.
+    """
+    try:
+        proc = subprocess.run(
+            ["op", "run", "--help"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    help_text = (proc.stdout or "") + (proc.stderr or "")
+    for flag in ("--environments", "--environment"):
+        if flag in help_text:
+            return flag
+    return None
+
+
 def _reexec_under_op_run() -> None:
-    """Re-launch under 'op run --environment' to inject 1Password secrets.
+    """Re-launch under 'op run --environments' to inject 1Password secrets.
 
     When OP_ENVIRONMENT_ID is set, the 1Password CLI beta hangs when called
     from Python subprocess with any handle redirection (STARTF_USESTDHANDLES
     strips console attachment, which op requires for authentication). Using
     subprocess.call (no handle redirection) lets op authenticate and inject
     env vars into the child process, where os.environ picks them up directly.
+
+    The Environments flag is beta-only, so this re-exec is gated on
+    ``_op_run_environments_flag()``: on a stable CLI that lacks the flag we
+    skip the re-exec and fall through to the SDK-based auth chain in auth.py
+    rather than crashing on an unknown flag.
 
     A sentinel env var (_OP_RUN_INJECTED) prevents re-exec loops in case
     CLICKUP_API_KEY is not defined in the 1Password environment.
@@ -150,6 +181,13 @@ def _reexec_under_op_run() -> None:
     import shutil
     if not shutil.which("op"):
         return
+    op_env_flag = _op_run_environments_flag()
+    if not op_env_flag:
+        # Stable `op` builds lack the Environments feature; don't re-exec into a
+        # flag the CLI will reject. Fall through to the normal auth chain, which
+        # resolves OP_ENVIRONMENT_ID via the 1Password SDK (DesktopAuth /
+        # service token) in auth.py instead.
+        return
     # Preserve terminal dimensions so Rich renders correctly in the child
     # process. op run on Windows doesn't propagate console size to its child,
     # causing Rich to fall back to the 80-column default and strip color markup.
@@ -161,7 +199,7 @@ def _reexec_under_op_run() -> None:
             os.environ["LINES"] = str(lines)
     os.environ["_OP_RUN_INJECTED"] = "1"
     sys.exit(subprocess.call(
-        ["op", "run", "--environment", environment_id, "--", sys.executable] + sys.argv
+        ["op", "run", op_env_flag, environment_id, "--", sys.executable] + sys.argv
     ))
 
 
@@ -380,7 +418,7 @@ def main():
         if gemini_api_key:
             return True  # Already have the key
 
-        # Check env var directly — op run --environment injects GEMINI_API_KEY
+        # Check env var directly — op run --environments injects GEMINI_API_KEY
         # into os.environ, and load_secret_with_fallback would hang on Windows
         # trying op environment read from subprocess.
         gemini_api_key = os.environ.get("GEMINI_API_KEY")

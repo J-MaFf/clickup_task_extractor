@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Fixed startup crash (`unknown flag: --environment`) when `OP_ENVIRONMENT_ID` is set but a **stable** 1Password CLI is installed. The `op run` Environments flag is beta-only; `main.py` now probes `op run --help` and only re-execs under `op run` when the installed CLI actually advertises the flag (using the correct plural `--environments`). On a stable CLI the re-exec is skipped so authentication falls through to the 1Password SDK path instead of aborting. ([#138](https://github.com/J-MaFf/clickup_task_extractor/issues/138))
+
 ## [1.05] - 2026-06-23
 
 ### Added
