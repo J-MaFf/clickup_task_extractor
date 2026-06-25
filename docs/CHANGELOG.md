@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - Fixed startup crash (`unknown flag: --environment`) when `OP_ENVIRONMENT_ID` is set but a **stable** 1Password CLI is installed. The `op run` Environments flag is beta-only; `main.py` now probes `op run --help` and only re-execs under `op run` when the installed CLI actually advertises the flag (using the correct plural `--environments`). On a stable CLI the re-exec is skipped so authentication falls through to the 1Password SDK path instead of aborting. ([#138](https://github.com/J-MaFf/clickup_task_extractor/issues/138))
+- Fixed 1Password **Environment** auth being skipped when `CLICKUP_API_SECRET_REFERENCE` is empty (the default, Environment-only setup). The lookup was gated on the `op://` secret reference, but `load_secret_with_fallback()` resolves an Environment from `OP_ENVIRONMENT_ID` + the secret name and needs no reference — so the SDK lookup was never attempted and auth fell through to a manual prompt. `main.py` now performs the lookup when a reference is configured **or** `OP_ENVIRONMENT_ID` is set, for both the ClickUp and Gemini key paths. ([#140](https://github.com/J-MaFf/clickup_task_extractor/issues/140))
 
 ## [1.05] - 2026-06-23
 
