@@ -231,30 +231,63 @@ class ClickUpTaskExtractor:
                 # Fetch workspaces
                 task = progress.add_task("🏢 Fetching workspaces...", total=None)
 
-                # Since /team endpoint fails with SHARD_006 for this account,
-                # we'll use a direct workspace/team ID if provided, or prompt user
+                # The /team endpoint is the primary source of workspaces. Some
+                # accounts historically failed it with SHARD_006, so env/config
+                # and manual entry remain as fallbacks.
                 team_id = None
                 team = None  # Initialize team variable
-                # Try /team endpoint as primary method
+                teams: list = []
                 try:
                     teams = self.api.get("/team")["teams"]
-                    team = next(
-                        (t for t in teams if t["name"] == self.config.workspace_name),
-                        None,
-                    )
-                    if team:
-                        team_id = team["id"]
-                except (ShardRoutingError, KeyError, StopIteration):
-                    pass
+                except (ShardRoutingError, KeyError):
+                    teams = []
 
-                # If /team didn't find the workspace by name (or failed), check env/config
+                if teams:
+                    # Match the configured workspace by name when one is set.
+                    if self.config.workspace_name:
+                        team = next(
+                            (
+                                t
+                                for t in teams
+                                if t["name"] == self.config.workspace_name
+                            ),
+                            None,
+                        )
+                        if team is None:
+                            console.print(
+                                f"[yellow]⚠️  Workspace '{self.config.workspace_name}' not found.[/yellow]"
+                            )
+                    # No name configured, or it didn't match → let the user pick
+                    # (mirrors the space-selection fallback below). Pause the live
+                    # progress so the spinner doesn't obscure the prompt.
+                    if team is None:
+                        if len(teams) == 1:
+                            team = teams[0]
+                        else:
+                            team_names = [t["name"] for t in teams]
+                            progress.stop()
+                            console.print(
+                                f"[dim]Available workspaces: {', '.join(team_names)}[/dim]"
+                            )
+                            selected = get_choice_input(
+                                "Select a workspace: ",
+                                team_names,
+                                default_index=0,
+                            )
+                            progress.start()
+                            team = next(t for t in teams if t["name"] == selected)
+                        self.config.workspace_name = team["name"]
+                    team_id = team["id"]
+
+                # If /team failed or returned nothing, fall back to env/config.
                 if not team_id:
                     team_id = os.environ.get("CLICKUP_TEAM_ID") or self.config.team_id
 
-                # If still no team_id, prompt user
+                # Last resort: prompt for a raw Team/Workspace ID.
                 if not team_id:
+                    progress.stop()
                     console.print(
-                        "[yellow]⚠️  The /team endpoint is not accessible for this account, and no team ID was found in config or environment.[/yellow]"
+                        "[yellow]⚠️  Could not list workspaces from the /team endpoint, and no team ID was found in config or environment.[/yellow]"
                     )
                     console.print("[dim]To find your Team/Workspace ID:[/dim]")
                     console.print("[dim]  1. Go to https://app.clickup.com[/dim]")
@@ -265,11 +298,12 @@ class ClickUpTaskExtractor:
                     team_id = console.input(
                         "[bold cyan]Please enter your Team/Workspace ID: [/bold cyan]"
                     )
+                    progress.start()
                     if not team_id:
                         console.print("[red]Team ID is required[/red]")
                         return
 
-                # If team wasn't fetched from /team endpoint, create a minimal team object with workspace name
+                # If team wasn't resolved to an object, create a minimal one.
                 if team is None:
                     team = {"name": self.config.workspace_name, "id": team_id}
 
@@ -299,6 +333,9 @@ class ClickUpTaskExtractor:
                         console.print(
                             f"[yellow]⚠️  Space '{self.config.space_name}' not found.[/yellow]"
                         )
+                    # Pause the live progress so the spinner doesn't obscure the
+                    # prompt (otherwise it reads as "loading forever").
+                    progress.stop()
                     console.print(
                         f"[dim]Available spaces: {', '.join(space_names)}[/dim]"
                     )
@@ -307,6 +344,7 @@ class ClickUpTaskExtractor:
                         space_names,
                         default_index=0,
                     )
+                    progress.start()
                     space = next(s for s in spaces if s["name"] == selected)
                     self.config.space_name = selected
                 console.print(

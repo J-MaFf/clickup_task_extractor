@@ -46,6 +46,12 @@ class DummyProgress:
     def remove_task(self, task_id) -> None:
         return None
 
+    def stop(self) -> None:
+        return None
+
+    def start(self) -> None:
+        return None
+
     def update(self, task_id, **kwargs) -> None:
         return None
 
@@ -414,6 +420,75 @@ class FetchProcessTasksTests(unittest.TestCase):
             self.assertEqual(task_record.Priority, "High")
             self.assertEqual(task_record.Status, "In Progress")
             self.assertIn("Subject: Printer outage", task_record.Notes)
+
+    def test_fetch_and_process_prompts_for_workspace_when_unconfigured(self) -> None:
+        """No workspace name → offer a picker, never a raw Team ID prompt (issue #142)."""
+        timestamp_ms = int(datetime(2025, 10, 7, 12, 0, 0).timestamp() * 1000)
+
+        responses: dict[str, Any] = {
+            "/team": {
+                "teams": [
+                    {"id": "teamA", "name": "Personal"},
+                    {"id": "teamB", "name": "KMS"},
+                ]
+            },
+            "/team/teamB/space": {"spaces": [{"id": "space1", "name": "Kikkoman"}]},
+            "/space/space1/folder": {"folders": []},
+            "/space/space1/list?archived=false": {
+                "lists": [{"id": "list1", "name": "Support"}]
+            },
+            "/list/list1/task?archived=false&subtasks=true": {
+                "tasks": [
+                    {
+                        "id": "task1",
+                        "name": "Incident 1",
+                        "archived": False,
+                        "status": {"status": "open"},
+                        "date_created": str(timestamp_ms),
+                    }
+                ]
+            },
+            "/list/list1": {"custom_fields": []},
+            "/task/task1": {
+                "name": "Incident 1",
+                "priority": {"priority": 3},
+                "status": {"status": "open"},
+                "description": "",
+                "custom_fields": [],
+            },
+        }
+
+        class RecordingExtractor(ClickUpTaskExtractor):
+            def __init__(self, *args, **kwargs) -> None:
+                super().__init__(*args, **kwargs)
+                self.export_calls: list[list[TaskRecord]] = []
+
+            def export(self, tasks: list[TaskRecord]) -> None:  # type: ignore[override]
+                self.export_calls.append(tasks)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            config = ClickUpConfig(
+                api_key="dummy",
+                output_path=str(Path(tmpdir) / "out.md"),
+                workspace_name="",  # unconfigured → must trigger the picker
+                space_name="Kikkoman",
+            )
+            extractor = RecordingExtractor(config, DummyAPIClient(responses))
+
+            with patch(
+                "extractor.get_choice_input", return_value="KMS"
+            ) as mock_choice:
+                extractor._fetch_and_process_tasks()
+
+            # The user was offered a workspace picker with the available names...
+            mock_choice.assert_called_once()
+            self.assertEqual(mock_choice.call_args.args[1], ["Personal", "KMS"])
+            # ...and NOT the raw "enter Team ID" prompt (the hang).
+            self.console_mock.input.assert_not_called()
+            # Selection resolved the team and extraction completed.
+            self.assertEqual(config.workspace_name, "KMS")
+            self.assertEqual(len(extractor.export_calls), 1)
+            self.assertEqual(len(extractor.export_calls[0]), 1)
 
     def test_fetch_and_process_tasks_filters_to_requested_list(self) -> None:
         timestamp_ms = int(datetime(2025, 10, 7, 12, 0, 0).timestamp() * 1000)
