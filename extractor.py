@@ -53,7 +53,7 @@ from api_client import (
     AuthenticationError,
     ShardRoutingError,
 )
-from ai_summary import get_ai_summary
+from ai_summary import get_ai_summary, get_claude_summary
 from mappers import get_yes_no_input, get_choice_input, get_date_range, extract_images, LocationMapper
 from eta_calculator import calculate_eta
 
@@ -476,11 +476,13 @@ class ClickUpTaskExtractor:
                             name = task.get("name", "Unknown Task")
                             task_name = name[:30] + ("..." if len(name) > 30 else "")
 
-                            # Update per-list progress description with current task
-                            # Only show AI indicator if AI will actually be generated (not in interactive mode)
+                            # Update per-list progress description with current task.
+                            # Show the AI indicator whenever a summary will be
+                            # generated in this pass (AI enabled, non-interactive).
+                            # The Claude source needs no API key, so don't gate on
+                            # gemini_api_key here.
                             if (
                                 self.config.enable_ai_summary
-                                and self.config.gemini_api_key
                                 and not self.config.interactive_selection
                             ):
                                 progress.update(
@@ -539,9 +541,10 @@ class ClickUpTaskExtractor:
 
             console.print(stats_table)
 
-            # Handle AI summary if enabled
+            # Handle AI summary if enabled. Only load a Gemini key when the
+            # selected source is actually Gemini; Claude/Both/ClickUp need none.
             if (
-                self.config.enable_ai_summary
+                self._source_needs_gemini_key()
                 and not self.config.gemini_api_key
                 and self.load_gemini_key_func
             ):
@@ -572,7 +575,8 @@ class ClickUpTaskExtractor:
                             Panel(
                                 f"[bold blue]🤖 AI Summary Available[/bold blue]\n"
                                 f"You have selected [bold cyan]{len(all_tasks)}[/bold cyan] task(s) for export.\n"
-                                f"AI summary can generate concise 1-2 sentence summaries using Google Gemini.",
+                                f"AI summary can generate concise 1-2 sentence summaries using "
+                                f"[cyan]{self.config.ai_source.value}[/cyan].",
                                 title="AI Enhancement",
                                 style="blue",
                             )
@@ -581,31 +585,36 @@ class ClickUpTaskExtractor:
                             "Would you like to enable AI summaries for the selected tasks? (y/n): ",
                             default_on_interrupt=False,
                         ):
-                            # Try to load Gemini API key
-                            gemini_key_loaded = False
-                            if self.load_gemini_key_func:
-                                if self.load_gemini_key_func():
-                                    gemini_key_loaded = True
-                                    console.print(
-                                        "✅ [green]Gemini API key loaded from 1Password.[/green]"
-                                    )
+                            if self.config.ai_source == AISource.GEMINI:
+                                # Gemini is the only source that needs an API key.
+                                gemini_key_loaded = False
+                                if self.load_gemini_key_func:
+                                    if self.load_gemini_key_func():
+                                        gemini_key_loaded = True
+                                        console.print(
+                                            "✅ [green]Gemini API key loaded from 1Password.[/green]"
+                                        )
 
-                            if not gemini_key_loaded:
-                                gemini_key = console.input(
-                                    "[bold cyan]🔑 Enter Gemini API Key (or press Enter to skip): [/bold cyan]"
-                                ).strip()
-                                if gemini_key:
-                                    self.config.gemini_api_key = gemini_key
-                                    gemini_key_loaded = True
-                                    console.print(
-                                        "✅ [green]Manual Gemini API key entered.[/green]"
-                                    )
-                                else:
-                                    console.print(
-                                        "ℹ️ [yellow]Proceeding without AI summary.[/yellow]"
-                                    )
+                                if not gemini_key_loaded:
+                                    gemini_key = console.input(
+                                        "[bold cyan]🔑 Enter Gemini API Key (or press Enter to skip): [/bold cyan]"
+                                    ).strip()
+                                    if gemini_key:
+                                        self.config.gemini_api_key = gemini_key
+                                        gemini_key_loaded = True
+                                        console.print(
+                                            "✅ [green]Manual Gemini API key entered.[/green]"
+                                        )
+                                    else:
+                                        console.print(
+                                            "ℹ️ [yellow]Proceeding without AI summary.[/yellow]"
+                                        )
 
-                            if gemini_key_loaded and self.config.gemini_api_key:
+                                if gemini_key_loaded and self.config.gemini_api_key:
+                                    self.config.enable_ai_summary = True
+                                    should_generate_ai = True
+                            else:
+                                # Claude / Both / ClickUp need no API key.
                                 self.config.enable_ai_summary = True
                                 should_generate_ai = True
                         else:
@@ -645,7 +654,7 @@ class ClickUpTaskExtractor:
                                 ai_fields,
                                 base_notes,
                                 clickup_ai_summary,
-                                allow_gemini=True,
+                                allow_generative=True,
                             )
                         console.print(
                             "✅ [bold green]AI summaries generated for all selected tasks.[/bold green]"
@@ -851,7 +860,7 @@ class ClickUpTaskExtractor:
                 ai_field_items,
                 base_notes,
                 clickup_ai_summary,
-                allow_gemini=not self.config.interactive_selection,
+                allow_generative=not self.config.interactive_selection,
             )
 
             # Extract images (like original)
@@ -962,50 +971,96 @@ class ClickUpTaskExtractor:
             )
         )
 
+    def _source_needs_gemini_key(self) -> bool:
+        """True only when the selected AI source actually requires a Gemini key.
+
+        Claude/Both/ClickUp sources never call Gemini (Both falls back to the
+        Claude CLI), so they must not trigger a Gemini key load or prompt.
+        """
+        return (
+            self.config.enable_ai_summary
+            and self.config.ai_source == AISource.GEMINI
+        )
+
+    def _generate_claude_notes(
+        self,
+        task_name: str,
+        ai_field_items: tuple[tuple[str, str], ...] | list[tuple[str, str]],
+        base_notes: str,
+    ) -> str:
+        """Summarize via the Claude CLI, falling back to base notes on failure."""
+        ai_notes = get_claude_summary(
+            task_name,
+            ai_field_items,
+            progress_pause_callback=self._pause_progress_callback,
+        )
+        return ai_notes or base_notes
+
+    def _generate_gemini_notes(
+        self,
+        task_name: str,
+        ai_field_items: tuple[tuple[str, str], ...] | list[tuple[str, str]],
+        base_notes: str,
+        gemini_key: str,
+    ) -> str:
+        """Summarize via Gemini, falling back to base notes on failure."""
+        ai_notes = get_ai_summary(
+            task_name,
+            ai_field_items,
+            gemini_key,
+            progress_pause_callback=self._pause_progress_callback,
+        )
+        return ai_notes or base_notes
+
     def _apply_ai_source(
         self,
         task_name: str,
         ai_field_items: tuple[tuple[str, str], ...] | list[tuple[str, str]],
         base_notes: str,
         clickup_ai_summary: str | None,
-        allow_gemini: bool,
+        allow_generative: bool,
     ) -> str:
-        """Resolve notes based on AI source selection and availability."""
+        """Resolve notes based on AI source selection and availability.
+
+        ``allow_generative`` gates the generative providers (Claude/Gemini) for
+        this pass: in interactive mode the bulk pass sets it False so summaries
+        are only generated for tasks the user actually selects.
+        """
 
         if not self.config.enable_ai_summary:
             return base_notes
 
         source = self.config.ai_source
-        gemini_key = self.config.gemini_api_key if allow_gemini else None
+        gemini_key = self.config.gemini_api_key if allow_generative else None
         clickup_value = (clickup_ai_summary or "").strip()
 
         if source == AISource.CLICKUP:
             return clickup_value or base_notes
 
-        if source == AISource.GEMINI:
-            if gemini_key:
-                ai_notes = get_ai_summary(
-                    task_name,
-                    ai_field_items,
-                    gemini_key,
-                    progress_pause_callback=self._pause_progress_callback,
+        if source == AISource.CLAUDE:
+            if allow_generative:
+                return self._generate_claude_notes(
+                    task_name, ai_field_items, base_notes
                 )
-                return ai_notes or base_notes
             if clickup_value:
                 return clickup_value
             return base_notes
 
-        # AISource.BOTH
+        if source == AISource.GEMINI:
+            if gemini_key:
+                return self._generate_gemini_notes(
+                    task_name, ai_field_items, base_notes, gemini_key
+                )
+            if clickup_value:
+                return clickup_value
+            return base_notes
+
+        # AISource.BOTH: prefer the ClickUp Summary field, then fall back to the
+        # Claude CLI (no API key / no Gemini quota).
         if clickup_value:
             return clickup_value
-        if gemini_key:
-            ai_notes = get_ai_summary(
-                task_name,
-                ai_field_items,
-                gemini_key,
-                progress_pause_callback=self._pause_progress_callback,
-            )
-            return ai_notes or base_notes
+        if allow_generative:
+            return self._generate_claude_notes(task_name, ai_field_items, base_notes)
         return base_notes
 
     def interactive_include(self, tasks: TaskList) -> TaskList:

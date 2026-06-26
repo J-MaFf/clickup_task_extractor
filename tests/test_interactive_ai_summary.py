@@ -14,7 +14,7 @@ import unittest
 from unittest.mock import patch, Mock, MagicMock, call
 from typing import Any
 
-from config import ClickUpConfig, OutputFormat, TaskRecord
+from config import AISource, ClickUpConfig, OutputFormat, TaskRecord
 from extractor import ClickUpTaskExtractor
 
 
@@ -111,6 +111,7 @@ class TestInteractiveAISummary(unittest.TestCase):
             output_format=OutputFormat.MARKDOWN,
             output_path="test_output.md",
             enable_ai_summary=True,
+            ai_source=AISource.GEMINI,
             gemini_api_key="test_gemini_key",
             interactive_selection=True,
         )
@@ -173,6 +174,7 @@ class TestInteractiveAISummary(unittest.TestCase):
             output_format=OutputFormat.MARKDOWN,
             output_path="test_output.md",
             enable_ai_summary=False,  # Not enabled via CLI
+            ai_source=AISource.GEMINI,  # opt-in path prompts for a Gemini key
             interactive_selection=True,
         )
 
@@ -263,6 +265,7 @@ class TestInteractiveAISummary(unittest.TestCase):
             output_format=OutputFormat.MARKDOWN,
             output_path="test_output.md",
             enable_ai_summary=True,
+            ai_source=AISource.GEMINI,
             gemini_api_key="test_gemini_key",
             interactive_selection=False,  # Non-interactive
         )
@@ -279,6 +282,52 @@ class TestInteractiveAISummary(unittest.TestCase):
             mock_ai_summary.call_count,
             3,
             "AI summary should be called for all tasks in non-interactive mode",
+        )
+
+    @patch("extractor.Progress")
+    @patch("extractor.console")
+    @patch("extractor.get_yes_no_input")
+    @patch("extractor.get_claude_summary")
+    def test_claude_opt_in_interactive_needs_no_key(
+        self, mock_claude, mock_get_yes_no, mock_console, mock_progress
+    ):
+        """Opting into Claude mid-run generates summaries without prompting for a key."""
+        mock_progress.return_value.__enter__ = Mock(
+            return_value=mock_progress.return_value
+        )
+        mock_progress.return_value.__exit__ = Mock(return_value=None)
+        mock_progress.return_value.add_task = Mock(return_value=1)
+        mock_progress.return_value.remove_task = Mock()
+        mock_progress.return_value.update = Mock()
+        mock_progress.return_value.advance = Mock()
+        mock_progress.return_value.stop = Mock()
+
+        # Select tasks 1 and 2, skip task 3, then opt in to AI summaries.
+        mock_get_yes_no.side_effect = [True, True, False, True]
+        mock_console.input = Mock(side_effect=AssertionError("should not prompt for a key"))
+        mock_claude.return_value = "Claude generated summary."
+
+        config = ClickUpConfig(
+            api_key="test_key",
+            workspace_name="Test Workspace",
+            space_name="Test Space",
+            output_format=OutputFormat.MARKDOWN,
+            output_path="test_output.md",
+            enable_ai_summary=False,  # opt in during the run
+            ai_source=AISource.CLAUDE,
+            interactive_selection=True,
+        )
+
+        api_client = DummyAPIClient(self.api_responses)
+        extractor = ClickUpTaskExtractor(config, api_client)
+
+        with patch.object(extractor, "export"):
+            extractor.run()
+
+        self.assertEqual(
+            mock_claude.call_count,
+            2,
+            "Claude summary should be generated for the 2 selected tasks",
         )
 
 

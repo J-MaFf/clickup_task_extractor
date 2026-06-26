@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Added **Claude** as an AI summary source that shells out to the local `claude` CLI in headless print mode (`claude -p … --output-format text`), using your Claude Code **OAuth / Max subscription** — no API key required, and not subject to Gemini's free-tier rate limits. Select with `--ai-source Claude` (now the interactive default). The model is overridable via `CLAUDE_SUMMARY_MODEL` (default `claude-haiku-4-5-20251001`) and the per-call timeout via `CLAUDE_SUMMARY_TIMEOUT`. If a usage limit is hit, the CLI is missing, or a call errors, summaries fall back to raw field content (mirroring the Gemini failure path). ([#144](https://github.com/J-MaFf/clickup_task_extractor/issues/144))
+
+### Changed
+
+- **Claude is now the default AI summary source**, replacing Gemini as the default generative summarizer (Gemini hit free-tier rate limits frequently). `--ai-source Both` now resolves the ClickUp `Summary` field first, then falls back to **Claude**. Gemini remains fully available via `--ai-source Gemini`, and a Gemini API key is only loaded/prompted when that source is selected. ([#144](https://github.com/J-MaFf/clickup_task_extractor/issues/144))
+
 ### Fixed
 
 - Fixed startup crash (`unknown flag: --environment`) when `OP_ENVIRONMENT_ID` is set but a **stable** 1Password CLI is installed. The `op run` Environments flag is beta-only; `main.py` now probes `op run --help` and only re-execs under `op run` when the installed CLI actually advertises the flag (using the correct plural `--environments`). On a stable CLI the re-exec is skipped so authentication falls through to the 1Password SDK path instead of aborting. ([#138](https://github.com/J-MaFf/clickup_task_extractor/issues/138))

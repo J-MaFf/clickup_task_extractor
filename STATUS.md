@@ -2,11 +2,13 @@
 
 ## What This Is
 
-Python CLI for extracting, processing, and exporting tasks from the ClickUp API. Supports Markdown, HTML, and CSV output, optional AI summaries via Google Gemini, 1Password-backed authentication, and a Rich console UI with interactive task selection and priority/ETA sorting.
+Python CLI for extracting, processing, and exporting tasks from the ClickUp API. Supports Markdown, HTML, and CSV output, optional AI summaries (Claude via Max/Pro OAuth by default, or Google Gemini, or the ClickUp Summary field), 1Password-backed authentication, and a Rich console UI with interactive task selection and priority/ETA sorting.
 
-## Current State — 2026-06-23
+## Current State — 2026-06-26
 
-**v1.05 shipped** — EXE built and published to GitHub Releases. Main is clean. No open issues. Beads (`bd`) is active as the task/memory layer beneath GitHub Issues.
+**v1.05 shipped.** Beads (`bd`) is active as the task/memory layer beneath GitHub Issues.
+
+**In progress:** `feat/claude-ai-summary-source` ([#144](https://github.com/J-MaFf/clickup_task_extractor/issues/144)) — adds **Claude** as an AI summary source (local `claude` CLI / Max OAuth, no API key) and makes it the default generative summarizer, replacing rate-limited Gemini. Gemini stays available via `--ai-source Gemini`. All 296 tests pass.
 
 ### Components
 
@@ -17,7 +19,7 @@ Python CLI for extracting, processing, and exporting tasks from the ClickUp API.
 | `auth.py` | Multi-fallback API key loader |
 | `api_client.py` | `APIClient` protocol + `ClickUpAPIClient` |
 | `extractor.py` | Main workflow, export context manager, interactive UI |
-| `ai_summary.py` | Gemini summaries, tiered model strategy, daily quota detection |
+| `ai_summary.py` | AI summaries: Claude CLI path (default, Max OAuth) + Gemini tiered model strategy / quota detection |
 | `mappers.py` | Prompts, date filters, custom field mapping, image extraction |
 | `kfj_task_extractor.py` | Standalone KFJ weekly Google Sheets sync |
 | `logger_config.py` | Rich-enhanced logging setup |
@@ -42,10 +44,11 @@ Python CLI for extracting, processing, and exporting tasks from the ClickUp API.
 
 ### Open Issues
 
-None.
+- [#144](https://github.com/J-MaFf/clickup_task_extractor/issues/144) — Add Claude (Max OAuth) AI summary source, make it default (in review on `feat/claude-ai-summary-source`)
 
 ## Natural Next Steps
 
+- Follow-up: let `eta_calculator.py` use the Claude CLI too (currently Gemini-only; falls back to deterministic priority/status ETA when no Gemini key)
 - File new beads issues as work is identified (`bd create`)
 - Identify any bugs or improvements from v1.05 usage
 

@@ -40,6 +40,7 @@ class AISource(Enum):
     BOTH = "Both"
     CLICKUP = "ClickUp"
     GEMINI = "Gemini"
+    CLAUDE = "Claude"
 
 
 # Priority sorting order (higher value = higher priority)
@@ -333,7 +334,10 @@ class ClickUpConfig:
     date_filter: DateFilter = DateFilter.ALL_OPEN
     enable_ai_summary: bool = False
     gemini_api_key: str | None = None
-    ai_source: AISource = AISource.BOTH
+    # Claude (via the local `claude` CLI / Max OAuth) is the default generative
+    # summarizer; it needs no API key and avoids Gemini's free-tier rate limits.
+    # Gemini stays selectable via AISource.GEMINI.
+    ai_source: AISource = AISource.CLAUDE
     ai_clickup_field_id: str | None = CLICKUP_AI_SUMMARY_FIELD_ID
     output_format: OutputFormat = OutputFormat.MARKDOWN
     interactive_selection: bool = False
