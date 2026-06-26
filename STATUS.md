@@ -6,12 +6,9 @@ Python CLI for extracting, processing, and exporting tasks from the ClickUp API.
 
 ## Current State — 2026-06-26
 
-**v1.05 shipped.** Beads (`bd`) is active as the task/memory layer beneath GitHub Issues. Claude (Max OAuth) is the default AI summary source ([#144](https://github.com/J-MaFf/clickup_task_extractor/pull/145), merged).
+**v1.05 shipped.** Beads (`bd`) is active as the task/memory layer beneath GitHub Issues. AI summaries default to Claude (Max OAuth, [#145](https://github.com/J-MaFf/clickup_task_extractor/pull/145)); summaries + ETAs run concurrently ([#148](https://github.com/J-MaFf/clickup_task_extractor/pull/148)); ETAs can use Claude ([#149](https://github.com/J-MaFf/clickup_task_extractor/pull/149)) — all merged.
 
-**In progress (stacked):**
-
-- `feat/parallel-ai-summaries` ([#147](https://github.com/J-MaFf/clickup_task_extractor/issues/147), PR #148) — generate AI summaries concurrently (bounded `ThreadPoolExecutor`, `AI_SUMMARY_CONCURRENCY`, default 4), ~3× faster on large exports.
-- `feat/claude-eta` ([#146](https://github.com/J-MaFf/clickup_task_extractor/issues/146)) — **stacked on #148.** Adds Claude-powered ETA estimation (`get_claude_eta`, shared `run_claude_cli` runner) for tasks without a due date, in its own concurrent pass; deterministic fallback preserved. Rebase onto main after #148 merges. All 314 tests pass.
+**In progress:** `fix/load-dotenv` ([#150](https://github.com/J-MaFf/clickup_task_extractor/issues/150)) — load a project-local `.env` at startup (dependency-free `_load_dotenv` in `main.py`) so `CLICKUP_WORKSPACE_NAME`/`CLICKUP_SPACE_NAME` and other documented vars actually apply (the picker was defaulting to `Personal`). All 318 tests pass.
 
 ### Components
 
@@ -46,17 +43,18 @@ Python CLI for extracting, processing, and exporting tasks from the ClickUp API.
 | [#124](https://github.com/J-MaFf/clickup_task_extractor/issues/124) | Fix null type_config AttributeError | [#126](https://github.com/J-MaFf/clickup_task_extractor/pull/126) |
 | [#125](https://github.com/J-MaFf/clickup_task_extractor/issues/125) | Make API timeout configurable | [#127](https://github.com/J-MaFf/clickup_task_extractor/pull/127) |
 | [#144](https://github.com/J-MaFf/clickup_task_extractor/issues/144) | Add Claude (Max OAuth) AI summary source, make it default | [#145](https://github.com/J-MaFf/clickup_task_extractor/pull/145) |
+| [#147](https://github.com/J-MaFf/clickup_task_extractor/issues/147) | Concurrent AI summary generation | [#148](https://github.com/J-MaFf/clickup_task_extractor/pull/148) |
+| [#146](https://github.com/J-MaFf/clickup_task_extractor/issues/146) | Claude (Max OAuth) ETA estimation source | [#149](https://github.com/J-MaFf/clickup_task_extractor/pull/149) |
 
 ### Open Issues
 
-- [#147](https://github.com/J-MaFf/clickup_task_extractor/issues/147) — Parallelize AI summary generation (in review on `feat/parallel-ai-summaries`, PR #148)
-- [#146](https://github.com/J-MaFf/clickup_task_extractor/issues/146) — Claude ETA source (in review on `feat/claude-eta`, stacked on #148)
+- [#150](https://github.com/J-MaFf/clickup_task_extractor/issues/150) — Load `.env` at startup so configured workspace/space defaults apply (in review on `fix/load-dotenv`)
 
 ## Natural Next Steps
 
-- Merge #148, then rebase/merge #146 onto main
-- File new beads issues as work is identified (`bd create`)
-- Identify any bugs or improvements from v1.05 usage
+- Version bump / release (`1.06`) once #150 lands — three+ user-facing features since 1.05
+- Follow-up: load `.env.kfj` in `kfj_task_extractor.py` (same latent gap)
+- Identify any bugs or improvements from real usage
 
 ## Prerequisites to Run
 

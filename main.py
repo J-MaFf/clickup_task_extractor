@@ -42,8 +42,6 @@ from config import (
     CLICKUP_AI_SUMMARY_FIELD_ID,
     CLICKUP_API_SECRET_REFERENCE,
     GEMINI_API_SECRET_REFERENCE,
-    DEFAULT_WORKSPACE_NAME,
-    DEFAULT_SPACE_NAME,
 )
 from logger_config import setup_logging
 from mappers import get_choice_input, get_yes_no_input
@@ -108,6 +106,46 @@ console = Console(force_terminal=True, legacy_windows=False)
 # re-adding handlers) and may open a file handler — side effects that should
 # not fire merely from importing this module (e.g. under test/tooling).
 logger = None
+
+
+def _load_dotenv(env_path: str | None = None) -> None:
+    """Load KEY=VALUE pairs from a project-local ``.env`` into ``os.environ``.
+
+    Called from the ``__main__`` guard before the re-exec helpers and before
+    ``main()`` reads ``CLICKUP_WORKSPACE_NAME`` / ``CLICKUP_SPACE_NAME`` /
+    ``OP_ENVIRONMENT_ID`` / API keys, so those settings apply without relying on
+    the shell or IDE having inherited them. It only runs on real CLI execution
+    (never on import), so tests are unaffected.
+
+    Precedence: real environment variables win — an already-set key is never
+    overwritten. Dependency-free; supports blank lines, ``#`` comments, an
+    optional ``export `` prefix, and single/double-quoted values.
+
+    Args:
+        env_path: Path to the .env file; defaults to ``.env`` next to this script.
+    """
+    if env_path is None:
+        env_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env")
+    try:
+        with open(env_path, "r", encoding="utf-8") as handle:
+            lines = handle.readlines()
+    except OSError:
+        return  # No .env present — nothing to load.
+    for raw in lines:
+        line = raw.strip()
+        if not line or line.startswith("#"):
+            continue
+        if line.startswith("export "):
+            line = line[len("export ") :].lstrip()
+        key, sep, value = line.partition("=")
+        if not sep:
+            continue
+        key = key.strip()
+        value = value.strip()
+        if len(value) >= 2 and value[0] == value[-1] and value[0] in ("'", '"'):
+            value = value[1:-1]
+        if key and key not in os.environ:
+            os.environ[key] = value
 
 
 def _reexec_in_venv() -> None:
@@ -633,8 +671,10 @@ def main():
 
     config = ClickUpConfig(
         api_key=api_key,
-        workspace_name=args.workspace or DEFAULT_WORKSPACE_NAME,
-        space_name=args.space or DEFAULT_SPACE_NAME,
+        # Read the env vars here (not config's import-time defaults) so values
+        # loaded from .env by _load_dotenv() in the __main__ guard take effect.
+        workspace_name=args.workspace or os.environ.get("CLICKUP_WORKSPACE_NAME", ""),
+        space_name=args.space or os.environ.get("CLICKUP_SPACE_NAME", ""),
         list_name=args.list,
         output_path=args.output
         or f"output/WeeklyTaskList_{format_datetime(datetime.now(), TIMESTAMP_FORMAT)}.md",
@@ -692,10 +732,13 @@ def main():
 if __name__ == "__main__":
     # Side effects that must only run when executed as a script, never on import:
     #   1. Reconfigure stdio to UTF-8 (mutates sys.stdout/sys.stderr).
-    #   2. Re-exec under the project venv if not already running from it.
-    #   3. Re-exec under 'op run' to inject 1Password env vars without
+    #   2. Load .env so configured vars apply before the re-exec helpers and
+    #      main() read them (workspace/space names, OP_ENVIRONMENT_ID, keys).
+    #   3. Re-exec under the project venv if not already running from it.
+    #   4. Re-exec under 'op run' to inject 1Password env vars without
     #      handle redirection (which would hang the op CLI on Windows).
     _configure_stdio_encoding()
+    _load_dotenv()
     _reexec_in_venv()
     _reexec_under_op_run()
     main()

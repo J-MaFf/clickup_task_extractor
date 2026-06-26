@@ -97,6 +97,7 @@ All retrieval is logged (DEBUG level); failures don't raise exceptions—they re
 ### Core Modules
 
 **`main.py`**: CLI orchestrator
+- Loads a project-local `.env` (`_load_dotenv`, in the `__main__` guard before the re-exec helpers and config reads) so documented vars (workspace/space names, `OP_ENVIRONMENT_ID`, keys) apply without the shell/IDE having inherited them; real env vars / CLI flags take precedence. Dependency-free; only runs on CLI execution, not on import (tests unaffected)
 - Re-launches inside `.venv` if present (cross-platform compatibility)
 - Builds `ClickUpConfig` from CLI args + prompts
 - Chains authentication fallback

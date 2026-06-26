@@ -322,5 +322,63 @@ class OpRunReexecTests(unittest.TestCase):
         mock_call.assert_not_called()
 
 
+class LoadDotenvTests(unittest.TestCase):
+    """Tests for main._load_dotenv (the dependency-free .env loader)."""
+
+    def setUp(self) -> None:
+        import tempfile
+
+        sys.modules.pop("main", None)
+        self.main = importlib.import_module("main")
+        self._tempdir = tempfile.TemporaryDirectory()
+        self.env_path = str(Path(self._tempdir.name) / ".env")
+
+    def tearDown(self) -> None:
+        self._tempdir.cleanup()
+
+    def _write(self, content: str) -> None:
+        Path(self.env_path).write_text(content, encoding="utf-8")
+
+    def test_loads_keys_with_comments_quotes_and_export(self) -> None:
+        self._write(
+            "# a comment\n"
+            "\n"
+            "CLICKUP_WORKSPACE_NAME=KMS\n"
+            "export CLICKUP_SPACE_NAME = Kikkoman\n"
+            'QUOTED="quoted value"\n'
+            "SINGLE='single'\n"
+        )
+        with patch.dict(self.main.os.environ, {}, clear=True):
+            self.main._load_dotenv(self.env_path)
+            self.assertEqual(self.main.os.environ["CLICKUP_WORKSPACE_NAME"], "KMS")
+            self.assertEqual(self.main.os.environ["CLICKUP_SPACE_NAME"], "Kikkoman")
+            self.assertEqual(self.main.os.environ["QUOTED"], "quoted value")
+            self.assertEqual(self.main.os.environ["SINGLE"], "single")
+
+    def test_does_not_override_existing_env(self) -> None:
+        self._write("CLICKUP_WORKSPACE_NAME=KMS\n")
+        with patch.dict(
+            self.main.os.environ, {"CLICKUP_WORKSPACE_NAME": "Personal"}, clear=True
+        ):
+            self.main._load_dotenv(self.env_path)
+            # Real env wins over .env.
+            self.assertEqual(
+                self.main.os.environ["CLICKUP_WORKSPACE_NAME"], "Personal"
+            )
+
+    def test_missing_file_is_noop(self) -> None:
+        missing = str(Path(self._tempdir.name) / "nope.env")
+        with patch.dict(self.main.os.environ, {}, clear=True):
+            self.main._load_dotenv(missing)  # must not raise
+            self.assertNotIn("CLICKUP_WORKSPACE_NAME", self.main.os.environ)
+
+    def test_ignores_malformed_lines(self) -> None:
+        self._write("NOVALUE\nGOOD=ok\n   \n")
+        with patch.dict(self.main.os.environ, {}, clear=True):
+            self.main._load_dotenv(self.env_path)
+            self.assertEqual(self.main.os.environ["GOOD"], "ok")
+            self.assertNotIn("NOVALUE", self.main.os.environ)
+
+
 if __name__ == "__main__":  # pragma: no cover - manual execution safeguard
     unittest.main()
