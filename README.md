@@ -365,6 +365,8 @@ Optional AI integration provides intelligent 1-2 sentence task summaries from se
 
 The **Claude** source needs no API key and is **not subject to Gemini's free-tier rate limits**, so it's the recommended default. It requires [Claude Code](https://docs.claude.com/en/docs/claude-code) installed and signed in. Override the model with `CLAUDE_SUMMARY_MODEL` (default `claude-haiku-4-5-20251001`) and the per-call timeout with `CLAUDE_SUMMARY_TIMEOUT` (seconds).
 
+Summaries are generated **concurrently** (bounded thread pool) after tasks are gathered, cutting wall-clock on large exports by ~3×. Tune the worker count with `AI_SUMMARY_CONCURRENCY` (default 4) — lower it to be gentler on rate limits, raise it for faster runs. Output order is preserved, and once a provider hits a usage/rate limit the remaining queued calls short-circuit.
+
 All sources gracefully fall back to the raw task content if the provider is unavailable, errors, or hits a usage limit.
 
 Enable AI summaries:

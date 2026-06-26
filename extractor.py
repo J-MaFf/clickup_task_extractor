@@ -13,6 +13,7 @@ import os
 import sys
 import html
 import csv
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
 from typing import Callable, TypeAlias
 from contextlib import contextmanager
@@ -476,24 +477,13 @@ class ClickUpTaskExtractor:
                             name = task.get("name", "Unknown Task")
                             task_name = name[:30] + ("..." if len(name) > 30 else "")
 
-                            # Update per-list progress description with current task.
-                            # Show the AI indicator whenever a summary will be
-                            # generated in this pass (AI enabled, non-interactive).
-                            # The Claude source needs no API key, so don't gate on
-                            # gemini_api_key here.
-                            if (
-                                self.config.enable_ai_summary
-                                and not self.config.interactive_selection
-                            ):
-                                progress.update(
-                                    current_list_task,
-                                    description=f"📝 Processing: [bold]{list_item['name']}[/bold] - 🤖 AI: {task_name}",
-                                )
-                            else:
-                                progress.update(
-                                    current_list_task,
-                                    description=f"📝 Processing: [bold]{list_item['name']}[/bold] - {task_name}",
-                                )
+                            # Update per-list progress description with current
+                            # task. AI summaries are generated in a later
+                            # concurrent pass, so no AI indicator here.
+                            progress.update(
+                                current_list_task,
+                                description=f"📝 Processing: [bold]{list_item['name']}[/bold] - {task_name}",
+                            )
 
                             record = self._process_task(
                                 task, list_custom_fields, list_item
@@ -520,6 +510,11 @@ class ClickUpTaskExtractor:
                 if current_list_task is not None:
                     progress.remove_task(current_list_task)
                 progress.remove_task(overall_task)
+
+            # The live Progress display is now closed. Drop the reference so the
+            # rate-limit pause callback no-ops if invoked from the concurrent
+            # summary pass below (which runs outside any live display).
+            self._progress_context = None
 
             # Create beautiful summary table
             stats_table = Table(
@@ -564,100 +559,57 @@ class ClickUpTaskExtractor:
                 )
                 all_tasks = self.interactive_include(all_tasks)
 
-                # After task selection in interactive mode, handle AI summary generation
-                if all_tasks:
-                    # Check if we need to prompt for AI summary or if it's already enabled
-                    should_generate_ai = self.config.enable_ai_summary
-
-                    if not self.config.enable_ai_summary:
-                        # AI summary not enabled - ask the user
-                        console.print(
-                            Panel(
-                                f"[bold blue]🤖 AI Summary Available[/bold blue]\n"
-                                f"You have selected [bold cyan]{len(all_tasks)}[/bold cyan] task(s) for export.\n"
-                                f"AI summary can generate concise 1-2 sentence summaries using "
-                                f"[cyan]{self.config.ai_source.value}[/cyan].",
-                                title="AI Enhancement",
-                                style="blue",
-                            )
+                # After task selection, optionally enable AI summaries. The
+                # actual generation happens in the unified concurrent pass below
+                # (shared with non-interactive mode).
+                if all_tasks and not self.config.enable_ai_summary:
+                    console.print(
+                        Panel(
+                            f"[bold blue]🤖 AI Summary Available[/bold blue]\n"
+                            f"You have selected [bold cyan]{len(all_tasks)}[/bold cyan] task(s) for export.\n"
+                            f"AI summary can generate concise 1-2 sentence summaries using "
+                            f"[cyan]{self.config.ai_source.value}[/cyan].",
+                            title="AI Enhancement",
+                            style="blue",
                         )
-                        if get_yes_no_input(
-                            "Would you like to enable AI summaries for the selected tasks? (y/n): ",
-                            default_on_interrupt=False,
-                        ):
-                            if self.config.ai_source == AISource.GEMINI:
-                                # Gemini is the only source that needs an API key.
-                                gemini_key_loaded = False
-                                if self.load_gemini_key_func:
-                                    if self.load_gemini_key_func():
-                                        gemini_key_loaded = True
-                                        console.print(
-                                            "✅ [green]Gemini API key loaded from 1Password.[/green]"
-                                        )
+                    )
+                    if get_yes_no_input(
+                        "Would you like to enable AI summaries for the selected tasks? (y/n): ",
+                        default_on_interrupt=False,
+                    ):
+                        if self.config.ai_source == AISource.GEMINI:
+                            # Gemini is the only source that needs an API key.
+                            gemini_key_loaded = False
+                            if self.load_gemini_key_func:
+                                if self.load_gemini_key_func():
+                                    gemini_key_loaded = True
+                                    console.print(
+                                        "✅ [green]Gemini API key loaded from 1Password.[/green]"
+                                    )
 
-                                if not gemini_key_loaded:
-                                    gemini_key = console.input(
-                                        "[bold cyan]🔑 Enter Gemini API Key (or press Enter to skip): [/bold cyan]"
-                                    ).strip()
-                                    if gemini_key:
-                                        self.config.gemini_api_key = gemini_key
-                                        gemini_key_loaded = True
-                                        console.print(
-                                            "✅ [green]Manual Gemini API key entered.[/green]"
-                                        )
-                                    else:
-                                        console.print(
-                                            "ℹ️ [yellow]Proceeding without AI summary.[/yellow]"
-                                        )
+                            if not gemini_key_loaded:
+                                gemini_key = console.input(
+                                    "[bold cyan]🔑 Enter Gemini API Key (or press Enter to skip): [/bold cyan]"
+                                ).strip()
+                                if gemini_key:
+                                    self.config.gemini_api_key = gemini_key
+                                    gemini_key_loaded = True
+                                    console.print(
+                                        "✅ [green]Manual Gemini API key entered.[/green]"
+                                    )
+                                else:
+                                    console.print(
+                                        "ℹ️ [yellow]Proceeding without AI summary.[/yellow]"
+                                    )
 
-                                if gemini_key_loaded and self.config.gemini_api_key:
-                                    self.config.enable_ai_summary = True
-                                    should_generate_ai = True
-                            else:
-                                # Claude / Both / ClickUp need no API key.
+                            if gemini_key_loaded and self.config.gemini_api_key:
                                 self.config.enable_ai_summary = True
-                                should_generate_ai = True
                         else:
-                            console.print(
-                                "ℹ️ [yellow]Proceeding without AI summary.[/yellow]"
-                            )
-
-                    # Generate AI summaries for selected tasks if enabled
-                    if should_generate_ai:
+                            # Claude / Both / ClickUp need no API key.
+                            self.config.enable_ai_summary = True
+                    else:
                         console.print(
-                            Panel(
-                                f"[bold green]🧠 Generating AI summaries for {len(all_tasks)} selected tasks...[/bold green]",
-                                title="AI Processing",
-                                style="green",
-                            )
-                        )
-                        for i, task in enumerate(all_tasks, 1):
-                            console.print(
-                                f"  [dim]Processing task {i}/{len(all_tasks)}:[/dim] [bold]{task.Task}[/bold]"
-                            )
-                            metadata = getattr(task, "_metadata", {}) or {}
-                            task_name = metadata.get("task_name", task.Task)
-                            raw_fields = metadata.get("ai_fields") or []
-                            clickup_ai_summary = metadata.get("clickup_ai_summary")
-                            base_notes = metadata.get("base_notes", task.Notes)
-
-                            if isinstance(raw_fields, dict):
-                                ai_fields = list(raw_fields.items())
-                            else:
-                                ai_fields = list(raw_fields)
-
-                            if not ai_fields:
-                                ai_fields = [("Notes", task.Notes or "(not provided)")]
-
-                            task.Notes = self._apply_ai_source(
-                                task_name,
-                                ai_fields,
-                                base_notes,
-                                clickup_ai_summary,
-                                allow_generative=True,
-                            )
-                        console.print(
-                            "✅ [bold green]AI summaries generated for all selected tasks.[/bold green]"
+                            "ℹ️ [yellow]Proceeding without AI summary.[/yellow]"
                         )
 
             elif self.config.interactive_selection and not all_tasks:
@@ -668,6 +620,14 @@ class ClickUpTaskExtractor:
                         style="yellow",
                     )
                 )
+
+            # Generate AI summaries concurrently for the final task set. This
+            # single pass covers both interactive (selected tasks) and
+            # non-interactive (all tasks) modes; it no-ops when AI is disabled
+            # or the source makes no generative calls (ClickUp-only).
+            if all_tasks:
+                self._generate_summaries_concurrently(all_tasks)
+
             # Export
             self.export(all_tasks)
         except Exception as e:
@@ -855,12 +815,17 @@ class ClickUpTaskExtractor:
             base_notes = "\n".join(notes_parts)
             clickup_ai_summary = self._get_clickup_ai_summary(task_custom_fields)
 
+            # Resolve the non-generative notes synchronously (ClickUp Summary
+            # field or base notes). Generative summaries (Claude/Gemini) are
+            # deferred to a single concurrent pass after all tasks are processed
+            # (see _generate_summaries_concurrently) so they don't serialize the
+            # per-task fetch loop. The AI inputs are stashed in _metadata below.
             notes = self._apply_ai_source(
                 task_detail.get("name", ""),
                 ai_field_items,
                 base_notes,
                 clickup_ai_summary,
-                allow_generative=not self.config.interactive_selection,
+                allow_generative=False,
             )
 
             # Extract images (like original)
@@ -1062,6 +1027,103 @@ class ClickUpTaskExtractor:
         if allow_generative:
             return self._generate_claude_notes(task_name, ai_field_items, base_notes)
         return base_notes
+
+    def _summary_concurrency(self, task_count: int) -> int:
+        """Resolve the worker count for the concurrent summary pass.
+
+        Configurable via ``AI_SUMMARY_CONCURRENCY`` (default 4); clamped to
+        ``[1, task_count]`` so idle workers are never spawned. Kept conservative
+        by default to respect the Claude Max subscription / Gemini rate limits.
+        """
+        default = 4
+        try:
+            configured = int(os.environ.get("AI_SUMMARY_CONCURRENCY", default))
+        except ValueError:
+            configured = default
+        if configured < 1:
+            configured = 1
+        return max(1, min(configured, task_count))
+
+    def _summarize_one(self, task: TaskRecord) -> str:
+        """Generate AI notes for a single task from its stashed metadata."""
+        metadata = getattr(task, "_metadata", {}) or {}
+        task_name = metadata.get("task_name", task.Task)
+        raw_fields = metadata.get("ai_fields") or []
+        clickup_ai_summary = metadata.get("clickup_ai_summary")
+        base_notes = metadata.get("base_notes", task.Notes)
+
+        if isinstance(raw_fields, dict):
+            ai_fields = list(raw_fields.items())
+        else:
+            ai_fields = list(raw_fields)
+        if not ai_fields:
+            ai_fields = [("Notes", task.Notes or "(not provided)")]
+
+        return self._apply_ai_source(
+            task_name,
+            ai_fields,
+            base_notes,
+            clickup_ai_summary,
+            allow_generative=True,
+        )
+
+    def _generate_summaries_concurrently(self, tasks: TaskList) -> None:
+        """Generate AI summaries for ``tasks`` using a bounded thread pool.
+
+        Subprocess (Claude CLI) and HTTP (Gemini) calls release the GIL, so a
+        ThreadPoolExecutor parallelizes them effectively. Results are written
+        back in original order; progress is reported from the main thread via
+        ``as_completed`` (workers never touch the Rich console directly here).
+        No-ops when AI is disabled or the source is ClickUp-only (no external
+        call). Provider skip flags (``_claude_available`` / ``_api_available``)
+        cause queued calls to short-circuit once a usage/rate limit is hit.
+        """
+        if not self.config.enable_ai_summary or not tasks:
+            return
+        # ClickUp-only source was already resolved synchronously in _process_task.
+        if self.config.ai_source == AISource.CLICKUP:
+            return
+
+        total = len(tasks)
+        workers = self._summary_concurrency(total)
+        console.print(
+            Panel(
+                f"[bold green]🧠 Generating AI summaries for {total} task(s) "
+                f"using [cyan]{self.config.ai_source.value}[/cyan] "
+                f"({workers} concurrent)...[/bold green]",
+                title="AI Processing",
+                style="green",
+            )
+        )
+
+        results: list[str | None] = [None] * total
+        with ThreadPoolExecutor(max_workers=workers) as executor:
+            future_to_index = {
+                executor.submit(self._summarize_one, task): index
+                for index, task in enumerate(tasks)
+            }
+            completed = 0
+            for future in as_completed(future_to_index):
+                index = future_to_index[future]
+                try:
+                    results[index] = future.result()
+                except Exception as exc:  # keep going; leave existing Notes
+                    console.print(
+                        f"  [yellow]⚠️ Summary failed for '{tasks[index].Task}': "
+                        f"{str(exc)[:80]}[/yellow]"
+                    )
+                    results[index] = None
+                completed += 1
+                console.print(f"  [dim]{completed}/{total} summaries generated[/dim]")
+
+        # Write results back in original order. _apply_ai_source always returns a
+        # string (base notes on failure), so None only occurs on the unexpected
+        # exception above — leave those tasks' existing Notes untouched.
+        for index, task in enumerate(tasks):
+            if results[index] is not None:
+                task.Notes = results[index]
+
+        console.print("✅ [bold green]AI summaries complete.[/bold green]")
 
     def interactive_include(self, tasks: TaskList) -> TaskList:
         """

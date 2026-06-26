@@ -143,6 +143,8 @@ class ClickUpTaskExtractorProcessTaskTests(unittest.TestCase):
         )
 
     def test_process_task_with_ai_summary_enabled(self) -> None:
+        # Generation is deferred: _process_task stashes AI inputs, and the
+        # concurrent pass (_generate_summaries_concurrently) calls the provider.
         self.config.enable_ai_summary = True
         self.config.ai_source = AISource.GEMINI
         self.config.gemini_api_key = "secret"
@@ -153,8 +155,10 @@ class ClickUpTaskExtractorProcessTaskTests(unittest.TestCase):
             "extractor.get_ai_summary", return_value="AI summary text"
         ) as mock_get_summary:
             record = self.extractor._process_task(task, [], list_item)
+            self.assertIsNotNone(record)
+            mock_get_summary.assert_not_called()  # deferred
+            self.extractor._generate_summaries_concurrently([record])
 
-        self.assertIsNotNone(record)
         self.assertIsInstance(record, TaskRecord)
         record = cast(TaskRecord, record)
         self.assertEqual(record.Notes, "AI summary text")
@@ -220,8 +224,10 @@ class ClickUpTaskExtractorProcessTaskTests(unittest.TestCase):
             "extractor.get_claude_summary", return_value="Claude summary text"
         ) as mock_claude, patch("extractor.get_ai_summary") as mock_gemini:
             record = self.extractor._process_task(task, [], list_item)
+            self.assertIsNotNone(record)
+            mock_claude.assert_not_called()  # deferred
+            self.extractor._generate_summaries_concurrently([record])
 
-        self.assertIsNotNone(record)
         record = cast(TaskRecord, record)
         self.assertEqual(record.Notes, "Claude summary text")
         mock_claude.assert_called_once()
@@ -244,8 +250,9 @@ class ClickUpTaskExtractorProcessTaskTests(unittest.TestCase):
             "extractor.get_claude_summary", return_value="Claude fallback summary"
         ) as mock_claude, patch("extractor.get_ai_summary") as mock_gemini:
             record = self.extractor._process_task(task, [], list_item)
+            self.assertIsNotNone(record)
+            self.extractor._generate_summaries_concurrently([record])
 
-        self.assertIsNotNone(record)
         record = cast(TaskRecord, record)
         self.assertEqual(record.Notes, "Claude fallback summary")
         mock_claude.assert_called_once()
@@ -262,8 +269,9 @@ class ClickUpTaskExtractorProcessTaskTests(unittest.TestCase):
 
         with patch("extractor.get_claude_summary", return_value=None):
             record = self.extractor._process_task(task, [], list_item)
+            self.assertIsNotNone(record)
+            self.extractor._generate_summaries_concurrently([record])
 
-        self.assertIsNotNone(record)
         record = cast(TaskRecord, record)
         self.assertIn("Subject: Printer outage", record.Notes)
 

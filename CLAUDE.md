@@ -122,6 +122,7 @@ All retrieval is logged (DEBUG level); failures don't raise exceptions—they re
 - Filters by status (excludes by default per `ClickUpConfig.exclude_statuses`)
 - Filters by date range (`_fetch_and_process_tasks()`)
 - Interactive task selection (Rich panels with checkboxes)
+- **Deferred + concurrent AI summaries**: `_process_task` resolves only non-generative notes (ClickUp field / base notes) and stashes AI inputs in `TaskRecord._metadata`; generative summaries (Claude/Gemini) run afterward in one `_generate_summaries_concurrently()` pass (bounded `ThreadPoolExecutor`, `AI_SUMMARY_CONCURRENCY` env var, default 4). Covers both interactive (selected) and non-interactive (all) modes; preserves order; runs outside the live `Progress` display (`_progress_context` is cleared first).
 - `export_file()` context manager (creates parent dirs, handles I/O errors)
 - Markdown/HTML rendering (uses `get_export_fields()` for column order)
 
