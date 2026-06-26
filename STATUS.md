@@ -6,9 +6,9 @@ Python CLI for extracting, processing, and exporting tasks from the ClickUp API.
 
 ## Current State — 2026-06-26
 
-**v1.05 shipped.** Beads (`bd`) is active as the task/memory layer beneath GitHub Issues. AI summaries default to Claude (Max OAuth, [#145](https://github.com/J-MaFf/clickup_task_extractor/pull/145)); summaries + ETAs run concurrently ([#148](https://github.com/J-MaFf/clickup_task_extractor/pull/148)); ETAs can use Claude ([#149](https://github.com/J-MaFf/clickup_task_extractor/pull/149)) — all merged.
+**v1.05 shipped.** Beads (`bd`) is active as the task/memory layer beneath GitHub Issues. AI summaries default to Claude (Max OAuth, [#145](https://github.com/J-MaFf/clickup_task_extractor/pull/145)); summaries + ETAs run concurrently ([#148](https://github.com/J-MaFf/clickup_task_extractor/pull/148)); ETAs can use Claude ([#149](https://github.com/J-MaFf/clickup_task_extractor/pull/149)); `main.py` auto-loads a project-local `.env` so configured workspace/space apply ([#151](https://github.com/J-MaFf/clickup_task_extractor/pull/151), Fixes [#150](https://github.com/J-MaFf/clickup_task_extractor/issues/150)) — all merged.
 
-**In progress:** `fix/load-dotenv` ([#150](https://github.com/J-MaFf/clickup_task_extractor/issues/150)) — load a project-local `.env` at startup (dependency-free `_load_dotenv` in `main.py`) so `CLICKUP_WORKSPACE_NAME`/`CLICKUP_SPACE_NAME` and other documented vars actually apply (the picker was defaulting to `Personal`). All 318 tests pass.
+**In progress:** `feat/load-dotenv-kfj` ([#152](https://github.com/J-MaFf/clickup_task_extractor/issues/152)) — `kfj_task_extractor.py` now auto-loads `.env.kfj` (same `_load_dotenv` pattern), but **secret-safe**: it skips `op://` values for `CLICKUP_API_KEY`/`GOOGLE_SHEETS_CREDENTIALS_JSON`, leaving them for `op run`/1Password. All 325 tests pass. Next: bump to **v1.06**.
 
 ### Components
 
@@ -45,15 +45,15 @@ Python CLI for extracting, processing, and exporting tasks from the ClickUp API.
 | [#144](https://github.com/J-MaFf/clickup_task_extractor/issues/144) | Add Claude (Max OAuth) AI summary source, make it default | [#145](https://github.com/J-MaFf/clickup_task_extractor/pull/145) |
 | [#147](https://github.com/J-MaFf/clickup_task_extractor/issues/147) | Concurrent AI summary generation | [#148](https://github.com/J-MaFf/clickup_task_extractor/pull/148) |
 | [#146](https://github.com/J-MaFf/clickup_task_extractor/issues/146) | Claude (Max OAuth) ETA estimation source | [#149](https://github.com/J-MaFf/clickup_task_extractor/pull/149) |
+| [#150](https://github.com/J-MaFf/clickup_task_extractor/issues/150) | Load `.env` at startup so configured workspace/space apply | [#151](https://github.com/J-MaFf/clickup_task_extractor/pull/151) |
 
 ### Open Issues
 
-- [#150](https://github.com/J-MaFf/clickup_task_extractor/issues/150) — Load `.env` at startup so configured workspace/space defaults apply (in review on `fix/load-dotenv`)
+- [#152](https://github.com/J-MaFf/clickup_task_extractor/issues/152) — Auto-load `.env.kfj` in `kfj_task_extractor.py`, secret-safe (in review on `feat/load-dotenv-kfj`)
 
 ## Natural Next Steps
 
-- Version bump / release (`1.06`) once #150 lands — three+ user-facing features since 1.05
-- Follow-up: load `.env.kfj` in `kfj_task_extractor.py` (same latent gap)
+- Version bump / release (`1.06`) once #152 lands — four+ user-facing features since 1.05 (Claude summaries, concurrency, Claude ETA, `.env`/`.env.kfj` auto-load)
 - Identify any bugs or improvements from real usage
 
 ## Prerequisites to Run

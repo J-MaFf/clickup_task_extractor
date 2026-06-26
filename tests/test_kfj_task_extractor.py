@@ -2,11 +2,12 @@
 Unit tests for kfj_task_extractor.
 
 Covers task->record mapping, row normalization, tab naming, pagination and
-closed-task filtering, and sorting integration with date-only ETAs. No
-network or Google Sheets calls are made.
+closed-task filtering, sorting integration with date-only ETAs, and the
+.env.kfj loader. No network or Google Sheets calls are made.
 """
 
 import os
+import tempfile
 import unittest
 from datetime import date
 from unittest import mock
@@ -15,6 +16,7 @@ from config import sort_tasks_by_priority_and_eta
 from kfj_task_extractor import (
     FALLBACK_BRANCH,
     HEADER,
+    _load_dotenv,
     build_tab_name,
     fetch_open_tasks,
     load_google_credentials_json,
@@ -391,6 +393,90 @@ class TestCredentialResolution(unittest.TestCase):
                 self.assertIsNone(resolve_clickup_api_key())
                 sdk.assert_not_called()
                 fallback.assert_not_called()
+
+
+class LoadDotenvTests(unittest.TestCase):
+    """Test suite for the .env.kfj loader (_load_dotenv)."""
+
+    def _write_env(self, contents: str) -> str:
+        """Write contents to a temp .env file and return its path."""
+        handle = tempfile.NamedTemporaryFile(
+            "w", suffix=".env.kfj", delete=False, encoding="utf-8"
+        )
+        handle.write(contents)
+        handle.close()
+        self.addCleanup(os.unlink, handle.name)
+        return handle.name
+
+    def test_loads_plain_config_vars(self):
+        path = self._write_env(
+            "KFJ_CLICKUP_LIST_ID=12345\n"
+            "# a comment\n"
+            "\n"
+            "export KFJ_GOOGLE_SHEET_ID=abcDEF\n"
+            'KFJ_TAB_PREFIX="My Tasks"\n'
+            "KFJ_FALLBACK_BRANCH='HQ'\n"
+        )
+        with mock.patch.dict(os.environ, {}, clear=True):
+            _load_dotenv(path)
+            self.assertEqual(os.environ["KFJ_CLICKUP_LIST_ID"], "12345")
+            self.assertEqual(os.environ["KFJ_GOOGLE_SHEET_ID"], "abcDEF")
+            self.assertEqual(os.environ["KFJ_TAB_PREFIX"], "My Tasks")
+            self.assertEqual(os.environ["KFJ_FALLBACK_BRANCH"], "HQ")
+
+    def test_does_not_override_existing_env(self):
+        path = self._write_env("KFJ_CLICKUP_LIST_ID=from_file\n")
+        with mock.patch.dict(
+            os.environ, {"KFJ_CLICKUP_LIST_ID": "from_env"}, clear=True
+        ):
+            _load_dotenv(path)
+            self.assertEqual(os.environ["KFJ_CLICKUP_LIST_ID"], "from_env")
+
+    def test_skips_op_reference_for_secret_material_keys(self):
+        path = self._write_env(
+            "CLICKUP_API_KEY=op://vault/item/credential\n"
+            "GOOGLE_SHEETS_CREDENTIALS_JSON=op://vault/sa/credential\n"
+        )
+        with mock.patch.dict(os.environ, {}, clear=True):
+            _load_dotenv(path)
+            # Left unset so op run / the 1Password resolver chain handles them.
+            self.assertNotIn("CLICKUP_API_KEY", os.environ)
+            self.assertNotIn("GOOGLE_SHEETS_CREDENTIALS_JSON", os.environ)
+
+    def test_loads_literal_secret_material_value(self):
+        # A non-op:// literal secret is loaded (matches .env.kfj.example option).
+        path = self._write_env("CLICKUP_API_KEY=pk_literal_123\n")
+        with mock.patch.dict(os.environ, {}, clear=True):
+            _load_dotenv(path)
+            self.assertEqual(os.environ["CLICKUP_API_KEY"], "pk_literal_123")
+
+    def test_loads_op_reference_for_reference_pointer_keys(self):
+        # *_SECRET_REFERENCE values are *meant* to be op:// URIs the resolver reads.
+        path = self._write_env(
+            "KFJ_CLICKUP_SECRET_REFERENCE=op://vault/item/credential\n"
+        )
+        with mock.patch.dict(os.environ, {}, clear=True):
+            _load_dotenv(path)
+            self.assertEqual(
+                os.environ["KFJ_CLICKUP_SECRET_REFERENCE"],
+                "op://vault/item/credential",
+            )
+
+    def test_skips_empty_and_malformed_lines(self):
+        path = self._write_env(
+            "KFJ_CLICKUP_LIST_ID=\n"  # empty value -> skipped
+            "no_equals_sign\n"  # malformed -> skipped
+            "KFJ_GOOGLE_SHEET_ID=ok\n"
+        )
+        with mock.patch.dict(os.environ, {}, clear=True):
+            _load_dotenv(path)
+            self.assertNotIn("KFJ_CLICKUP_LIST_ID", os.environ)
+            self.assertEqual(os.environ["KFJ_GOOGLE_SHEET_ID"], "ok")
+
+    def test_missing_file_is_noop(self):
+        with mock.patch.dict(os.environ, {}, clear=True):
+            _load_dotenv(os.path.join(tempfile.gettempdir(), "does-not-exist.env.kfj"))
+            self.assertEqual(dict(os.environ), {})
 
 
 if __name__ == "__main__":
