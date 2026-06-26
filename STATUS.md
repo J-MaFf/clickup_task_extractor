@@ -6,9 +6,9 @@ Python CLI for extracting, processing, and exporting tasks from the ClickUp API.
 
 ## Current State — 2026-06-26
 
-**v1.05 shipped.** Beads (`bd`) is active as the task/memory layer beneath GitHub Issues.
+**v1.05 shipped.** Beads (`bd`) is active as the task/memory layer beneath GitHub Issues. Claude (Max OAuth) is the default AI summary source ([#144](https://github.com/J-MaFf/clickup_task_extractor/pull/145), merged).
 
-**In progress:** `feat/claude-ai-summary-source` ([#144](https://github.com/J-MaFf/clickup_task_extractor/issues/144)) — adds **Claude** as an AI summary source (local `claude` CLI / Max OAuth, no API key) and makes it the default generative summarizer, replacing rate-limited Gemini. Gemini stays available via `--ai-source Gemini`. All 296 tests pass.
+**In progress:** `feat/parallel-ai-summaries` ([#147](https://github.com/J-MaFf/clickup_task_extractor/issues/147)) — generate AI summaries concurrently (bounded `ThreadPoolExecutor`, `AI_SUMMARY_CONCURRENCY`, default 4) instead of serially, ~3× faster on large exports. Order preserved; usage-limit short-circuits queued calls. All 302 tests pass.
 
 ### Components
 
@@ -41,14 +41,16 @@ Python CLI for extracting, processing, and exporting tasks from the ClickUp API.
 | [#122](https://github.com/J-MaFf/clickup_task_extractor/issues/122) | Add GitHub Actions CI (pytest on push) | [#123](https://github.com/J-MaFf/clickup_task_extractor/pull/123) |
 | [#124](https://github.com/J-MaFf/clickup_task_extractor/issues/124) | Fix null type_config AttributeError | [#126](https://github.com/J-MaFf/clickup_task_extractor/pull/126) |
 | [#125](https://github.com/J-MaFf/clickup_task_extractor/issues/125) | Make API timeout configurable | [#127](https://github.com/J-MaFf/clickup_task_extractor/pull/127) |
+| [#144](https://github.com/J-MaFf/clickup_task_extractor/issues/144) | Add Claude (Max OAuth) AI summary source, make it default | [#145](https://github.com/J-MaFf/clickup_task_extractor/pull/145) |
 
 ### Open Issues
 
-- [#144](https://github.com/J-MaFf/clickup_task_extractor/issues/144) — Add Claude (Max OAuth) AI summary source, make it default (in review on `feat/claude-ai-summary-source`)
+- [#147](https://github.com/J-MaFf/clickup_task_extractor/issues/147) — Parallelize AI summary generation (in review on `feat/parallel-ai-summaries`)
+- [#146](https://github.com/J-MaFf/clickup_task_extractor/issues/146) — Add Claude as an ETA-calculation source in `eta_calculator.py`
 
 ## Natural Next Steps
 
-- Follow-up: let `eta_calculator.py` use the Claude CLI too (currently Gemini-only; falls back to deterministic priority/status ETA when no Gemini key)
+- #146: let `eta_calculator.py` use the Claude CLI too (currently Gemini-only; falls back to deterministic priority/status ETA when no Gemini key)
 - File new beads issues as work is identified (`bd create`)
 - Identify any bugs or improvements from v1.05 usage
 

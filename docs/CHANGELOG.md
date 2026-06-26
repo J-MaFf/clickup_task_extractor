@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - Added **Claude** as an AI summary source that shells out to the local `claude` CLI in headless print mode (`claude -p … --output-format text`), using your Claude Code **OAuth / Max subscription** — no API key required, and not subject to Gemini's free-tier rate limits. Select with `--ai-source Claude` (now the interactive default). The model is overridable via `CLAUDE_SUMMARY_MODEL` (default `claude-haiku-4-5-20251001`) and the per-call timeout via `CLAUDE_SUMMARY_TIMEOUT`. If a usage limit is hit, the CLI is missing, or a call errors, summaries fall back to raw field content (mirroring the Gemini failure path). ([#144](https://github.com/J-MaFf/clickup_task_extractor/issues/144))
+- **Concurrent AI summary generation.** Summaries are now generated in a single bounded-concurrency pass (`ThreadPoolExecutor`) after task processing instead of one-at-a-time, cutting wall-clock on large exports by ~3× (e.g. 6 Claude summaries in ~14s vs ~42s serial). Worker count is configurable via `AI_SUMMARY_CONCURRENCY` (default 4, clamped to the task count). Output order is preserved, and once a provider hits a usage/rate limit the remaining queued calls short-circuit. Applies to both interactive (selected tasks) and non-interactive (all tasks) modes. ([#147](https://github.com/J-MaFf/clickup_task_extractor/issues/147))
 
 ### Changed
 
