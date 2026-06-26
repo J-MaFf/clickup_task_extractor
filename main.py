@@ -30,6 +30,7 @@ except ImportError:
     sys.exit(1)
 
 # Import project modules
+from ai_summary import claude_cli_available
 from auth import load_secret_with_fallback
 from config import (
     ClickUpConfig,
@@ -308,13 +309,18 @@ def main():
     parser.add_argument(
         "--ai-summary",
         action="store_true",
-        help="Enable AI summary (requires Gemini API key - will auto-load from 1Password Environment or SDK if available)",
+        help="Enable AI summary (defaults to the Claude source, which needs no API key; Gemini source auto-loads a key from 1Password Environment/SDK if available)",
     )
     parser.add_argument(
         "--ai-source",
         type=str,
-        choices=["Both", "ClickUp", "Gemini"],
-        help="AI summary source: Both (prefer ClickUp AI field, fallback to Gemini), ClickUp only, or Gemini only (default: Both)",
+        choices=["Both", "ClickUp", "Gemini", "Claude"],
+        help=(
+            "AI summary source: Claude (default; uses the local 'claude' CLI via "
+            "your Claude Max OAuth - no API key, no Gemini quota), Gemini (Google "
+            "API key), ClickUp (the task's Summary field only), or Both (ClickUp "
+            "field first, then Claude). Default: Claude"
+        ),
     )
     parser.add_argument(
         "--ai-clickup-field-id",
@@ -449,11 +455,13 @@ def main():
             return False
 
     def ai_source_includes_gemini(source_value: str | None) -> bool:
+        # Only the Gemini source needs a Google API key. The default (Claude) and
+        # Both (ClickUp field -> Claude) sources use the keyless claude CLI.
         try:
-            src = AISource(source_value) if source_value else AISource.BOTH
+            src = AISource(source_value) if source_value else AISource.CLAUDE
         except ValueError:
-            src = AISource.BOTH
-        return src in (AISource.BOTH, AISource.GEMINI)
+            src = AISource.CLAUDE
+        return src == AISource.GEMINI
 
     # If AI summary flag was explicitly used, load the key now when Gemini is required
     if (
@@ -498,17 +506,23 @@ def main():
     if not args.ai_summary:
         console.print("\n[bold blue]🤖 AI Summary[/bold blue]")
         console.print(
-            "AI summary can generate concise 1-2 sentence summaries of task status using Google Gemini."
+            "AI summary can generate concise 1-2 sentence summaries of task status. "
+            "By default this uses Claude via your Max subscription (no API key); "
+            "Gemini and the ClickUp Summary field are also available."
         )
         if get_yes_no_input("Would you like to enable AI summaries for tasks? (y/n): "):
             args.ai_summary = True
             if not args.ai_source:
                 console.print(
-                    "Select which AI to use. Gemini is option 1 (default), ClickUp AI is option 2, and Both is option 3."
+                    "Select which AI to use. Claude is option 1 (default; uses your "
+                    "Claude Max subscription, no API key), Gemini is option 2, "
+                    "ClickUp AI is option 3, and Both (ClickUp field then Claude) is "
+                    "option 4."
                 )
                 ai_source_choice = get_choice_input(
-                    "Choose AI source (1-3) [default: Gemini]: ",
+                    "Choose AI source (1-4) [default: Claude]: ",
                     [
+                        AISource.CLAUDE.value,
                         AISource.GEMINI.value,
                         AISource.CLICKUP.value,
                         AISource.BOTH.value,
@@ -533,10 +547,12 @@ def main():
                         )
                 else:
                     console.print(
-                        "✅ [green]AI summary enabled with Gemini fallback.[/green]"
+                        "✅ [green]AI summary enabled with Gemini.[/green]"
                     )
             else:
-                console.print("✅ [green]AI summary enabled using ClickUp AI.[/green]")
+                console.print(
+                    f"✅ [green]AI summary enabled using {args.ai_source or AISource.CLAUDE.value}.[/green]"
+                )
         else:
             console.print("✅ [green]AI summary disabled.[/green]")
 
@@ -586,12 +602,32 @@ def main():
                 args.output_format, OutputFormat.MARKDOWN
             )
 
-    ai_source = AISource.BOTH
+    ai_source = AISource.CLAUDE
     if args.ai_source:
         try:
             ai_source = AISource(args.ai_source)
         except ValueError:
-            ai_source = AISource.BOTH
+            ai_source = AISource.CLAUDE
+
+    # The Claude source (and Both's fallback) shells out to the local `claude`
+    # CLI. Warn early if it isn't installed so the user understands why summaries
+    # may fall back to raw field content.
+    if (
+        args.ai_summary
+        and ai_source in (AISource.CLAUDE, AISource.BOTH)
+        and not claude_cli_available()
+    ):
+        console.print(
+            Panel(
+                "[yellow]⚠️  The 'claude' CLI was not found on PATH.[/yellow]\n"
+                "[dim]The Claude AI source needs Claude Code installed and signed in "
+                "(Max/Pro OAuth). Without it, summaries fall back to raw task content.[/dim]\n"
+                "[dim]Install: https://docs.claude.com/en/docs/claude-code  •  "
+                "or use [cyan]--ai-source Gemini[/cyan] with a Google API key.[/dim]",
+                title="Claude CLI Not Found",
+                style="yellow",
+            )
+        )
 
     ai_clickup_field_id = args.ai_clickup_field_id or CLICKUP_AI_SUMMARY_FIELD_ID
 

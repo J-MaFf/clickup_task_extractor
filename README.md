@@ -11,7 +11,7 @@ A powerful, cross-platform Python application for extracting, processing, and ex
 
 - 🔐 **Secure Authentication**: Multiple authentication methods including 1Password integration
 - 🎨 **Beautiful UI**: Rich console interfaces with progress bars, panels, and styled output
-- 🤖 **AI Summaries**: Optional Google Gemini AI integration for intelligent task summaries
+- 🤖 **AI Summaries**: Optional intelligent task summaries via Claude (your Max/Pro OAuth, no API key — the default), Google Gemini, or the ClickUp Summary field
 - 📅 **Automated ETA Calculation**: Intelligent ETA population for tasks without due dates
   - Uses existing due dates when available
   - AI-powered ETA estimation based on task context
@@ -30,7 +30,7 @@ A powerful, cross-platform Python application for extracting, processing, and ex
 - Python 3.11 or higher
 - ClickUp API token
 - Optional: 1Password Environment support for Python, or 1Password CLI for legacy secret references
-- Optional: Google Gemini API key for AI summaries
+- Optional: AI summaries — Claude Code (default source; uses your Max/Pro OAuth, no key) or a Google Gemini API key
 
 ### Installation
 
@@ -156,7 +156,7 @@ python main.py --workspace "MyWorkspace" --space "MySpace"
 When certain options are not specified via CLI arguments, the application will prompt you interactively:
 
 1. **Interactive Mode**: Asks if you want to review and select which tasks to export
-2. **AI Summary**: Asks if you want to enable AI-powered task summaries (requires Gemini API key)
+2. **AI Summary**: Asks if you want to enable AI-powered task summaries and which source to use (Claude by default — no API key; Gemini requires a key)
 3. **Output Format**: Asks you to choose your preferred export format (Markdown or HTML)
 
 Each prompt provides clear options and defaults, making it easy to configure the application on-the-fly without remembering all CLI flags.
@@ -241,7 +241,7 @@ is set) and parsed in-memory — credentials are never written to disk.
 ## 🔧 Development workflow
 
 - Install deps via `pip install -r requirements.txt` (compatible-release `~=` pins) or `pip install -r requirements.lock` for the exact tested versions; optional features require `onepassword-sdk` and `google-genai` which are already listed. Regenerate `requirements.lock` with `pip freeze` from a clean venv after changing `requirements.txt`.
-- Run the extractor with `python main.py` (Markdown export by default). Set the workspace and space via `--workspace`/`--space` or the `CLICKUP_WORKSPACE_NAME`/`CLICKUP_SPACE_NAME` environment variables (see [Configuration](#-configuration)). Other flags: `--output-format`, `--interactive`, `--include-completed`, `--date-filter`, `--ai-summary`, and `--gemini-api-key`.
+- Run the extractor with `python main.py` (Markdown export by default). Set the workspace and space via `--workspace`/`--space` or the `CLICKUP_WORKSPACE_NAME`/`CLICKUP_SPACE_NAME` environment variables (see [Configuration](#-configuration)). Other flags: `--output-format`, `--interactive`, `--include-completed`, `--date-filter`, `--ai-summary`, `--ai-source`, and `--gemini-api-key`.
 - Authentication falls back in this order: CLI flag → env var `CLICKUP_API_KEY` → 1Password Environment (`OP_ENVIRONMENT_ID`: SDK first, then `op environment read`) → 1Password SDK secret references → `op read` CLI → manual prompt.
 - Logging comes from `logger_config.setup_logging`; pass `use_rich=False` for plain output or a `log_file` path to persist logs.
 - All exports land under `output/`, named with `default_output_path()` which strips leading zeros for cross-platform friendly filenames.
@@ -267,7 +267,8 @@ is set) and parsed in-memory — credentials are never written to disk.
 | `--interactive` | Enable interactive task selection | Prompted |
 | `--date-filter` | Date filter: `AllOpen`, `ThisWeek`, `LastWeek` | `AllOpen` |
 | `--ai-summary` | Enable AI summaries | Prompted |
-| `--gemini-api-key` | Google Gemini API key | From 1Password |
+| `--ai-source` | Summary source: `Claude`, `Gemini`, `ClickUp`, `Both` | `Claude` |
+| `--gemini-api-key` | Google Gemini API key (only for `--ai-source Gemini`) | From 1Password |
 
 ### Authentication Methods (Priority Order)
 
@@ -353,17 +354,28 @@ clickup_task_extractor/
 
 ## 🤖 AI Integration
 
-Optional Google Gemini AI integration provides:
+Optional AI integration provides intelligent 1-2 sentence task summaries from several sources, selectable with `--ai-source`:
 
-- Intelligent 1-2 sentence task summaries
-- Automatic rate limiting and retry logic with tiered model fallback
-- Daily quota exhaustion detection to prevent wasted API calls
-- Graceful fallback to original content if AI fails
+| Source | What it uses | API key? |
+| --- | --- | --- |
+| `Claude` (**default**) | The local `claude` CLI (Claude Code) in headless print mode, via your **Max/Pro OAuth** | No — uses your subscription |
+| `Gemini` | Google Gemini API with tiered model fallback | Yes (Gemini API key) |
+| `ClickUp` | The task's existing ClickUp `Summary` custom field | No |
+| `Both` | ClickUp `Summary` field first, then falls back to **Claude** | No |
+
+The **Claude** source needs no API key and is **not subject to Gemini's free-tier rate limits**, so it's the recommended default. It requires [Claude Code](https://docs.claude.com/en/docs/claude-code) installed and signed in. Override the model with `CLAUDE_SUMMARY_MODEL` (default `claude-haiku-4-5-20251001`) and the per-call timeout with `CLAUDE_SUMMARY_TIMEOUT` (seconds).
+
+All sources gracefully fall back to the raw task content if the provider is unavailable, errors, or hits a usage limit.
 
 Enable AI summaries:
 
 ```bash
-python main.py --ai-summary --gemini-api-key YOUR_KEY
+# Default: Claude via your Max subscription (no key)
+python main.py --ai-summary
+
+# Or explicitly pick a source
+python main.py --ai-summary --ai-source Claude
+python main.py --ai-summary --ai-source Gemini --gemini-api-key YOUR_KEY
 ```
 
 ### Model Tiering & Rate Limiting

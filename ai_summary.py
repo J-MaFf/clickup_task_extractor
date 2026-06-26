@@ -10,6 +10,9 @@ Contains:
 """
 
 import os
+import shutil
+import subprocess
+import tempfile
 import time
 from typing import Callable, Mapping, Sequence, TypeAlias
 
@@ -24,6 +27,31 @@ from typing import Callable, Mapping, Sequence, TypeAlias
 # Overridable via the GEMINI_MODEL environment variable so the model can be
 # bumped without a code change.
 GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash-lite")
+
+# Claude model used for AI summaries via the local `claude` CLI (headless print
+# mode). This path uses the user's Claude Code OAuth / Max subscription rather
+# than an API key, so it sidesteps Gemini's free-tier rate limits.
+#
+# Defaults to Haiku for speed and light subscription usage on short summaries;
+# overridable via CLAUDE_SUMMARY_MODEL (accepts a full id or a CLI alias like
+# "haiku"/"sonnet"/"opus").
+CLAUDE_SUMMARY_MODEL = os.environ.get(
+    "CLAUDE_SUMMARY_MODEL", "claude-haiku-4-5-20251001"
+)
+
+# System prompt that constrains the CLI to a plain-text, first-person summary
+# with no tool use or markdown. Replacing the default system prompt (and
+# excluding dynamic sections) also stops the CLI from loading the surrounding
+# project's CLAUDE.md/git context, keeping calls fast and clean.
+_CLAUDE_SUMMARY_SYSTEM_PROMPT = (
+    "You are a task-status summarizer. Given a task's fields, reply with ONLY a "
+    "concise 1-2 sentence summary of the task's current status, written in the "
+    "first person (e.g. 'I completed...', 'I need to...'). Output plain text "
+    "with no markdown, no preamble, and no tool use."
+)
+
+# Seconds to allow a single `claude` CLI summary call before giving up.
+_CLAUDE_TIMEOUT_SECONDS = int(os.environ.get("CLAUDE_SUMMARY_TIMEOUT", "120"))
 
 # Rich console imports - create singleton instance with proper encoding for Windows
 try:
@@ -50,6 +78,12 @@ SummaryResult: TypeAlias = str | None
 # Global state for tracking API availability
 _api_available = True
 _last_error_message = ""
+
+# Global state for the Claude CLI path. Once a usage/rate limit is hit we stop
+# calling the CLI for the rest of the run (mirrors Gemini's _api_available),
+# since the Max subscription limit won't clear within a single extraction.
+_claude_available = True
+_claude_missing_warned = False
 
 # Google GenAI SDK imports (google.genai)
 try:
@@ -128,6 +162,13 @@ def _reset_api_state() -> None:
     global _api_available, _last_error_message
     _api_available = True
     _last_error_message = ""
+
+
+def _reset_claude_state() -> None:
+    """Reset Claude CLI availability state (for testing or manual reset)."""
+    global _claude_available, _claude_missing_warned
+    _claude_available = True
+    _claude_missing_warned = False
 
 
 def _normalize_field_entries(
@@ -350,3 +391,148 @@ def get_ai_summary(
 
     # Fallback (should not reach here, but safety net)
     return field_block
+
+
+def claude_cli_available() -> bool:
+    """Return True when the `claude` CLI is resolvable on PATH."""
+    return shutil.which("claude") is not None
+
+
+def _emit(message: str) -> None:
+    """Print a message via Rich when available, else plain print."""
+    if RICH_AVAILABLE and _console:
+        _console.print(message)
+    else:
+        # Strip Rich markup for the plain fallback.
+        import re
+
+        print(re.sub(r"\[/?[^\]]*\]", "", message))
+
+
+def get_claude_summary(
+    task_name: str,
+    field_entries: Sequence[tuple[str, str]] | Mapping[str, str],
+    progress_pause_callback: Callable[[], None] | None = None,
+) -> SummaryResult:
+    """
+    Generate a concise 1-2 sentence task summary via the local ``claude`` CLI.
+
+    Runs ``claude -p`` in headless print mode, which uses the user's Claude Code
+    OAuth / Max subscription (no API key) and therefore avoids Gemini's
+    free-tier rate limits. The prompt is supplied over stdin to avoid Windows
+    command-line length/quoting limits, and the CLI runs from a temp directory
+    with a replacement system prompt so it does not load the surrounding
+    project's context or attempt tool use.
+
+    Args:
+        task_name: Name of the task.
+        field_entries: Iterable of (field label, value) pairs to summarize.
+        progress_pause_callback: Optional callback to pause/resume progress bars
+            (unused for now; accepted for parity with get_ai_summary()).
+
+    Returns:
+        The summary string, or None if the CLI is unavailable, errors, hits a
+        usage limit, or returns no text (callers fall back to base content).
+    """
+    global _claude_available, _claude_missing_warned, _last_error_message
+
+    if not _claude_available:
+        _emit(
+            f"[dim][⊘] Claude usage limited - skipping AI summary for: {task_name}[/dim]"
+        )
+        return None
+
+    normalized_entries = _normalize_field_entries(field_entries)
+    field_block = "\n".join(
+        f"{label}: {value}" for label, value in normalized_entries if label
+    )
+    if not field_block:
+        return "No content available for summary."
+
+    claude_bin = shutil.which("claude")
+    if not claude_bin:
+        if not _claude_missing_warned:
+            _claude_missing_warned = True
+            _emit(
+                "[yellow]Warning: 'claude' CLI not found on PATH - install Claude Code "
+                "or choose a different --ai-source. Using fallback content.[/yellow]"
+            )
+        return None
+
+    prompt = f"""Summarize the current status of this task in 1-2 first-person sentences.
+
+Task: {task_name}
+
+Here are the available fields (ignore any marked "(not provided)"):
+
+{field_block}
+
+Focus on what I have done or still need to do. Be specific and actionable. Output only the summary sentence(s)."""
+
+    cmd = [
+        claude_bin,
+        "-p",
+        "--model",
+        CLAUDE_SUMMARY_MODEL,
+        "--system-prompt",
+        _CLAUDE_SUMMARY_SYSTEM_PROMPT,
+        "--exclude-dynamic-system-prompt-sections",
+        "--output-format",
+        "text",
+    ]
+
+    # Force the CLI to authenticate with the user's Claude Code OAuth / Max
+    # subscription rather than an API key: if ANTHROPIC_API_KEY / AUTH_TOKEN are
+    # present in the environment, the CLI could otherwise bill the API. Scrubbing
+    # them is a no-op when they are absent (the normal subscription setup).
+    child_env = {
+        k: v
+        for k, v in os.environ.items()
+        if k not in ("ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN")
+    }
+
+    try:
+        proc = subprocess.run(
+            cmd,
+            input=prompt,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=_CLAUDE_TIMEOUT_SECONDS,
+            cwd=tempfile.gettempdir(),
+            env=child_env,
+        )
+    except subprocess.TimeoutExpired:
+        _emit(
+            f"⚠️ [yellow]Claude summary timed out for: {task_name}. Using fallback content.[/yellow]"
+        )
+        return None
+    except OSError as exc:
+        _emit(f"❌ [red]Error launching 'claude' CLI: {str(exc)[:100]}[/red]")
+        return None
+
+    if proc.returncode != 0:
+        error_str = (proc.stderr or proc.stdout or "").strip()
+        _last_error_message = error_str[:150]
+        if _is_rate_limit_error(error_str) or "usage limit" in error_str.lower():
+            _claude_available = False
+            _emit(
+                "[red]Claude usage limit reached - AI summaries will be skipped for "
+                "this extraction.[/red]"
+            )
+        else:
+            _emit(f"❌ [red]Claude CLI error: {error_str[:100]}[/red]")
+        return None
+
+    summary = (proc.stdout or "").strip()
+    if not summary:
+        _emit(
+            f"⚠️ [yellow]Empty Claude response for: {task_name}. Using fallback content.[/yellow]"
+        )
+        return None
+
+    summary = summary.replace("\n", " ").strip()
+    if not summary.endswith("."):
+        summary += "."
+    return summary

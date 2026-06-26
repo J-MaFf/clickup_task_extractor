@@ -23,7 +23,7 @@ clickup_task_extractor/
 ├── auth.py                # Multi-fallback API key loader (CLI → env → 1Password SDK → CLI → prompt)
 ├── api_client.py          # APIClient protocol + ClickUpAPIClient (requests, 30s timeout)
 ├── extractor.py           # ClickUpTaskExtractor workflow, export context mgr, interactive UI
-├── ai_summary.py          # Gemini summaries, tiered model strategy, daily quota detection
+├── ai_summary.py          # AI summaries: Claude CLI (default, Max OAuth) + Gemini tiered strategy
 ├── mappers.py             # Prompts, date filters, custom field mapping, image extraction
 ├── logger_config.py       # Rich-enhanced logging setup
 ├── version.py             # Version metadata
@@ -125,8 +125,11 @@ All retrieval is logged (DEBUG level); failures don't raise exceptions—they re
 - `export_file()` context manager (creates parent dirs, handles I/O errors)
 - Markdown/HTML rendering (uses `get_export_fields()` for column order)
 
-**`ai_summary.py`**: Google Gemini integration
-- **Tiered model strategy** (on rate limit, automatically switches tiers):
+**`ai_summary.py`**: AI summary generation (two providers)
+
+- **Claude CLI path (`get_claude_summary`)** — the **default** generative source (`AISource.CLAUDE`). Shells out to the local `claude` CLI in headless print mode (`claude -p` over stdin) using the user's Claude Code OAuth / Max subscription — no API key, not subject to Gemini quotas. Model via `CLAUDE_SUMMARY_MODEL` (default `claude-haiku-4-5-20251001`), timeout via `CLAUDE_SUMMARY_TIMEOUT`. A usage-limit hit sets the global `_claude_available=False` to skip the rest of the run; missing CLI / errors / timeouts return None → caller falls back to base notes. `claude_cli_available()` checks PATH.
+- **Google Gemini path (`get_ai_summary`)** — selectable via `AISource.GEMINI`; `AISource.BOTH` resolves the ClickUp `Summary` field first, then falls back to **Claude** (not Gemini).
+- Gemini **Tiered model strategy** (on rate limit, automatically switches tiers):
   - Tier 1: `gemini-2.5-flash-lite` (500 RPD free tier)
   - Tier 2: `gemini-2.5-pro` (1,500 RPD separate bucket)
   - Tier 3: `gemini-2.0-flash` (500 RPD fallback)

@@ -144,6 +144,7 @@ class ClickUpTaskExtractorProcessTaskTests(unittest.TestCase):
 
     def test_process_task_with_ai_summary_enabled(self) -> None:
         self.config.enable_ai_summary = True
+        self.config.ai_source = AISource.GEMINI
         self.config.gemini_api_key = "secret"
         task = {"id": self.task_id, "name": "Printer outage"}
         list_item = {"name": "Support"}
@@ -205,6 +206,66 @@ class ClickUpTaskExtractorProcessTaskTests(unittest.TestCase):
         record = cast(TaskRecord, record)
         self.assertIn("Subject: Printer outage", record.Notes)
         mock_get_summary.assert_not_called()
+
+    def test_process_task_claude_source(self) -> None:
+        """Claude source summarizes via the claude CLI, not Gemini."""
+        self.config.enable_ai_summary = True
+        self.config.ai_source = AISource.CLAUDE
+        self.config.gemini_api_key = None
+
+        task = {"id": self.task_id, "name": "Printer outage"}
+        list_item = {"name": "Support"}
+
+        with patch(
+            "extractor.get_claude_summary", return_value="Claude summary text"
+        ) as mock_claude, patch("extractor.get_ai_summary") as mock_gemini:
+            record = self.extractor._process_task(task, [], list_item)
+
+        self.assertIsNotNone(record)
+        record = cast(TaskRecord, record)
+        self.assertEqual(record.Notes, "Claude summary text")
+        mock_claude.assert_called_once()
+        mock_gemini.assert_not_called()
+        called_task_name, fields_arg = mock_claude.call_args[0]
+        self.assertEqual(called_task_name, "Detailed Task")
+        self.assertEqual(fields_arg[0], ("Name", "Custom Task Name"))
+
+    def test_both_source_falls_back_to_claude(self) -> None:
+        """Both: with no ClickUp Summary field, fall back to Claude (not Gemini)."""
+        self.config.enable_ai_summary = True
+        self.config.ai_source = AISource.BOTH
+        self.config.ai_clickup_field_id = "missing-field"
+        self.config.gemini_api_key = None
+
+        task = {"id": self.task_id, "name": "Printer outage"}
+        list_item = {"name": "Support"}
+
+        with patch(
+            "extractor.get_claude_summary", return_value="Claude fallback summary"
+        ) as mock_claude, patch("extractor.get_ai_summary") as mock_gemini:
+            record = self.extractor._process_task(task, [], list_item)
+
+        self.assertIsNotNone(record)
+        record = cast(TaskRecord, record)
+        self.assertEqual(record.Notes, "Claude fallback summary")
+        mock_claude.assert_called_once()
+        mock_gemini.assert_not_called()
+
+    def test_claude_source_falls_back_to_base_notes_when_cli_unavailable(self) -> None:
+        """Claude returning None (CLI missing/limit) falls back to base notes."""
+        self.config.enable_ai_summary = True
+        self.config.ai_source = AISource.CLAUDE
+        self.config.gemini_api_key = None
+
+        task = {"id": self.task_id, "name": "Printer outage"}
+        list_item = {"name": "Support"}
+
+        with patch("extractor.get_claude_summary", return_value=None):
+            record = self.extractor._process_task(task, [], list_item)
+
+        self.assertIsNotNone(record)
+        record = cast(TaskRecord, record)
+        self.assertIn("Subject: Printer outage", record.Notes)
 
     def test_process_task_with_due_date(self) -> None:
         """Test that tasks with due dates use the due date as ETA."""
