@@ -53,6 +53,22 @@ class ClaudeSummaryTests(unittest.TestCase):
         self.assertIn("-p", cmd)
         self.assertIn("--model", cmd)
 
+    def test_subprocess_env_scrubs_api_key(self) -> None:
+        """The CLI runs without ANTHROPIC_API_KEY so it uses the OAuth subscription."""
+        with patch.dict(
+            "os.environ",
+            {"ANTHROPIC_API_KEY": "sk-should-be-removed", "PATH": "x"},
+            clear=False,
+        ), patch("ai_summary.shutil.which", return_value="/usr/bin/claude"), patch(
+            "ai_summary.subprocess.run",
+            return_value=_completed(stdout="ok"),
+        ) as mock_run:
+            get_claude_summary("Task", [("Status", "open")])
+
+        env = mock_run.call_args.kwargs["env"]
+        self.assertNotIn("ANTHROPIC_API_KEY", env)
+        self.assertNotIn("ANTHROPIC_AUTH_TOKEN", env)
+
     def test_empty_fields_short_circuits(self) -> None:
         with patch("ai_summary.subprocess.run") as mock_run:
             result = get_claude_summary("Task", [])

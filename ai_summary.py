@@ -481,6 +481,16 @@ Focus on what I have done or still need to do. Be specific and actionable. Outpu
         "text",
     ]
 
+    # Force the CLI to authenticate with the user's Claude Code OAuth / Max
+    # subscription rather than an API key: if ANTHROPIC_API_KEY / AUTH_TOKEN are
+    # present in the environment, the CLI could otherwise bill the API. Scrubbing
+    # them is a no-op when they are absent (the normal subscription setup).
+    child_env = {
+        k: v
+        for k, v in os.environ.items()
+        if k not in ("ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN")
+    }
+
     try:
         proc = subprocess.run(
             cmd,
@@ -491,6 +501,7 @@ Focus on what I have done or still need to do. Be specific and actionable. Outpu
             errors="replace",
             timeout=_CLAUDE_TIMEOUT_SECONDS,
             cwd=tempfile.gettempdir(),
+            env=child_env,
         )
     except subprocess.TimeoutExpired:
         _emit(
