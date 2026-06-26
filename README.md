@@ -61,8 +61,9 @@ A powerful, cross-platform Python application for extracting, processing, and ex
 ### ⚙️ Configuration
 
 Account-specific settings are read from environment variables (no personal
-identifiers are hardcoded in source). Copy the example file and fill in your own
-values:
+identifiers are hardcoded in source). A `.env` file in the project directory is
+**loaded automatically at startup** (real environment variables and CLI flags
+take precedence over it). Copy the example file and fill in your own values:
 
 ```bash
 cp .env.example .env
