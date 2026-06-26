@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.06] - 2026-06-26
+
 ### Added
 
 - Added **Claude** as an AI summary source that shells out to the local `claude` CLI in headless print mode (`claude -p … --output-format text`), using your Claude Code **OAuth / Max subscription** — no API key required, and not subject to Gemini's free-tier rate limits. Select with `--ai-source Claude` (now the interactive default). The model is overridable via `CLAUDE_SUMMARY_MODEL` (default `claude-haiku-4-5-20251001`) and the per-call timeout via `CLAUDE_SUMMARY_TIMEOUT`. If a usage limit is hit, the CLI is missing, or a call errors, summaries fall back to raw field content (mirroring the Gemini failure path). ([#144](https://github.com/J-MaFf/clickup_task_extractor/issues/144))
