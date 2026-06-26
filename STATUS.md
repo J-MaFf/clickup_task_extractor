@@ -8,7 +8,10 @@ Python CLI for extracting, processing, and exporting tasks from the ClickUp API.
 
 **v1.05 shipped.** Beads (`bd`) is active as the task/memory layer beneath GitHub Issues. Claude (Max OAuth) is the default AI summary source ([#144](https://github.com/J-MaFf/clickup_task_extractor/pull/145), merged).
 
-**In progress:** `feat/parallel-ai-summaries` ([#147](https://github.com/J-MaFf/clickup_task_extractor/issues/147)) — generate AI summaries concurrently (bounded `ThreadPoolExecutor`, `AI_SUMMARY_CONCURRENCY`, default 4) instead of serially, ~3× faster on large exports. Order preserved; usage-limit short-circuits queued calls. All 302 tests pass.
+**In progress (stacked):**
+
+- `feat/parallel-ai-summaries` ([#147](https://github.com/J-MaFf/clickup_task_extractor/issues/147), PR #148) — generate AI summaries concurrently (bounded `ThreadPoolExecutor`, `AI_SUMMARY_CONCURRENCY`, default 4), ~3× faster on large exports.
+- `feat/claude-eta` ([#146](https://github.com/J-MaFf/clickup_task_extractor/issues/146)) — **stacked on #148.** Adds Claude-powered ETA estimation (`get_claude_eta`, shared `run_claude_cli` runner) for tasks without a due date, in its own concurrent pass; deterministic fallback preserved. Rebase onto main after #148 merges. All 314 tests pass.
 
 ### Components
 
@@ -19,7 +22,8 @@ Python CLI for extracting, processing, and exporting tasks from the ClickUp API.
 | `auth.py` | Multi-fallback API key loader |
 | `api_client.py` | `APIClient` protocol + `ClickUpAPIClient` |
 | `extractor.py` | Main workflow, export context manager, interactive UI |
-| `ai_summary.py` | AI summaries: Claude CLI path (default, Max OAuth) + Gemini tiered model strategy / quota detection |
+| `ai_summary.py` | AI summaries: Claude CLI path (default, Max OAuth) + Gemini tiered model strategy / quota detection; shared `run_claude_cli` runner |
+| `eta_calculator.py` | ETA estimation: Claude CLI (`get_claude_eta`) + Gemini + deterministic priority/status fallback |
 | `mappers.py` | Prompts, date filters, custom field mapping, image extraction |
 | `kfj_task_extractor.py` | Standalone KFJ weekly Google Sheets sync |
 | `logger_config.py` | Rich-enhanced logging setup |
@@ -45,12 +49,12 @@ Python CLI for extracting, processing, and exporting tasks from the ClickUp API.
 
 ### Open Issues
 
-- [#147](https://github.com/J-MaFf/clickup_task_extractor/issues/147) — Parallelize AI summary generation (in review on `feat/parallel-ai-summaries`)
-- [#146](https://github.com/J-MaFf/clickup_task_extractor/issues/146) — Add Claude as an ETA-calculation source in `eta_calculator.py`
+- [#147](https://github.com/J-MaFf/clickup_task_extractor/issues/147) — Parallelize AI summary generation (in review on `feat/parallel-ai-summaries`, PR #148)
+- [#146](https://github.com/J-MaFf/clickup_task_extractor/issues/146) — Claude ETA source (in review on `feat/claude-eta`, stacked on #148)
 
 ## Natural Next Steps
 
-- #146: let `eta_calculator.py` use the Claude CLI too (currently Gemini-only; falls back to deterministic priority/status ETA when no Gemini key)
+- Merge #148, then rebase/merge #146 onto main
 - File new beads issues as work is identified (`bd create`)
 - Identify any bugs or improvements from v1.05 usage
 

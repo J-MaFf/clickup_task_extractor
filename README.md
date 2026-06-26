@@ -367,6 +367,8 @@ The **Claude** source needs no API key and is **not subject to Gemini's free-tie
 
 Summaries are generated **concurrently** (bounded thread pool) after tasks are gathered, cutting wall-clock on large exports by ~3×. Tune the worker count with `AI_SUMMARY_CONCURRENCY` (default 4) — lower it to be gentler on rate limits, raise it for faster runs. Output order is preserved, and once a provider hits a usage/rate limit the remaining queued calls short-circuit.
 
+Tasks **without a due date** also get an AI-estimated **ETA** from the same source (Claude/Gemini), computed in a second concurrent pass; if AI is unavailable the ETA falls back to a deterministic priority/status estimate. The `ClickUp` source uses the deterministic ETA (ClickUp has no ETA field).
+
 All sources gracefully fall back to the raw task content if the provider is unavailable, errors, or hits a usage limit.
 
 Enable AI summaries:

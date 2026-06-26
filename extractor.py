@@ -621,12 +621,13 @@ class ClickUpTaskExtractor:
                     )
                 )
 
-            # Generate AI summaries concurrently for the final task set. This
-            # single pass covers both interactive (selected tasks) and
-            # non-interactive (all tasks) modes; it no-ops when AI is disabled
-            # or the source makes no generative calls (ClickUp-only).
+            # Generate AI summaries and ETAs concurrently for the final task set.
+            # Both passes cover interactive (selected tasks) and non-interactive
+            # (all tasks) modes and no-op when AI is disabled or the source makes
+            # no relevant call. The ETA pass only touches tasks without a due date.
             if all_tasks:
                 self._generate_summaries_concurrently(all_tasks)
+                self._generate_etas_concurrently(all_tasks)
 
             # Export
             self.export(all_tasks)
@@ -834,19 +835,22 @@ class ClickUpTaskExtractor:
             task_img = extract_images(task_detail.get("description", ""))
             extra = " | ".join([i for i in [desc_img, res_img, task_img] if i])
 
-            # Calculate ETA if not already set from due_date
+            # Calculate ETA if not already set from due_date. Compute only the
+            # deterministic (priority/status) ETA here as a baseline; an AI ETA
+            # (Claude/Gemini) is applied later in the concurrent ETA pass
+            # (_generate_etas_concurrently) so slow AI calls don't serialize this
+            # per-task fetch loop. eta_inputs is stashed for that pass.
+            eta_inputs = None
             if eta is None:
-                # Calculate ETA based on task context
-                eta = calculate_eta(
-                    task_name=task_name,
-                    priority=priority,
-                    status=status,
-                    description=custom_description or default_description,
-                    subject=subject_value if subject_value else "",
-                    resolution=resolution_value if resolution_value else "",
-                    gemini_api_key=self.config.gemini_api_key,
-                    enable_ai=self.config.enable_ai_summary,
-                )
+                eta_inputs = {
+                    "task_name": task_name,
+                    "priority": priority,
+                    "status": status,
+                    "description": custom_description or default_description,
+                    "subject": subject_value if subject_value else "",
+                    "resolution": resolution_value if resolution_value else "",
+                }
+                eta = calculate_eta(**eta_inputs, enable_ai=False)
 
             # Create task record (matching original structure)
             task_record = TaskRecord(
@@ -860,12 +864,14 @@ class ClickUpTaskExtractor:
                 Extra=extra,
             )
 
-            # Store metadata for potential AI processing
+            # Store metadata for the deferred AI passes (summary + ETA).
             task_record._metadata = {
                 "task_name": task_name,
                 "ai_fields": tuple(ai_field_items),
                 "base_notes": base_notes,
                 "clickup_ai_summary": clickup_ai_summary,
+                # Present only for tasks without a due date (AI-ETA candidates).
+                "eta_inputs": eta_inputs,
             }
 
             return task_record
@@ -1124,6 +1130,80 @@ class ClickUpTaskExtractor:
                 task.Notes = results[index]
 
         console.print("✅ [bold green]AI summaries complete.[/bold green]")
+
+    def _compute_eta_one(self, task: TaskRecord) -> str | None:
+        """Compute an AI ETA for a single task from its stashed eta_inputs."""
+        inputs = (getattr(task, "_metadata", {}) or {}).get("eta_inputs") or {}
+        if not inputs:
+            return None
+        return calculate_eta(
+            **inputs,
+            enable_ai=True,
+            ai_source=self.config.ai_source,
+            gemini_api_key=self.config.gemini_api_key,
+        )
+
+    def _generate_etas_concurrently(self, tasks: TaskList) -> None:
+        """Upgrade due-date-less tasks' ETAs with an AI estimate, concurrently.
+
+        Only tasks without a due date carry ``eta_inputs`` (set in
+        ``_process_task``); those already have a deterministic baseline ETA, which
+        this pass overwrites with an AI estimate (Claude/Gemini per source).
+        Runs in a bounded thread pool like the summary pass. No-ops when AI is
+        disabled, the source is ClickUp-only (no ETA field), or no task needs one.
+        """
+        if not self.config.enable_ai_summary or not tasks:
+            return
+        if self.config.ai_source == AISource.CLICKUP:
+            return
+
+        candidates = [
+            task
+            for task in tasks
+            if (getattr(task, "_metadata", {}) or {}).get("eta_inputs")
+        ]
+        if not candidates:
+            return
+
+        total = len(candidates)
+        workers = self._summary_concurrency(total)
+        console.print(
+            Panel(
+                f"[bold green]📅 Estimating ETAs for {total} task(s) without a due "
+                f"date using [cyan]{self.config.ai_source.value}[/cyan] "
+                f"({workers} concurrent)...[/bold green]",
+                title="AI Processing",
+                style="green",
+            )
+        )
+
+        results: list[str | None] = [None] * total
+        with ThreadPoolExecutor(max_workers=workers) as executor:
+            future_to_index = {
+                executor.submit(self._compute_eta_one, task): index
+                for index, task in enumerate(candidates)
+            }
+            completed = 0
+            for future in as_completed(future_to_index):
+                index = future_to_index[future]
+                try:
+                    results[index] = future.result()
+                except Exception as exc:  # keep the deterministic baseline ETA
+                    console.print(
+                        f"  [yellow]⚠️ ETA failed for '{candidates[index].Task}': "
+                        f"{str(exc)[:80]}[/yellow]"
+                    )
+                    results[index] = None
+                completed += 1
+                console.print(f"  [dim]{completed}/{total} ETAs estimated[/dim]")
+
+        # calculate_eta always returns a string (deterministic fallback on AI
+        # failure); None only on the unexpected exception above — keep baseline.
+        for index, task in enumerate(candidates):
+            if results[index]:
+                task.ETA = results[index]
+
+        console.print("✅ [bold green]ETA estimation complete.[/bold green]")
 
     def interactive_include(self, tasks: TaskList) -> TaskList:
         """

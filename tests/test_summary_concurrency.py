@@ -42,6 +42,25 @@ def _make_record(name: str) -> TaskRecord:
     return rec
 
 
+def _make_eta_record(name: str, *, with_inputs: bool = True) -> TaskRecord:
+    """A TaskRecord carrying eta_inputs (an AI-ETA candidate) when requested."""
+    rec = _make_record(name)
+    rec.ETA = "01/01/2026"  # deterministic baseline already set by _process_task
+    rec._metadata["eta_inputs"] = (
+        {
+            "task_name": name,
+            "priority": "Normal",
+            "status": "to do",
+            "description": "",
+            "subject": "",
+            "resolution": "",
+        }
+        if with_inputs
+        else None
+    )
+    return rec
+
+
 def _config(source: AISource = AISource.CLAUDE) -> ClickUpConfig:
     return ClickUpConfig(
         api_key="k",
@@ -141,6 +160,60 @@ class SummaryConcurrencyTests(unittest.TestCase):
         # All tasks keep their base notes (fallback).
         for rec in records:
             self.assertTrue(rec.Notes.startswith("base notes for "))
+
+
+class ETAConcurrencyTests(unittest.TestCase):
+    def setUp(self) -> None:
+        ai_summary._reset_claude_state()
+        ai_summary._reset_api_state()
+
+    def tearDown(self) -> None:
+        ai_summary._reset_claude_state()
+        ai_summary._reset_api_state()
+
+    def test_ai_eta_applied_to_candidates_only(self) -> None:
+        extractor = ClickUpTaskExtractor(_config(AISource.CLAUDE), _DummyAPIClient())
+        # Two candidates (no due date) + one with a due date (no eta_inputs).
+        candidates = [_make_eta_record("A"), _make_eta_record("B")]
+        with_due = _make_eta_record("C", with_inputs=False)
+        tasks = [candidates[0], with_due, candidates[1]]
+
+        def fake_eta(**kwargs):
+            return f"12/31/2026"  # AI estimate
+
+        with patch("extractor.calculate_eta", side_effect=fake_eta) as mock_eta, patch(
+            "extractor.console"
+        ):
+            extractor._generate_etas_concurrently(tasks)
+
+        # Only the two candidates got the AI ETA; the due-date task is untouched.
+        self.assertEqual(mock_eta.call_count, 2)
+        self.assertEqual(candidates[0].ETA, "12/31/2026")
+        self.assertEqual(candidates[1].ETA, "12/31/2026")
+        self.assertEqual(with_due.ETA, "01/01/2026")  # baseline kept
+
+    def test_eta_pass_noop_for_clickup_source(self) -> None:
+        extractor = ClickUpTaskExtractor(_config(AISource.CLICKUP), _DummyAPIClient())
+        tasks = [_make_eta_record("A")]
+        with patch("extractor.calculate_eta") as mock_eta, patch("extractor.console"):
+            extractor._generate_etas_concurrently(tasks)
+        mock_eta.assert_not_called()
+
+    def test_eta_pass_noop_when_no_candidates(self) -> None:
+        extractor = ClickUpTaskExtractor(_config(AISource.CLAUDE), _DummyAPIClient())
+        tasks = [_make_eta_record("A", with_inputs=False)]
+        with patch("extractor.calculate_eta") as mock_eta, patch("extractor.console"):
+            extractor._generate_etas_concurrently(tasks)
+        mock_eta.assert_not_called()
+
+    def test_eta_pass_disabled_when_ai_off(self) -> None:
+        config = _config(AISource.CLAUDE)
+        config.enable_ai_summary = False
+        extractor = ClickUpTaskExtractor(config, _DummyAPIClient())
+        tasks = [_make_eta_record("A")]
+        with patch("extractor.calculate_eta") as mock_eta, patch("extractor.console"):
+            extractor._generate_etas_concurrently(tasks)
+        mock_eta.assert_not_called()
 
 
 if __name__ == "__main__":

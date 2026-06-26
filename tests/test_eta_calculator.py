@@ -7,7 +7,14 @@ Unit tests for ETA Calculator module.
 import unittest
 from datetime import datetime, timedelta
 from unittest.mock import patch, MagicMock
-from eta_calculator import calculate_eta, _get_fallback_eta, PRIORITY_ETA_DAYS
+import eta_calculator
+from config import AISource
+from eta_calculator import (
+    calculate_eta,
+    get_claude_eta,
+    _get_fallback_eta,
+    PRIORITY_ETA_DAYS,
+)
 
 
 class ETACalculatorFallbackTests(unittest.TestCase):
@@ -119,6 +126,7 @@ class ETACalculatorIntegrationTests(unittest.TestCase):
             status="in progress",
             enable_ai=True,
             gemini_api_key=None,  # No API key
+            ai_source=AISource.GEMINI,
         )
         # Should use fallback
         eta_date = datetime.strptime(eta, "%m/%d/%Y")
@@ -152,6 +160,7 @@ class ETACalculatorIntegrationTests(unittest.TestCase):
             resolution="Need to replace hardware",
             gemini_api_key="valid_key",
             enable_ai=True,
+            ai_source=AISource.GEMINI,
         )
 
         # Should return AI-generated ETA
@@ -179,6 +188,7 @@ class ETACalculatorIntegrationTests(unittest.TestCase):
             description="Test description",
             gemini_api_key="valid_key",
             enable_ai=True,
+            ai_source=AISource.GEMINI,
         )
 
         # Should fall back to priority-based calculation
@@ -207,11 +217,99 @@ class ETACalculatorIntegrationTests(unittest.TestCase):
             status="to do",
             gemini_api_key="valid_key",
             enable_ai=True,
+            ai_source=AISource.GEMINI,
         )
 
         # Should fall back to priority-based calculation
         eta_date = datetime.strptime(eta, "%m/%d/%Y")
         expected_date = datetime.now() + timedelta(days=3)
+        self.assertEqual(eta_date.date(), expected_date.date())
+
+
+class ClaudeETATests(unittest.TestCase):
+    """Tests for the Claude CLI ETA path."""
+
+    def test_get_claude_eta_extracts_date(self) -> None:
+        with patch(
+            "eta_calculator.run_claude_cli", return_value=("12/25/2026", False)
+        ) as mock_run:
+            eta = get_claude_eta("Task", "High", "to do", description="ctx")
+        self.assertEqual(eta, "12/25/2026")
+        mock_run.assert_called_once()
+
+    def test_get_claude_eta_extracts_date_from_noise(self) -> None:
+        # Even if the model adds stray text, the date token is extracted.
+        with patch(
+            "eta_calculator.run_claude_cli", return_value=("ETA: 01/05/2026 done", False)
+        ):
+            eta = get_claude_eta("Task", "Low", "to do")
+        self.assertEqual(eta, "01/05/2026")
+
+    def test_get_claude_eta_none_on_unparseable(self) -> None:
+        with patch("eta_calculator.run_claude_cli", return_value=("soon-ish", False)):
+            self.assertIsNone(get_claude_eta("Task", "Low", "to do"))
+
+    def test_get_claude_eta_none_when_cli_unavailable(self) -> None:
+        with patch("eta_calculator.run_claude_cli", return_value=(None, False)):
+            self.assertIsNone(get_claude_eta("Task", "Normal", "to do"))
+
+    def test_calculate_eta_claude_source(self) -> None:
+        with patch(
+            "eta_calculator.get_claude_eta", return_value="03/01/2026"
+        ) as mock_claude:
+            eta = calculate_eta(
+                task_name="Task",
+                priority="Normal",
+                status="to do",
+                enable_ai=True,
+                ai_source=AISource.CLAUDE,
+            )
+        self.assertEqual(eta, "03/01/2026")
+        mock_claude.assert_called_once()
+
+    def test_calculate_eta_both_source_uses_claude(self) -> None:
+        with patch(
+            "eta_calculator.get_claude_eta", return_value="03/02/2026"
+        ) as mock_claude:
+            eta = calculate_eta(
+                task_name="Task",
+                priority="Normal",
+                status="to do",
+                enable_ai=True,
+                ai_source=AISource.BOTH,
+            )
+        self.assertEqual(eta, "03/02/2026")
+        mock_claude.assert_called_once()
+
+    def test_calculate_eta_claude_failure_falls_back(self) -> None:
+        with patch("eta_calculator.get_claude_eta", return_value=None):
+            eta = calculate_eta(
+                task_name="Task",
+                priority="Normal",
+                status="to do",
+                enable_ai=True,
+                ai_source=AISource.CLAUDE,
+            )
+        eta_date = datetime.strptime(eta, "%m/%d/%Y")
+        expected_date = datetime.now() + timedelta(days=7)
+        self.assertEqual(eta_date.date(), expected_date.date())
+
+    def test_calculate_eta_clickup_source_skips_ai(self) -> None:
+        # ClickUp has no ETA field; no AI call, straight to deterministic fallback.
+        with patch("eta_calculator.get_claude_eta") as mock_claude, patch(
+            "eta_calculator._try_ai_eta_calculation"
+        ) as mock_gemini:
+            eta = calculate_eta(
+                task_name="Task",
+                priority="Low",
+                status="to do",
+                enable_ai=True,
+                ai_source=AISource.CLICKUP,
+            )
+        mock_claude.assert_not_called()
+        mock_gemini.assert_not_called()
+        eta_date = datetime.strptime(eta, "%m/%d/%Y")
+        expected_date = datetime.now() + timedelta(days=14)
         self.assertEqual(eta_date.date(), expected_date.date())
 
 
