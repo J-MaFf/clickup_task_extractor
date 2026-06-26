@@ -79,6 +79,78 @@ def _configure_stdio_encoding() -> None:
             stream.reconfigure(encoding="utf-8")
 
 
+# Keys whose value is the actual secret material. In ``.env.kfj`` these are
+# conventionally stored as ``op://`` references that ``op run`` resolves at
+# runtime — so when _load_dotenv() sees an ``op://`` value for one of these it
+# must NOT load it literally (that would set e.g. CLICKUP_API_KEY to the literal
+# "op://…" string, which the resolver would then hand to the API as the key).
+# Such references are left for ``op run`` / the 1Password resolver chain.
+_SECRET_MATERIAL_KEYS = frozenset({"CLICKUP_API_KEY", "GOOGLE_SHEETS_CREDENTIALS_JSON"})
+
+
+def _load_dotenv(env_path: str | None = None) -> None:
+    """Load KEY=VALUE pairs from a project-local ``.env.kfj`` into ``os.environ``.
+
+    Mirrors ``main.py``'s loader so the documented ``KFJ_*`` settings (list/sheet
+    ids, tab prefix, fallback branch, 1Password ``*_SECRET_REFERENCE`` pointers
+    and account selectors) apply on a plain ``python kfj_task_extractor.py`` run,
+    without requiring ``op run`` or a pre-exported shell.
+
+    Called from the module-level ``__main__`` guard *before* the configuration
+    constants below are evaluated, and only on real CLI execution (never on
+    import), so tests are unaffected.
+
+    Precedence: real environment variables win — an already-set key is never
+    overwritten, so ``op run``-injected secrets and shell exports take priority.
+    Dependency-free; supports blank lines, ``#`` comments, an optional
+    ``export `` prefix, and single/double-quoted values. Empty values are
+    skipped (the constants already default to ``""``).
+
+    Secret safety: for the secret-material keys (see ``_SECRET_MATERIAL_KEYS``),
+    an ``op://`` reference is skipped rather than loaded literally, so the
+    1Password resolution chain stays intact. All other keys — including the
+    ``KFJ_*_SECRET_REFERENCE`` pointers, whose values are *meant* to be ``op://``
+    URIs the resolver consumes — load normally.
+
+    Args:
+        env_path: Path to the env file; defaults to ``.env.kfj`` next to this script.
+    """
+    if env_path is None:
+        env_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env.kfj")
+    try:
+        with open(env_path, "r", encoding="utf-8") as handle:
+            lines = handle.readlines()
+    except OSError:
+        return  # No .env.kfj present — nothing to load.
+    for raw in lines:
+        line = raw.strip()
+        if not line or line.startswith("#"):
+            continue
+        if line.startswith("export "):
+            line = line[len("export ") :].lstrip()
+        key, sep, value = line.partition("=")
+        if not sep:
+            continue
+        key = key.strip()
+        value = value.strip()
+        if len(value) >= 2 and value[0] == value[-1] and value[0] in ("'", '"'):
+            value = value[1:-1]
+        if not key or not value or key in os.environ:
+            continue
+        # Leave op:// secret-material references for op run / the resolver chain.
+        if key in _SECRET_MATERIAL_KEYS and value.startswith("op://"):
+            continue
+        os.environ[key] = value
+
+
+# Load .env.kfj when run as a script, *before* the configuration constants
+# below read os.environ. Guarded by __main__ so importing this module (e.g. from
+# tests) never loads .env.kfj or mutates the environment. Under the venv re-exec
+# the parent loads it here before spawning the child, which inherits os.environ.
+if __name__ == "__main__":
+    _load_dotenv()
+
+
 try:
     from rich.console import Console
     from rich.table import Table
@@ -539,7 +611,9 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    # Side effects that must only run when executed as a script, never on import:
+    # Side effects that must only run when executed as a script, never on import.
+    # (.env.kfj is already loaded above, before the config constants, by the
+    # module-level __main__ guard so those constants pick it up.)
     #   1. Re-exec under the project venv if not already running from it.
     #   2. Reconfigure stdio to UTF-8 (mutates sys.stdout/sys.stderr).
     _reexec_in_venv()

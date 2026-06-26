@@ -185,8 +185,13 @@ cp .env.kfj.example .env.kfj
 # then edit .env.kfj
 ```
 
-`.env.kfj` is gitignored. Supported variables (see `.env.kfj.example` for the
-full list):
+`.env.kfj` is gitignored and **loaded automatically at startup** (real
+environment variables and CLI flags take precedence), so a plain
+`python kfj_task_extractor.py` picks up these settings without `op run`. The
+loader deliberately skips `op://` values for `CLICKUP_API_KEY` /
+`GOOGLE_SHEETS_CREDENTIALS_JSON` — those references are resolved at runtime by
+`op run` or the script's 1Password chain rather than loaded literally. Supported
+variables (see `.env.kfj.example` for the full list):
 
 | Variable | Purpose | Required? |
 | --- | --- | --- |
@@ -205,7 +210,7 @@ full list):
 > (`https://docs.google.com/spreadsheets/d/<ID>/edit`).
 
 ```bash
-# Standard weekly run (reads .env.kfj from your shell; 1Password resolves secrets)
+# Standard weekly run (auto-loads .env.kfj; 1Password resolves the op:// secrets)
 python kfj_task_extractor.py
 
 # Preview the rows without touching Google Sheets (no sheet ID required)
