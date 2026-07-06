@@ -5,6 +5,11 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   pytest:
@@ -26,3 +31,55 @@ jobs:
 
       - name: Run tests
         run: pytest tests/ -v
+
+  pytest-windows:
+    name: pytest (windows)
+    # Self-hosted win-test runner (Windows Server 2025, Python 3.14 all-users +
+    # py launcher, pwsh default shell). The 1Password CLI is on the runner's
+    # PATH but carries no credentials; the suite mocks every op/SDK call.
+    #
+    # Fork-PR gate: this is a public repo, so PRs from forks must never execute
+    # on the self-hosted box. A skipped job still satisfies required status
+    # checks if this is ever added to the ruleset.
+    runs-on: [self-hosted, windows]
+    timeout-minutes: 30
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    env:
+      PYTHONUTF8: "1"
+      # Blank out anything ambient on the shared runner so no ClickUp/1Password
+      # code path can see real configuration ("" reads as unset everywhere).
+      CLICKUP_API_KEY: ""
+      CLICKUP_API_SECRET_REFERENCE: ""
+      OP_ENVIRONMENT_ID: ""
+      OP_SERVICE_ACCOUNT_TOKEN: ""
+      GEMINI_API_KEY: ""
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Resolve Python
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $true
+          $cand = @('py', 'python3', 'python') | Where-Object { Get-Command $_ -ErrorAction SilentlyContinue } | Select-Object -First 1
+          if (-not $cand) { throw 'No Python interpreter found (tried py, python3, python)' }
+          "PYBOOT=$cand" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          & $cand --version
+
+      - name: Install dependencies
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $true
+          & $env:PYBOOT -m venv .venv
+          $venvPy = Join-Path $PWD '.venv\Scripts\python.exe'
+          "VENV_PY=$venvPy" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          # Mirror the ubuntu job: exclude the onepassword SDK (tests mock it).
+          # The venv is per-run (checkout's git clean wipes it), but the pip
+          # wheel cache in the runner user's profile persists, so installs are
+          # fast after the first run.
+          (Get-Content requirements.txt) | Where-Object { $_ -notmatch 'onepassword' } | Set-Content "$env:RUNNER_TEMP\requirements-ci.txt"
+          & $venvPy -m pip install -r "$env:RUNNER_TEMP\requirements-ci.txt"
+          & $venvPy -m pip install pytest
+
+      - name: Run tests
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $true
+          & $env:VENV_PY -m pytest tests/ -v

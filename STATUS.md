@@ -4,9 +4,9 @@
 
 Python CLI for extracting, processing, and exporting tasks from the ClickUp API. Supports Markdown, HTML, and CSV output, optional AI summaries (Claude via Max/Pro OAuth by default, or Google Gemini, or the ClickUp Summary field), 1Password-backed authentication, and a Rich console UI with interactive task selection and priority/ETA sorting.
 
-## Current State — 2026-06-26
+## Current State — 2026-07-06
 
-**v1.06 in release.** Beads (`bd`) is active as the task/memory layer beneath GitHub Issues. Since v1.05: AI summaries default to Claude (Max OAuth, [#145](https://github.com/J-MaFf/clickup_task_extractor/pull/145)); summaries + ETAs run concurrently ([#148](https://github.com/J-MaFf/clickup_task_extractor/pull/148)); ETAs can use Claude ([#149](https://github.com/J-MaFf/clickup_task_extractor/pull/149)); `main.py` auto-loads a project-local `.env` so configured workspace/space apply ([#151](https://github.com/J-MaFf/clickup_task_extractor/pull/151)); `kfj_task_extractor.py` auto-loads `.env.kfj` secret-safely ([#153](https://github.com/J-MaFf/clickup_task_extractor/pull/153)) — all merged.
+**v1.06 in release.** CI now runs the suite on two OSes: hosted Linux (Python 3.11) and the self-hosted `win-test` Windows runner (Python 3.14) ([#156](https://github.com/J-MaFf/clickup_task_extractor/issues/156)). Beads (`bd`) is active as the task/memory layer beneath GitHub Issues. Since v1.05: AI summaries default to Claude (Max OAuth, [#145](https://github.com/J-MaFf/clickup_task_extractor/pull/145)); summaries + ETAs run concurrently ([#148](https://github.com/J-MaFf/clickup_task_extractor/pull/148)); ETAs can use Claude ([#149](https://github.com/J-MaFf/clickup_task_extractor/pull/149)); `main.py` auto-loads a project-local `.env` so configured workspace/space apply ([#151](https://github.com/J-MaFf/clickup_task_extractor/pull/151)); `kfj_task_extractor.py` auto-loads `.env.kfj` secret-safely ([#153](https://github.com/J-MaFf/clickup_task_extractor/pull/153)) — all merged.
 
 **In progress:** `release/v1.06` ([#154](https://github.com/J-MaFf/clickup_task_extractor/issues/154)) — version bump (`version.py` → 1.06, README badge, `CHANGELOG.md` `[1.06]`), then tag `v1.06` on `main`. All 325 tests pass.
 

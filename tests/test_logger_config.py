@@ -208,7 +208,7 @@ class TestSetupLogging(unittest.TestCase):
                 handler.flush()
 
             # Check file contains message
-            with open(log_file, 'r') as f:
+            with open(log_file, 'r', encoding='utf-8') as f:
                 content = f.read()
                 self.assertIn("Test message", content)
 

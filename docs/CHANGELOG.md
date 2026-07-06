@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Windows CI on the self-hosted `win-test` runner.** `tests.yml` gains a `pytest-windows` job (`runs-on: [self-hosted, windows]`, Python 3.14) alongside the existing hosted-Linux job (Python 3.11), so the suite now runs on the OS the extractor is primarily used on — with an incidental oldest-Python/newest-Python matrix. The job is gated off fork PRs (public repo + self-hosted runner), blanks all ambient `CLICKUP_*`/`OP_*`/`GEMINI_*` env vars, and mirrors the Linux job's exclusion of the `onepassword` SDK (the suite mocks it). Four test-file `open()` calls gained explicit `encoding="utf-8"` so results don't depend on Windows' cp1252 default. ([#156](https://github.com/J-MaFf/clickup_task_extractor/issues/156))
+
 ## [1.06] - 2026-06-26
 
 ### Added

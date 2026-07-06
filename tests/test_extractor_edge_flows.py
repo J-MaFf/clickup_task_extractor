@@ -34,7 +34,7 @@ class TestExportFile(unittest.TestCase):
                 f.write("test content")
 
             self.assertTrue(os.path.exists(test_path))
-            with open(test_path, "r") as f:
+            with open(test_path, "r", encoding="utf-8") as f:
                 self.assertEqual(f.read(), "test content")
 
     def test_export_file_handles_existing_directory(self):
@@ -232,7 +232,7 @@ class TestMultiFormatExport(unittest.TestCase):
             # File should be in output/ directory
             actual_path = Path("output") / "test.md"
             self.assertTrue(actual_path.exists())
-            with open(actual_path, "r") as f:
+            with open(actual_path, "r", encoding="utf-8") as f:
                 content = f.read()
                 self.assertIn("# Weekly Task List", content)
                 self.assertIn("Test Task", content)
@@ -270,7 +270,7 @@ class TestMultiFormatExport(unittest.TestCase):
             # File should be in output/ directory
             actual_path = Path("output") / "test.html"
             self.assertTrue(actual_path.exists())
-            with open(actual_path, "r") as f:
+            with open(actual_path, "r", encoding="utf-8") as f:
                 content = f.read()
                 self.assertIn("HTML Test", content)
                 self.assertIn("HTML Company", content)
