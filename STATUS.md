@@ -30,6 +30,7 @@ Python CLI for extracting, processing, and exporting tasks from the ClickUp API.
 
 | Issue | Description | PR |
 |-------|-------------|-----|
+| [#156](https://github.com/J-MaFf/clickup_task_extractor/issues/156) | Run tests on the self-hosted Windows runner | [#157](https://github.com/J-MaFf/clickup_task_extractor/pull/157) |
 | [#90](https://github.com/J-MaFf/clickup_task_extractor/issues/90) | Sort tasks by priority then ETA | [#102](https://github.com/J-MaFf/clickup_task_extractor/pull/102) |
 | [#104](https://github.com/J-MaFf/clickup_task_extractor/issues/104) | KFJ standalone Google Sheets sync | [#104](https://github.com/J-MaFf/clickup_task_extractor/pull/104) |
 | [#105](https://github.com/J-MaFf/clickup_task_extractor/issues/105) | Disable Rich show_locals (secret leak) | [#117](https://github.com/J-MaFf/clickup_task_extractor/pull/117) |
