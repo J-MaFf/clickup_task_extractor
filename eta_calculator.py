@@ -325,6 +325,41 @@ def calculate_eta(
     """
     Calculate ETA for a task without a due date.
 
+    Thin wrapper over :func:`calculate_eta_with_source` for callers that don't
+    need to know whether the AI or the deterministic fallback produced the
+    date. See that function for the full strategy.
+
+    Returns:
+        Formatted ETA date string (MM/DD/YYYY)
+    """
+    eta, _ = calculate_eta_with_source(
+        task_name,
+        priority,
+        status,
+        description=description,
+        subject=subject,
+        resolution=resolution,
+        gemini_api_key=gemini_api_key,
+        enable_ai=enable_ai,
+        ai_source=ai_source,
+    )
+    return eta
+
+
+def calculate_eta_with_source(
+    task_name: str,
+    priority: str,
+    status: str,
+    description: str = "",
+    subject: str = "",
+    resolution: str = "",
+    gemini_api_key: str | None = None,
+    enable_ai: bool = False,
+    ai_source=None,
+) -> tuple[str, bool]:
+    """
+    Calculate ETA for a task without a due date, reporting how it was produced.
+
     Strategy, in order:
     1. AI-based estimate (when ``enable_ai``), routed by ``ai_source``:
        - Claude / Both (and the default when unspecified) → local ``claude`` CLI
@@ -345,7 +380,9 @@ def calculate_eta(
         ai_source: AISource enum/string selecting the provider (defaults to Claude)
 
     Returns:
-        Formatted ETA date string (MM/DD/YYYY)
+        ``(eta, used_ai)`` — the formatted ETA date string (MM/DD/YYYY) and True
+        when an AI provider produced it, False for the deterministic fallback
+        (so callers can report generated-vs-fallback counts accurately).
     """
     if enable_ai:
         source = _source_value(ai_source)
@@ -356,7 +393,7 @@ def calculate_eta(
                 task_name, priority, status, description, subject, resolution
             )
             if claude_eta:
-                return claude_eta
+                return claude_eta, True
         # Gemini path (explicit source + key + SDK available).
         elif source == AISource.GEMINI.value:
             if (
@@ -375,7 +412,7 @@ def calculate_eta(
                     gemini_api_key,
                 )
                 if ai_eta:
-                    return ai_eta
+                    return ai_eta, True
         # AISource.CLICKUP (or any failure) falls through to the deterministic ETA.
 
         if RICH_AVAILABLE and _console:
@@ -384,4 +421,4 @@ def calculate_eta(
             )
 
     # Fallback calculation based on priority and status
-    return _get_fallback_eta(priority, status)
+    return _get_fallback_eta(priority, status), False

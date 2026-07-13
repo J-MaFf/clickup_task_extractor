@@ -81,7 +81,7 @@ class TestInteractiveAISummary(unittest.TestCase):
     @patch("extractor.Progress")
     @patch("extractor.console")
     @patch("extractor.get_yes_no_input")
-    @patch("extractor.get_ai_summary")
+    @patch("extractor.get_ai_summary_with_status")
     def test_ai_summary_enabled_via_cli_interactive_mode(
         self, mock_ai_summary, mock_get_yes_no, mock_console, mock_progress
     ):
@@ -101,7 +101,7 @@ class TestInteractiveAISummary(unittest.TestCase):
         mock_get_yes_no.side_effect = [True, True, False]
 
         # Mock AI summary to return a simple string
-        mock_ai_summary.return_value = "AI generated summary."
+        mock_ai_summary.return_value = ("AI generated summary.", True)
 
         # Create config with AI summary enabled and interactive mode
         config = ClickUpConfig(
@@ -140,7 +140,7 @@ class TestInteractiveAISummary(unittest.TestCase):
     @patch("extractor.Progress")
     @patch("extractor.console")
     @patch("extractor.get_yes_no_input")
-    @patch("extractor.get_ai_summary")
+    @patch("extractor.get_ai_summary_with_status")
     def test_ai_summary_user_opts_in_interactive_mode(
         self, mock_ai_summary, mock_get_yes_no, mock_console, mock_progress
     ):
@@ -164,7 +164,7 @@ class TestInteractiveAISummary(unittest.TestCase):
         mock_console.input = Mock(return_value="test_gemini_key")
 
         # Mock AI summary to return a simple string
-        mock_ai_summary.return_value = "AI generated summary."
+        mock_ai_summary.return_value = ("AI generated summary.", True)
 
         # Create config WITHOUT AI summary enabled
         config = ClickUpConfig(
@@ -195,7 +195,7 @@ class TestInteractiveAISummary(unittest.TestCase):
     @patch("extractor.Progress")
     @patch("extractor.console")
     @patch("extractor.get_yes_no_input")
-    @patch("extractor.get_ai_summary")
+    @patch("extractor.get_ai_summary_with_status")
     def test_ai_summary_user_opts_out_interactive_mode(
         self, mock_ai_summary, mock_get_yes_no, mock_console, mock_progress
     ):
@@ -238,7 +238,7 @@ class TestInteractiveAISummary(unittest.TestCase):
 
     @patch("extractor.Progress")
     @patch("extractor.console")
-    @patch("extractor.get_ai_summary")
+    @patch("extractor.get_ai_summary_with_status")
     def test_ai_summary_non_interactive_mode(
         self, mock_ai_summary, mock_console, mock_progress
     ):
@@ -255,7 +255,7 @@ class TestInteractiveAISummary(unittest.TestCase):
         mock_progress.return_value.stop = Mock()
 
         # Mock AI summary to return a simple string
-        mock_ai_summary.return_value = "AI generated summary."
+        mock_ai_summary.return_value = ("AI generated summary.", True)
 
         # Create config with AI summary enabled but NO interactive mode
         config = ClickUpConfig(

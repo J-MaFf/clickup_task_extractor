@@ -15,6 +15,7 @@ import unittest
 from unittest.mock import patch, Mock, MagicMock
 import time
 
+import ai_summary
 from ai_summary import get_ai_summary, _normalize_field_entries, _reset_api_state
 
 
@@ -433,6 +434,69 @@ class TestRateLimitingAndRetry(unittest.TestCase):
 
         # Verify generate_content was called
         mock_model.generate_content.assert_called_once()
+
+
+class TestGetAISummaryWithStatus(unittest.TestCase):
+    """get_ai_summary_with_status must distinguish real Gemini output from the
+    field-block fallback that every hard-failure path returns (issue #160)."""
+
+    def setUp(self):
+        _reset_api_state()
+
+    def tearDown(self):
+        _reset_api_state()
+
+    @patch('ai_summary.types')
+    @patch('ai_summary.GenerativeModel')
+    @patch('ai_summary.configure')
+    def test_success_reports_generated(self, mock_configure, mock_model_class, mock_types):
+        mock_model = Mock()
+        mock_response = Mock()
+        mock_response.text = 'A real AI summary.'
+        mock_model.generate_content.return_value = mock_response
+        mock_model_class.return_value = mock_model
+
+        text, generated = ai_summary.get_ai_summary_with_status(
+            'Test Task', [('Status', 'Open')], 'api_key'
+        )
+
+        self.assertEqual(text, 'A real AI summary.')
+        self.assertTrue(generated)
+
+    @patch('ai_summary.types')
+    @patch('ai_summary.GenerativeModel')
+    @patch('ai_summary.configure')
+    @patch('ai_summary._console')
+    def test_non_retryable_error_reports_fallback(
+        self, mock_console, mock_configure, mock_model_class, mock_types
+    ):
+        """An invalid API key returns the field block — content, but NOT generated."""
+        mock_model = Mock()
+        mock_model.generate_content.side_effect = Exception('400 API_KEY_INVALID')
+        mock_model_class.return_value = mock_model
+
+        text, generated = ai_summary.get_ai_summary_with_status(
+            'Test Task', [('Status', 'Open')], 'bad_key'
+        )
+
+        self.assertIn('Status: Open', text)  # fallback field block
+        self.assertFalse(generated)
+
+    def test_no_api_key_reports_fallback(self):
+        text, generated = ai_summary.get_ai_summary_with_status(
+            'Test Task', [('Status', 'Open')], ''
+        )
+        self.assertIn('Status: Open', text)
+        self.assertFalse(generated)
+
+    @patch('ai_summary._api_available', False)
+    @patch('ai_summary._console')
+    def test_rate_limited_skip_reports_fallback(self, mock_console):
+        text, generated = ai_summary.get_ai_summary_with_status(
+            'Test Task', [('Status', 'Open')], 'api_key'
+        )
+        self.assertIsNone(text)
+        self.assertFalse(generated)
 
 
 if __name__ == '__main__':

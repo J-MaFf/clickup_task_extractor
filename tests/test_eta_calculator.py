@@ -294,6 +294,42 @@ class ClaudeETATests(unittest.TestCase):
         expected_date = datetime.now() + timedelta(days=7)
         self.assertEqual(eta_date.date(), expected_date.date())
 
+    def test_calculate_eta_with_source_reports_ai(self) -> None:
+        with patch("eta_calculator.get_claude_eta", return_value="03/01/2026"):
+            eta, used_ai = eta_calculator.calculate_eta_with_source(
+                task_name="Task",
+                priority="Normal",
+                status="to do",
+                enable_ai=True,
+                ai_source=AISource.CLAUDE,
+            )
+        self.assertEqual(eta, "03/01/2026")
+        self.assertTrue(used_ai)
+
+    def test_calculate_eta_with_source_reports_fallback(self) -> None:
+        with patch("eta_calculator.get_claude_eta", return_value=None):
+            eta, used_ai = eta_calculator.calculate_eta_with_source(
+                task_name="Task",
+                priority="Normal",
+                status="to do",
+                enable_ai=True,
+                ai_source=AISource.CLAUDE,
+            )
+        self.assertFalse(used_ai)
+        eta_date = datetime.strptime(eta, "%m/%d/%Y")
+        expected_date = datetime.now() + timedelta(days=7)
+        self.assertEqual(eta_date.date(), expected_date.date())
+
+    def test_calculate_eta_with_source_ai_disabled_is_fallback(self) -> None:
+        eta, used_ai = eta_calculator.calculate_eta_with_source(
+            task_name="Task",
+            priority="Urgent",
+            status="to do",
+            enable_ai=False,
+        )
+        self.assertFalse(used_ai)
+        self.assertTrue(eta)
+
     def test_calculate_eta_clickup_source_skips_ai(self) -> None:
         # ClickUp has no ETA field; no AI call, straight to deterministic fallback.
         with patch("eta_calculator.get_claude_eta") as mock_claude, patch(

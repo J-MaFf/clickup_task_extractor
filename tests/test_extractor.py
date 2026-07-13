@@ -152,7 +152,8 @@ class ClickUpTaskExtractorProcessTaskTests(unittest.TestCase):
         list_item = {"name": "Support"}
 
         with patch(
-            "extractor.get_ai_summary", return_value="AI summary text"
+            "extractor.get_ai_summary_with_status",
+            return_value=("AI summary text", True),
         ) as mock_get_summary:
             record = self.extractor._process_task(task, [], list_item)
             self.assertIsNotNone(record)
@@ -186,7 +187,7 @@ class ClickUpTaskExtractorProcessTaskTests(unittest.TestCase):
         task = {"id": self.task_id, "name": "Printer outage"}
         list_item = {"name": "Support"}
 
-        with patch("extractor.get_ai_summary") as mock_get_summary:
+        with patch("extractor.get_ai_summary_with_status") as mock_get_summary:
             record = self.extractor._process_task(task, [], list_item)
 
         self.assertIsNotNone(record)
@@ -203,7 +204,7 @@ class ClickUpTaskExtractorProcessTaskTests(unittest.TestCase):
         task = {"id": self.task_id, "name": "Printer outage"}
         list_item = {"name": "Support"}
 
-        with patch("extractor.get_ai_summary") as mock_get_summary:
+        with patch("extractor.get_ai_summary_with_status") as mock_get_summary:
             record = self.extractor._process_task(task, [], list_item)
 
         self.assertIsNotNone(record)
@@ -222,7 +223,9 @@ class ClickUpTaskExtractorProcessTaskTests(unittest.TestCase):
 
         with patch(
             "extractor.get_claude_summary", return_value="Claude summary text"
-        ) as mock_claude, patch("extractor.get_ai_summary") as mock_gemini:
+        ) as mock_claude, patch(
+            "extractor.get_ai_summary_with_status"
+        ) as mock_gemini:
             record = self.extractor._process_task(task, [], list_item)
             self.assertIsNotNone(record)
             mock_claude.assert_not_called()  # deferred
@@ -248,7 +251,9 @@ class ClickUpTaskExtractorProcessTaskTests(unittest.TestCase):
 
         with patch(
             "extractor.get_claude_summary", return_value="Claude fallback summary"
-        ) as mock_claude, patch("extractor.get_ai_summary") as mock_gemini:
+        ) as mock_claude, patch(
+            "extractor.get_ai_summary_with_status"
+        ) as mock_gemini:
             record = self.extractor._process_task(task, [], list_item)
             self.assertIsNotNone(record)
             self.extractor._generate_summaries_concurrently([record])
