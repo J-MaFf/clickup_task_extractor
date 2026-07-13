@@ -929,11 +929,16 @@ class ClickUpTaskExtractor:
         return str(value)
 
     def _emit_ai_field_notice(self, message: str) -> None:
-        """Emit a single console notice about missing/empty ClickUp AI field."""
+        """Emit a single console notice about missing/empty ClickUp AI field.
+
+        Only the ClickUp and Both sources consume the ClickUp Summary field as
+        primary content; for Claude/Gemini runs a "populate the field" nudge is
+        misleading noise (issue #161), so the notice is suppressed.
+        """
 
         if self._ai_field_notice_emitted:
             return
-        if self.config.ai_source == AISource.GEMINI:
+        if self.config.ai_source not in (AISource.CLICKUP, AISource.BOTH):
             return
 
         self._ai_field_notice_emitted = True
