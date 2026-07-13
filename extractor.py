@@ -1140,23 +1140,32 @@ class ClickUpTaskExtractor:
 
         results: list[tuple[str, bool] | None] = [None] * total
         with ThreadPoolExecutor(max_workers=workers) as executor:
-            future_to_index = {
-                executor.submit(self._summarize_one, task): index
-                for index, task in enumerate(tasks)
-            }
-            completed = 0
-            for future in as_completed(future_to_index):
-                index = future_to_index[future]
-                try:
-                    results[index] = future.result()
-                except Exception as exc:  # keep going; leave existing Notes
+            try:
+                future_to_index = {
+                    executor.submit(self._summarize_one, task): index
+                    for index, task in enumerate(tasks)
+                }
+                completed = 0
+                for future in as_completed(future_to_index):
+                    index = future_to_index[future]
+                    try:
+                        results[index] = future.result()
+                    except Exception as exc:  # keep going; leave existing Notes
+                        console.print(
+                            f"  [yellow]⚠️ Summary failed for '{tasks[index].Task}': "
+                            f"{str(exc)[:80]}[/yellow]"
+                        )
+                        results[index] = None
+                    completed += 1
                     console.print(
-                        f"  [yellow]⚠️ Summary failed for '{tasks[index].Task}': "
-                        f"{str(exc)[:80]}[/yellow]"
+                        f"  [dim]{completed}/{total} summaries processed[/dim]"
                     )
-                    results[index] = None
-                completed += 1
-                console.print(f"  [dim]{completed}/{total} summaries processed[/dim]")
+            except BaseException:
+                # Ctrl+C etc.: without cancel_futures the with-block's shutdown
+                # would still run every queued future, spawning fresh `claude`
+                # subprocesses after the user interrupted (issue #168).
+                executor.shutdown(wait=False, cancel_futures=True)
+                raise
 
         # Write results back in original order. _apply_ai_source always returns
         # notes (base notes on failure), so None only occurs on the unexpected
@@ -1245,23 +1254,29 @@ class ClickUpTaskExtractor:
 
         results: list[tuple[str, bool] | None] = [None] * total
         with ThreadPoolExecutor(max_workers=workers) as executor:
-            future_to_index = {
-                executor.submit(self._compute_eta_one, task): index
-                for index, task in enumerate(candidates)
-            }
-            completed = 0
-            for future in as_completed(future_to_index):
-                index = future_to_index[future]
-                try:
-                    results[index] = future.result()
-                except Exception as exc:  # keep the deterministic baseline ETA
-                    console.print(
-                        f"  [yellow]⚠️ ETA failed for '{candidates[index].Task}': "
-                        f"{str(exc)[:80]}[/yellow]"
-                    )
-                    results[index] = None
-                completed += 1
-                console.print(f"  [dim]{completed}/{total} ETAs processed[/dim]")
+            try:
+                future_to_index = {
+                    executor.submit(self._compute_eta_one, task): index
+                    for index, task in enumerate(candidates)
+                }
+                completed = 0
+                for future in as_completed(future_to_index):
+                    index = future_to_index[future]
+                    try:
+                        results[index] = future.result()
+                    except Exception as exc:  # keep the deterministic baseline ETA
+                        console.print(
+                            f"  [yellow]⚠️ ETA failed for '{candidates[index].Task}': "
+                            f"{str(exc)[:80]}[/yellow]"
+                        )
+                        results[index] = None
+                    completed += 1
+                    console.print(f"  [dim]{completed}/{total} ETAs processed[/dim]")
+            except BaseException:
+                # Ctrl+C etc.: cancel queued futures so no new `claude`
+                # subprocesses launch after the interrupt (issue #168).
+                executor.shutdown(wait=False, cancel_futures=True)
+                raise
 
         # calculate_eta_with_source always returns a date (deterministic
         # fallback on AI failure); None only on the unexpected exception above —
