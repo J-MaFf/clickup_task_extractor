@@ -52,6 +52,9 @@ Python CLI for extracting, processing, and exporting tasks from the ClickUp API.
 ### Open Issues
 
 - [#154](https://github.com/J-MaFf/clickup_task_extractor/issues/154) — Release v1.06 (in review on `release/v1.06`)
+- [#159](https://github.com/J-MaFf/clickup_task_extractor/issues/159) — Claude CLI "Not logged in" repeats for every task; no fail-fast / pre-flight auth check (fix on `fix/claude-cli-auth-fail-fast`)
+- [#160](https://github.com/J-MaFf/clickup_task_extractor/issues/160) — AI passes report "N/N generated" + success even when every generation failed
+- [#161](https://github.com/J-MaFf/clickup_task_extractor/issues/161) — ClickUp Summary empty-field warning shown for the Claude AI source
 
 ## Natural Next Steps
 

@@ -9,6 +9,7 @@ Contains:
 - Progress bar functionality for wait times
 """
 
+import json
 import os
 import shutil
 import subprocess
@@ -154,6 +155,32 @@ def _is_rate_limit_error(error_str: str) -> bool:
         or "limit_exceeded" in error_lower
         or "requests per minute" in error_lower
         or "rpm" in error_lower
+    )
+
+
+def _is_auth_error(error_str: str) -> bool:
+    """
+    Detect if a Claude CLI error indicates an authentication failure.
+
+    Auth failures ("Not logged in · Please run /login", expired OAuth tokens)
+    are terminal for the whole run — unlike transient errors, they cannot
+    resolve until the user logs in again.
+
+    Args:
+        error_str: Error message string (CLI stderr/stdout)
+
+    Returns:
+        True if this is an authentication error, False otherwise
+    """
+    error_lower = error_str.lower()
+
+    return (
+        "not logged in" in error_lower
+        or "please run /login" in error_lower
+        or "please log in" in error_lower
+        or "oauth token has expired" in error_lower
+        or "authentication_error" in error_lower
+        or "invalid bearer token" in error_lower
     )
 
 
@@ -398,6 +425,58 @@ def claude_cli_available() -> bool:
     return shutil.which("claude") is not None
 
 
+def claude_cli_authenticated(timeout: int = 15) -> bool | None:
+    """
+    Probe ``claude auth status`` for the CLI's login state.
+
+    A cheap pre-flight check (no inference call) so callers can warn the user
+    before queueing a run's worth of doomed generation calls.
+
+    Returns:
+        True when the CLI reports it is logged in, False when it confidently
+        reports it is not, and None when the state is unknown (CLI missing,
+        older CLI without the subcommand, timeout, or unparseable output).
+        Callers should treat None as "proceed as usual".
+    """
+    claude_bin = shutil.which("claude")
+    if not claude_bin:
+        return None
+
+    try:
+        proc = subprocess.run(
+            [claude_bin, "auth", "status", "--json"],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=timeout,
+            cwd=tempfile.gettempdir(),
+        )
+    except (subprocess.TimeoutExpired, OSError):
+        return None
+
+    try:
+        payload = json.loads(proc.stdout or "")
+    except ValueError:
+        return None
+
+    if isinstance(payload, dict) and isinstance(payload.get("loggedIn"), bool):
+        return payload["loggedIn"]
+    return None
+
+
+def mark_claude_unavailable() -> None:
+    """Disable the Claude CLI path for the rest of the run (e.g. after a
+    failed pre-flight auth check). Mirrors the in-run flip in run_claude_cli."""
+    global _claude_available
+    _claude_available = False
+
+
+def claude_generation_available() -> bool:
+    """Return True while the Claude CLI path is still usable this run."""
+    return _claude_available
+
+
 def _emit(message: str) -> None:
     """Print a message via Rich when available, else plain print."""
     if RICH_AVAILABLE and _console:
@@ -429,7 +508,9 @@ def run_claude_cli(
     API — is billed.
 
     Honors the global ``_claude_available`` skip flag and flips it off when a
-    usage/rate limit is detected, so callers in a loop stop issuing new calls.
+    usage/rate limit or an authentication failure ("Not logged in") is
+    detected, so callers in a loop stop issuing new calls — neither condition
+    can resolve within a single extraction.
 
     Args:
         prompt: The user prompt (sent on stdin).
@@ -439,10 +520,11 @@ def run_claude_cli(
         label: Short noun used in user-facing messages (e.g. "summary", "ETA").
 
     Returns:
-        ``(text, usage_limited)``. ``text`` is the stripped stdout, or ``None`` if
-        the CLI is missing, errored, timed out, was usage-limited, or produced no
-        output. ``usage_limited`` is True only when a usage/rate limit was hit
-        (or was already in effect), signalling callers to stop further calls.
+        ``(text, unavailable)``. ``text`` is the stripped stdout, or ``None`` if
+        the CLI is missing, errored, timed out, was usage-limited, not logged
+        in, or produced no output. ``unavailable`` is True only when a terminal
+        condition was hit (usage/rate limit or auth failure, or one was already
+        in effect), signalling callers to stop further calls.
     """
     global _claude_available, _claude_missing_warned, _last_error_message
 
@@ -502,6 +584,15 @@ def run_claude_cli(
     if proc.returncode != 0:
         error_str = (proc.stderr or proc.stdout or "").strip()
         _last_error_message = error_str[:150]
+        if _is_auth_error(error_str):
+            _claude_available = False
+            _emit(
+                "[red]Claude CLI is not logged in - AI generation will be skipped "
+                "for the rest of this extraction.[/red]\n"
+                "[dim]Fix: run [cyan]claude auth login[/cyan] in a terminal (or "
+                "/login inside Claude Code), then re-run the extractor.[/dim]"
+            )
+            return None, True
         if _is_rate_limit_error(error_str) or "usage limit" in error_str.lower():
             _claude_available = False
             _emit(
