@@ -11,7 +11,7 @@ ClickUp list and writes them into the weekly tracking Google Sheet:
 
 This script does not modify the main extractor workflow (main.py /
 extractor.py); it only imports shared components (API client, auth chain,
-TaskRecord, sorting, logging).
+TaskRecord, sorting, ETA calculation, Claude CLI helpers, logging).
 
 Authentication (each secret, in order):
 1. Environment variable (CLICKUP_API_KEY / GOOGLE_SHEETS_CREDENTIALS_JSON),
@@ -26,12 +26,17 @@ Credentials only ever exist in memory and are never written to disk.
 Notes:
 - ETA dates are converted from ClickUp epoch-ms due dates using UTC (repo
   convention), which can render one day off for late-evening local due times.
+- Tasks without a due date get a calculated ETA: a Claude CLI estimate
+  (OAuth/Max subscription, no API key) when available, else a deterministic
+  priority/status baseline from eta_calculator. Disable the AI pass with
+  --no-ai-eta or KFJ_AI_ETA=0; the baseline still fills the ETA column.
 - A new tab is added each week; old tabs are left untouched and accumulate.
 
 Usage:
     python kfj_task_extractor.py                       # SDK/CLI auth
     op run --env-file=.env.kfj -- python kfj_task_extractor.py  # env injection
     python kfj_task_extractor.py --dry-run
+    python kfj_task_extractor.py --no-ai-eta           # deterministic ETAs only
 """
 
 import argparse
@@ -41,6 +46,7 @@ import logging
 import os
 import subprocess
 import sys
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import date, datetime, timezone
 
 
@@ -159,9 +165,15 @@ except ImportError:
     print("Please install it using: pip install -r requirements.txt")
     sys.exit(1)
 
+from ai_summary import (  # noqa: E402
+    claude_cli_authenticated,
+    claude_cli_available,
+    mark_claude_unavailable,
+)
 from api_client import APIError, AuthenticationError, ClickUpAPIClient  # noqa: E402
 from auth import load_secret_with_fallback, resolve_secret_with_desktop_sdk  # noqa: E402
 from config import TaskRecord, format_datetime, sort_tasks_by_priority_and_eta  # noqa: E402
+from eta_calculator import calculate_eta, calculate_eta_with_source  # noqa: E402
 from logger_config import get_logger, setup_logging  # noqa: E402
 from mappers import LocationMapper  # noqa: E402
 
@@ -203,6 +215,22 @@ GOOGLE_SA_SECRET_REFERENCE = os.environ.get("KFJ_GOOGLE_SA_SECRET_REFERENCE", ""
 # as shown in the 1Password app; the op CLI expects the account URL.
 PERSONAL_ACCOUNT_NAME = os.environ.get("KFJ_OP_ACCOUNT_NAME", "")
 PERSONAL_ACCOUNT_URL = os.environ.get("KFJ_OP_ACCOUNT_URL", "my.1password.com")
+
+# AI ETA estimation for tasks without a due date (Claude CLI, repo-default AI
+# source). Enabled unless KFJ_AI_ETA is a falsy value; --no-ai-eta overrides.
+
+
+def _env_flag(name: str, default: str = "1") -> bool:
+    """Parse a boolean env var: false for 0/false/no/off (any case), else true."""
+    return os.environ.get(name, default).strip().lower() not in (
+        "0",
+        "false",
+        "no",
+        "off",
+    )
+
+
+AI_ETA_DEFAULT = _env_flag("KFJ_AI_ETA")
 
 
 def read_secret_via_op_cli(
@@ -359,6 +387,12 @@ def fetch_open_tasks(client: ClickUpAPIClient, list_id: str) -> list[dict]:
     return tasks
 
 
+def _text_custom_field(custom_fields: dict[str, dict], name: str) -> str:
+    """Return a text custom field's value, or "" when missing or non-string."""
+    value = (custom_fields.get(name) or {}).get("value")
+    return value if isinstance(value, str) else ""
+
+
 def task_to_record(task: dict, company: str) -> TaskRecord:
     """
     Map a raw ClickUp task dict (list endpoint shape) to a TaskRecord.
@@ -405,7 +439,27 @@ def task_to_record(task: dict, company: str) -> TaskRecord:
             branch_field["value"], type_config, options
         )
 
-    return TaskRecord(
+    # Tasks without a (valid) due date get a deterministic priority/status
+    # baseline ETA now; the inputs are stashed in _metadata so apply_ai_etas()
+    # can upgrade the baseline with a Claude estimate before sorting (mirrors
+    # extractor._process_task + _generate_etas_concurrently).
+    eta_inputs = None
+    if not eta:
+        eta_inputs = {
+            "task_name": task.get("name", ""),
+            # PRIORITY_ETA_DAYS keys are capitalized; the list endpoint may
+            # deliver lowercase priority names ("high"), so normalize.
+            "priority": priority.capitalize() if priority else "",
+            "status": status,
+            "description": _text_custom_field(custom_fields, "Description")
+            or task.get("description")
+            or "",
+            "subject": _text_custom_field(custom_fields, "Subject"),
+            "resolution": _text_custom_field(custom_fields, "Resolution"),
+        }
+        eta = calculate_eta(**eta_inputs, enable_ai=False)
+
+    record = TaskRecord(
         Task=task.get("name", ""),
         Company=company,
         Branch=branch,
@@ -413,6 +467,113 @@ def task_to_record(task: dict, company: str) -> TaskRecord:
         Status=status,
         ETA=eta,
     )
+    if eta_inputs is not None:
+        record._metadata["eta_inputs"] = eta_inputs
+    return record
+
+
+def _eta_concurrency(task_count: int) -> int:
+    """Worker count for the AI ETA pass: ``AI_SUMMARY_CONCURRENCY`` (default 4)
+    clamped to ``[1, task_count]`` — the same knob as the main extractor's AI
+    passes, kept conservative to respect the Claude Max subscription limits."""
+    default = 4
+    try:
+        configured = int(os.environ.get("AI_SUMMARY_CONCURRENCY", default))
+    except ValueError:
+        configured = default
+    return max(1, min(configured, task_count))
+
+
+def apply_ai_etas(records: list[TaskRecord]) -> None:
+    """
+    Upgrade the baseline ETAs of due-date-less records with Claude estimates.
+
+    Only records carrying ``eta_inputs`` metadata (stashed by task_to_record
+    for tasks without a due date) are candidates; each already holds a
+    deterministic baseline ETA that is kept whenever the AI estimate fails.
+    Estimates run in a bounded thread pool via the local ``claude`` CLI —
+    the repo-default AI source (OAuth/Max subscription, no API key).
+
+    Pre-flight mirrors main.py (issue #159): when the CLI is missing or
+    confidently logged out, the pass is skipped up front so no doomed
+    subprocess calls are queued. Both checks run only when there is at least
+    one candidate, so due-date-complete runs never shell out.
+    """
+    candidates = [r for r in records if r._metadata.get("eta_inputs")]
+    if not candidates:
+        return
+
+    if not claude_cli_available():
+        console.print(
+            "[yellow]⊘ Claude CLI not found on PATH - keeping deterministic "
+            "baseline ETAs for tasks without a due date.[/yellow]"
+        )
+        return
+    if claude_cli_authenticated() is False:
+        # Confident "logged out"; None means unknown and proceeds as usual.
+        mark_claude_unavailable()
+        console.print(
+            "[yellow]⊘ Claude CLI is not logged in - keeping deterministic "
+            "baseline ETAs for tasks without a due date. Fix: run "
+            "[cyan]claude auth login[/cyan].[/yellow]"
+        )
+        return
+
+    total = len(candidates)
+    workers = _eta_concurrency(total)
+    console.print(
+        f"[green]📅 Estimating ETAs for {total} task(s) without a due date "
+        f"via Claude ({workers} concurrent)...[/green]"
+    )
+
+    def estimate_one(record: TaskRecord) -> tuple[str, bool]:
+        return calculate_eta_with_source(
+            **record._metadata["eta_inputs"], enable_ai=True
+        )
+
+    generated = 0
+    with ThreadPoolExecutor(max_workers=workers) as executor:
+        try:
+            futures = {executor.submit(estimate_one, r): r for r in candidates}
+            for future in as_completed(futures):
+                record = futures[future]
+                try:
+                    eta, used_ai = future.result()
+                except Exception as exc:  # keep the deterministic baseline ETA
+                    logger.warning(
+                        f"AI ETA failed for '{record.Task}': {str(exc)[:80]}"
+                    )
+                    continue
+                record.ETA = eta
+                if used_ai:
+                    generated += 1
+        except BaseException:
+            # Ctrl+C etc.: without cancel_futures the with-block's shutdown
+            # would still run every queued future, spawning fresh `claude`
+            # subprocesses after the user interrupted.
+            executor.shutdown(wait=False, cancel_futures=True)
+            raise
+
+    fallback = total - generated
+    detail = f", {fallback} deterministic fallback(s)" if fallback else ""
+    console.print(
+        f"[green]✓ ETA estimates: {generated} of {total} Claude-generated"
+        f"{detail}.[/green]"
+    )
+
+
+def build_records(
+    raw_tasks: list[dict], company: str, ai_eta: bool
+) -> list[TaskRecord]:
+    """Map raw tasks to sorted records, applying AI ETAs when enabled.
+
+    The AI pass must run before sorting: the sorter orders by ETA within each
+    priority tier, so the sheet must reflect the final dates.
+    """
+    records = [task_to_record(t, company) for t in raw_tasks]
+    if ai_eta:
+        apply_ai_etas(records)
+    return sort_tasks_by_priority_and_eta(records)
 
 
 def record_to_row(record: TaskRecord) -> list[str]:
@@ -479,8 +640,8 @@ def write_to_sheet(gc, sheet_id: str, tab_name: str, rows: list[list[str]]) -> N
     sh.update_title(tab_name)
 
 
-def parse_args() -> argparse.Namespace:
-    """Parse command line arguments."""
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+    """Parse command line arguments (argv defaults to sys.argv, for tests)."""
     parser = argparse.ArgumentParser(
         description="Extract open KFI Jefferson tasks from ClickUp into the weekly Google Sheet"
     )
@@ -501,12 +662,20 @@ def parse_args() -> argparse.Namespace:
         help="Fetch and print rows without touching Google Sheets",
     )
     parser.add_argument(
+        "--no-ai-eta",
+        action="store_true",
+        default=not AI_ETA_DEFAULT,
+        help="Skip Claude AI ETA estimation for tasks without a due date and "
+        "keep the deterministic priority/status ETAs "
+        "(default: AI enabled unless KFJ_AI_ETA=0)",
+    )
+    parser.add_argument(
         "--date",
         default=None,
         metavar="M/D/YY",
         help="Override the date used in the tab name (e.g. 6/10/26)",
     )
-    return parser.parse_args()
+    return parser.parse_args(argv)
 
 
 def main() -> int:
@@ -559,9 +728,7 @@ def main() -> int:
         console.print(f"[red]ClickUp API error: {e}[/red]")
         return 1
 
-    records = sort_tasks_by_priority_and_eta(
-        [task_to_record(t, company) for t in raw_tasks]
-    )
+    records = build_records(raw_tasks, company, ai_eta=not args.no_ai_eta)
     rows = [record_to_row(r) for r in records]
     logger.info(f"Fetched {len(rows)} open task(s) from list '{company}'")
 

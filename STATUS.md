@@ -10,6 +10,8 @@ Python CLI for extracting, processing, and exporting tasks from the ClickUp API.
 
 **2026-07-13 — Claude CLI login-failure incident fixed.** A logged-out `claude` CLI produced 81 repeated "Not logged in" errors and false success reporting in one run; fixed across [#162](https://github.com/J-MaFf/clickup_task_extractor/pull/162) (pre-flight auth check + fail-fast), [#163](https://github.com/J-MaFf/clickup_task_extractor/pull/163) (real generated-vs-fallback counts), and [#164](https://github.com/J-MaFf/clickup_task_extractor/pull/164) (ClickUp field notice scoped to ClickUp/Both sources). All 355 tests pass.
 
+**2026-07-13 — KFJ sheet sync now calculates ETAs.** `kfj_task_extractor.py` previously left the ETA column blank for tasks without a ClickUp due date; [#167](https://github.com/J-MaFf/clickup_task_extractor/pull/167) wires it into the shared `eta_calculator` pipeline (deterministic priority/status baseline + concurrent Claude CLI upgrade pass before sorting, `--no-ai-eta` / `KFJ_AI_ETA=0` opt-out) and hardens `_extract_date_token` with strptime validation for all consumers. 381 tests pass.
+
 **In progress:** `release/v1.06` ([#154](https://github.com/J-MaFf/clickup_task_extractor/issues/154)) — version bump (`version.py` → 1.06, README badge, `CHANGELOG.md` `[1.06]`), then tag `v1.06` on `main`.
 
 ### Components
@@ -24,7 +26,7 @@ Python CLI for extracting, processing, and exporting tasks from the ClickUp API.
 | `ai_summary.py` | AI summaries: Claude CLI path (default, Max OAuth) + Gemini tiered model strategy / quota detection; shared `run_claude_cli` runner |
 | `eta_calculator.py` | ETA estimation: Claude CLI (`get_claude_eta`) + Gemini + deterministic priority/status fallback |
 | `mappers.py` | Prompts, date filters, custom field mapping, image extraction |
-| `kfj_task_extractor.py` | Standalone KFJ weekly Google Sheets sync |
+| `kfj_task_extractor.py` | Standalone KFJ weekly Google Sheets sync (due-date ETAs + calculated ETAs for the rest) |
 | `logger_config.py` | Rich-enhanced logging setup |
 | `.beads/` | Beads (bd) issue tracking — Dolt-backed, syncs via `refs/dolt/data` |
 
@@ -57,6 +59,8 @@ Python CLI for extracting, processing, and exporting tasks from the ClickUp API.
 ### Open Issues
 
 - [#154](https://github.com/J-MaFf/clickup_task_extractor/issues/154) — Release v1.06 (in review on `release/v1.06`)
+- [#165](https://github.com/J-MaFf/clickup_task_extractor/issues/165) — KFJ sheet sync ETA calculation (in review on [#167](https://github.com/J-MaFf/clickup_task_extractor/pull/167))
+- Beads follow-ups from the #165 review: `54p` (extractor Ctrl+C cancel_futures), `07s` (Claude CLI timeout kill-switch), `28q` (Gemini ETA token validation)
 
 ## Natural Next Steps
 

@@ -167,13 +167,23 @@ Each prompt provides clear options and defaults, making it easy to configure the
 `kfj_task_extractor.py` is a standalone helper that pulls all open tasks from the
 ClickUp **KFI Jefferson** list and writes them into the weekly tracking Google
 Sheet. It reuses the main extractor's components (API client, sorting, branch
-mapping) but runs independently — the standard `main.py` workflow is untouched.
+mapping, ETA calculation) but runs independently — the standard `main.py`
+workflow is untouched.
 
 Each run creates a new tab named `KFI Jefferson current tasks (M/D/YY)` (today's
 date, no leading zeros), writes the header and task rows
 (`Task | Company | Branch | Priority | Status | ETA`) sorted by priority then
 ETA, and renames the workbook title to match. Re-running on the same day is
 idempotent — the existing tab's contents are replaced rather than duplicated.
+
+**ETA column:** tasks with a ClickUp due date use that date. Tasks without one
+get a **calculated ETA**: by default the local `claude` CLI (Claude Code
+OAuth/Max subscription, no API key) estimates a realistic date from the task's
+name, priority, status, and custom fields, in a bounded concurrent pass
+(`AI_SUMMARY_CONCURRENCY`, default 4). When the CLI is missing, logged out, or
+usage-limited — or with `--no-ai-eta` / `KFJ_AI_ETA=0` — a deterministic
+priority/status baseline is used instead (Urgent +1d, High +3d, Normal +7d,
+Low +14d, halved for in-progress work), so the ETA column is never blank.
 
 ### Configuration
 
@@ -199,6 +209,8 @@ variables (see `.env.kfj.example` for the full list):
 | `KFJ_GOOGLE_SHEET_ID` | Google Sheets workbook ID to write to (also `--sheet-id`) | Yes (unless `--dry-run`) |
 | `KFJ_TAB_PREFIX` | Worksheet tab name prefix | No (default `KFI Jefferson current tasks`) |
 | `KFJ_FALLBACK_BRANCH` | Branch label when a task has no Branch field | No |
+| `KFJ_AI_ETA` | Set `0` to skip Claude ETA estimation (deterministic baselines only) | No (default `1`) |
+| `AI_SUMMARY_CONCURRENCY` | Worker count for the AI ETA pass (shared with `main.py`) | No (default `4`) |
 | `CLICKUP_API_KEY` | ClickUp API key (resolved before 1Password) | Provide this or a 1Password reference |
 | `GOOGLE_SHEETS_CREDENTIALS_JSON` | Google service-account JSON (single line) | Provide this or a 1Password reference |
 | `KFJ_CLICKUP_SECRET_REFERENCE` | `op://` reference for the ClickUp key | No (skips 1Password if empty) |
@@ -228,6 +240,7 @@ op run --account my.1password.com --env-file=.env.kfj -- python kfj_task_extract
 | `--list-id` | ClickUp list ID to extract from | `KFJ_CLICKUP_LIST_ID` env var |
 | `--sheet-id` | Google Sheets workbook ID to write to | `KFJ_GOOGLE_SHEET_ID` env var |
 | `--dry-run` | Fetch and print rows without writing to Sheets | `False` |
+| `--no-ai-eta` | Skip Claude ETA estimation; keep deterministic baselines | AI enabled unless `KFJ_AI_ETA=0` |
 | `--date M/D/YY` | Override the date used in the tab name (for backfill) | Today |
 
 **Authentication:** ClickUp uses `CLICKUP_API_KEY` from the environment first,

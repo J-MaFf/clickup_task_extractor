@@ -235,14 +235,36 @@ Respond with ONLY a date in MM/DD/YYYY format, nothing else. Do not include any 
 
 
 def _extract_date_token(text: str) -> str | None:
-    """Pull an MM/DD/YYYY-looking token out of free text, else None."""
+    """Pull a validated M/D/YYYY date out of free text, else None.
+
+    Every candidate token is strptime-validated before being returned, so a
+    caller never receives a value the sorter (config.parse_eta) and the sheet
+    can't parse as a date — a model reply like ``"12/25/2026."`` (trailing
+    punctuation) is salvaged, ``"12/25/26"`` (2-digit year) is normalized to
+    four digits, and anything unparseable is rejected rather than passed
+    through to overwrite a valid deterministic baseline.
+    """
     if not text:
         return None
-    for part in text.split():
-        if "/" in part and any(ch.isdigit() for ch in part):
-            return part.strip()
-    if "/" in text and any(ch.isdigit() for ch in text):
-        return text.strip()
+    candidates = [
+        part for part in text.split() if "/" in part and any(ch.isdigit() for ch in part)
+    ]
+    if not candidates and "/" in text and any(ch.isdigit() for ch in text):
+        candidates = [text.strip()]
+    for raw in candidates:
+        token = raw.strip().strip(".,;:!?()[]{}'\"")
+        try:
+            datetime.strptime(token, "%m/%d/%Y")
+            return token
+        except ValueError:
+            pass
+        try:
+            parsed = datetime.strptime(token, "%m/%d/%y")
+        except ValueError:
+            continue
+        from config import format_datetime
+
+        return format_datetime(parsed, "%m/%d/%Y")
     return None
 
 

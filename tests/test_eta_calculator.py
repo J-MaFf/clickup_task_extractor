@@ -249,6 +249,27 @@ class ClaudeETATests(unittest.TestCase):
         with patch("eta_calculator.run_claude_cli", return_value=("soon-ish", False)):
             self.assertIsNone(get_claude_eta("Task", "Low", "to do"))
 
+    def test_get_claude_eta_strips_trailing_punctuation(self) -> None:
+        with patch(
+            "eta_calculator.run_claude_cli", return_value=("12/25/2026.", False)
+        ):
+            self.assertEqual(get_claude_eta("Task", "High", "to do"), "12/25/2026")
+
+    def test_get_claude_eta_normalizes_two_digit_year(self) -> None:
+        with patch(
+            "eta_calculator.run_claude_cli", return_value=("12/25/26", False)
+        ):
+            self.assertEqual(get_claude_eta("Task", "High", "to do"), "12/25/2026")
+
+    def test_get_claude_eta_rejects_non_date_slash_token(self) -> None:
+        # "1/2" passed the old '/'+digit heuristic; it must not overwrite a
+        # valid deterministic baseline downstream, so it is rejected here.
+        with patch(
+            "eta_calculator.run_claude_cli",
+            return_value=("around 1/2 of the sprint", False),
+        ):
+            self.assertIsNone(get_claude_eta("Task", "High", "to do"))
+
     def test_get_claude_eta_none_when_cli_unavailable(self) -> None:
         with patch("eta_calculator.run_claude_cli", return_value=(None, False)):
             self.assertIsNone(get_claude_eta("Task", "Normal", "to do"))
