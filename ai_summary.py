@@ -14,6 +14,7 @@ import os
 import shutil
 import subprocess
 import tempfile
+import threading
 import time
 from typing import Callable, Mapping, Sequence, TypeAlias
 
@@ -83,8 +84,12 @@ _last_error_message = ""
 # Global state for the Claude CLI path. Once a usage/rate limit is hit we stop
 # calling the CLI for the rest of the run (mirrors Gemini's _api_available),
 # since the Max subscription limit won't clear within a single extraction.
+# The lock makes the flag flip + one-time message atomic across the concurrent
+# summary/ETA workers (several may already be past the entry gate when the
+# first failure lands).
 _claude_available = True
 _claude_missing_warned = False
+_claude_state_lock = threading.Lock()
 
 # Google GenAI SDK imports (google.genai)
 try:
@@ -425,6 +430,21 @@ def claude_cli_available() -> bool:
     return shutil.which("claude") is not None
 
 
+def _subscription_env() -> dict[str, str]:
+    """Environment for `claude` subprocesses with the API-key vars scrubbed.
+
+    Forces OAuth/subscription auth (no-op when the vars are absent). Used by
+    both the generation calls and the auth-status probe so the probe reports
+    the same auth state the generation calls will actually run under — an
+    exported ANTHROPIC_API_KEY must not mask a logged-out OAuth state.
+    """
+    return {
+        k: v
+        for k, v in os.environ.items()
+        if k not in ("ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN")
+    }
+
+
 def claude_cli_authenticated(timeout: int = 15) -> bool | None:
     """
     Probe ``claude auth status`` for the CLI's login state.
@@ -451,6 +471,7 @@ def claude_cli_authenticated(timeout: int = 15) -> bool | None:
             errors="replace",
             timeout=timeout,
             cwd=tempfile.gettempdir(),
+            env=_subscription_env(),
         )
     except (subprocess.TimeoutExpired, OSError):
         return None
@@ -465,11 +486,22 @@ def claude_cli_authenticated(timeout: int = 15) -> bool | None:
     return None
 
 
+def _disable_claude_once() -> bool:
+    """Atomically disable the Claude CLI path; True only for the caller that
+    performed the flip. Several concurrent workers can be past run_claude_cli's
+    entry gate when the first terminal failure lands — only the first one
+    should print the run-wide message."""
+    global _claude_available
+    with _claude_state_lock:
+        was_available = _claude_available
+        _claude_available = False
+    return was_available
+
+
 def mark_claude_unavailable() -> None:
     """Disable the Claude CLI path for the rest of the run (e.g. after a
     failed pre-flight auth check). Mirrors the in-run flip in run_claude_cli."""
-    global _claude_available
-    _claude_available = False
+    _disable_claude_once()
 
 
 def claude_generation_available() -> bool:
@@ -554,11 +586,7 @@ def run_claude_cli(
     ]
 
     # Force OAuth/subscription auth: scrub API-key env vars (no-op when absent).
-    child_env = {
-        k: v
-        for k, v in os.environ.items()
-        if k not in ("ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN")
-    }
+    child_env = _subscription_env()
 
     try:
         proc = subprocess.run(
@@ -585,20 +613,20 @@ def run_claude_cli(
         error_str = (proc.stderr or proc.stdout or "").strip()
         _last_error_message = error_str[:150]
         if _is_auth_error(error_str):
-            _claude_available = False
-            _emit(
-                "[red]Claude CLI is not logged in - AI generation will be skipped "
-                "for the rest of this extraction.[/red]\n"
-                "[dim]Fix: run [cyan]claude auth login[/cyan] in a terminal (or "
-                "/login inside Claude Code), then re-run the extractor.[/dim]"
-            )
+            if _disable_claude_once():
+                _emit(
+                    "[red]Claude CLI is not logged in - AI generation will be skipped "
+                    "for the rest of this extraction.[/red]\n"
+                    "[dim]Fix: run [cyan]claude auth login[/cyan] in a terminal (or "
+                    "/login inside Claude Code), then re-run the extractor.[/dim]"
+                )
             return None, True
         if _is_rate_limit_error(error_str) or "usage limit" in error_str.lower():
-            _claude_available = False
-            _emit(
-                "[red]Claude usage limit reached - AI generation will be skipped for "
-                "the rest of this extraction.[/red]"
-            )
+            if _disable_claude_once():
+                _emit(
+                    "[red]Claude usage limit reached - AI generation will be skipped "
+                    "for the rest of this extraction.[/red]"
+                )
             return None, True
         _emit(f"❌ [red]Claude CLI error: {error_str[:100]}[/red]")
         return None, False
