@@ -207,24 +207,16 @@ Respond with ONLY a date in MM/DD/YYYY format, nothing else. Do not include any 
         response = model.generate_content(prompt, generation_config=config)
 
         if response and hasattr(response, "text") and response.text:
-            # Extract date from response
+            # Shared validated extraction (same as the Claude path): salvages
+            # stray punctuation / 2-digit years, rejects unparseable tokens so
+            # the caller falls back instead of exporting an unsortable string.
             eta_text = response.text.strip()
-
-            # Try to validate it's a date format
-            # Simple validation: should contain / and numbers
-            if "/" in eta_text and any(c.isdigit() for c in eta_text):
-                # Take only the date part if there's additional text
-                date_parts = eta_text.split()
-                for part in date_parts:
-                    if "/" in part:
-                        return part
-                return eta_text
-            else:
-                if RICH_AVAILABLE and _console:
-                    _console.print(
-                        f"[yellow]⚠️ AI returned invalid date format: {eta_text}[/yellow]"
-                    )
-                return None
+            eta = _extract_date_token(eta_text)
+            if eta is None and RICH_AVAILABLE and _console:
+                _console.print(
+                    f"[yellow]⚠️ AI returned invalid date format: {eta_text[:60]}[/yellow]"
+                )
+            return eta
         else:
             return None
 

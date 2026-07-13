@@ -58,11 +58,11 @@ Python CLI for extracting, processing, and exporting tasks from the ClickUp API.
 | [#165](https://github.com/J-MaFf/clickup_task_extractor/issues/165) | KFJ sheet sync: calculate ETAs for due-date-less tasks | [#167](https://github.com/J-MaFf/clickup_task_extractor/pull/167) |
 | [#168](https://github.com/J-MaFf/clickup_task_extractor/issues/168) | Ctrl+C cancels queued futures in the concurrent AI passes | [#169](https://github.com/J-MaFf/clickup_task_extractor/pull/169) |
 | [#170](https://github.com/J-MaFf/clickup_task_extractor/issues/170) | Claude CLI timeout kill-switch (3 strikes disables the path) | [#171](https://github.com/J-MaFf/clickup_task_extractor/pull/171) |
+| [#172](https://github.com/J-MaFf/clickup_task_extractor/issues/172) | Gemini ETA path uses the validated date extraction | [#173](https://github.com/J-MaFf/clickup_task_extractor/pull/173) |
 
 ### Open Issues
 
 - [#154](https://github.com/J-MaFf/clickup_task_extractor/issues/154) — Release v1.06 (in review on `release/v1.06`)
-- Beads follow-ups from the #165 review: `28q` (Gemini ETA token validation) — in progress this session
 
 ## Natural Next Steps
 

@@ -225,6 +225,52 @@ class ETACalculatorIntegrationTests(unittest.TestCase):
         expected_date = datetime.now() + timedelta(days=3)
         self.assertEqual(eta_date.date(), expected_date.date())
 
+    def _gemini_eta_for_response(
+        self, mock_configure, mock_model_class, mock_types, response_text: str
+    ) -> str:
+        """Run calculate_eta on the Gemini source with a canned model reply."""
+        mock_response = MagicMock()
+        mock_response.text = response_text
+        mock_model = MagicMock()
+        mock_model.generate_content.return_value = mock_response
+        mock_model_class.return_value = mock_model
+        mock_types.GenerationConfig = MagicMock()
+        return calculate_eta(
+            task_name="Test Task",
+            priority="High",
+            status="to do",
+            gemini_api_key="valid_key",
+            enable_ai=True,
+            ai_source=AISource.GEMINI,
+        )
+
+    @patch("eta_calculator.types")
+    @patch("eta_calculator.GenerativeModel")
+    @patch("eta_calculator.configure")
+    def test_gemini_eta_salvages_trailing_punctuation(
+        self, mock_configure: MagicMock, mock_model_class: MagicMock, mock_types: MagicMock
+    ) -> None:
+        """The Gemini path shares the validated extraction (issue #172)."""
+        eta = self._gemini_eta_for_response(
+            mock_configure, mock_model_class, mock_types, "12/25/2026."
+        )
+        self.assertEqual(eta, "12/25/2026")
+
+    @patch("eta_calculator.types")
+    @patch("eta_calculator.GenerativeModel")
+    @patch("eta_calculator.configure")
+    def test_gemini_eta_rejects_prose_slash_token(
+        self, mock_configure: MagicMock, mock_model_class: MagicMock, mock_types: MagicMock
+    ) -> None:
+        """A prose token like '1/2' must not leak out as an ETA (issue #172)."""
+        eta = self._gemini_eta_for_response(
+            mock_configure, mock_model_class, mock_types, "around 1/2 of the sprint"
+        )
+        # Falls back to the deterministic High-priority date instead.
+        eta_date = datetime.strptime(eta, "%m/%d/%Y")
+        expected_date = datetime.now() + timedelta(days=3)
+        self.assertEqual(eta_date.date(), expected_date.date())
+
 
 class ClaudeETATests(unittest.TestCase):
     """Tests for the Claude CLI ETA path."""
