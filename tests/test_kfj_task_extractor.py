@@ -2,8 +2,9 @@
 Unit tests for kfj_task_extractor.
 
 Covers task->record mapping, row normalization, tab naming, pagination and
-closed-task filtering, sorting integration with date-only ETAs, and the
-.env.kfj loader. No network or Google Sheets calls are made.
+closed-task filtering, sorting integration with date-only ETAs, ETA
+calculation for due-date-less tasks (baseline + AI pass), and the .env.kfj
+loader. No network, Google Sheets, or Claude CLI calls are made.
 """
 
 import os
@@ -12,11 +13,13 @@ import unittest
 from datetime import date
 from unittest import mock
 
-from config import sort_tasks_by_priority_and_eta
+from config import TaskRecord, sort_tasks_by_priority_and_eta
 from kfj_task_extractor import (
     FALLBACK_BRANCH,
     HEADER,
+    _eta_concurrency,
     _load_dotenv,
+    apply_ai_etas,
     build_tab_name,
     fetch_open_tasks,
     load_google_credentials_json,
@@ -82,13 +85,24 @@ class TestTaskToRecord(unittest.TestCase):
         record = task_to_record(make_task(due_date="1777982400000"), "KFI Jefferson")
         self.assertEqual(record.ETA, "5/5/2026")
 
-    def test_missing_due_date_gives_empty_eta(self):
-        record = task_to_record(make_task(due_date=None), "KFI Jefferson")
-        self.assertEqual(record.ETA, "")
+    def test_missing_due_date_gets_baseline_eta(self):
+        with mock.patch(
+            "kfj_task_extractor.calculate_eta", return_value="7/20/2026"
+        ) as calc:
+            record = task_to_record(make_task(due_date=None), "KFI Jefferson")
+        self.assertEqual(record.ETA, "7/20/2026")
+        calc.assert_called_once()
+        self.assertIn("eta_inputs", record._metadata)
 
-    def test_invalid_due_date_gives_empty_eta(self):
-        record = task_to_record(make_task(due_date="not-a-number"), "KFI Jefferson")
-        self.assertEqual(record.ETA, "")
+    def test_invalid_due_date_gets_baseline_eta(self):
+        with mock.patch(
+            "kfj_task_extractor.calculate_eta", return_value="7/20/2026"
+        ):
+            record = task_to_record(
+                make_task(due_date="not-a-number"), "KFI Jefferson"
+            )
+        self.assertEqual(record.ETA, "7/20/2026")
+        self.assertIn("eta_inputs", record._metadata)
 
     def test_branch_dropdown_resolved_by_option_id(self):
         branch_field = {
@@ -235,41 +249,276 @@ class TestSortingIntegration(unittest.TestCase):
     """Date-only ETAs sort correctly through the shared sorter."""
 
     def test_priority_then_eta(self):
-        records = [
-            task_to_record(
-                make_task(
-                    name="Normal later",
-                    priority={"priority": 2},
-                    due_date="1778414400000",  # 5/10/2026
+        # The baseline calculation is stubbed to "" so the no-due-date record
+        # keeps exercising the sorter's missing-ETA branch deterministically.
+        with mock.patch("kfj_task_extractor.calculate_eta", return_value=""):
+            records = [
+                task_to_record(
+                    make_task(
+                        name="Normal later",
+                        priority={"priority": 2},
+                        due_date="1778414400000",  # 5/10/2026
+                    ),
+                    "KFI Jefferson",
                 ),
-                "KFI Jefferson",
-            ),
-            task_to_record(
-                make_task(
-                    name="High",
-                    priority={"priority": 3},
-                    due_date="1777982400000",  # 5/5/2026
+                task_to_record(
+                    make_task(
+                        name="High",
+                        priority={"priority": 3},
+                        due_date="1777982400000",  # 5/5/2026
+                    ),
+                    "KFI Jefferson",
                 ),
-                "KFI Jefferson",
-            ),
-            task_to_record(
-                make_task(
-                    name="Normal sooner",
-                    priority={"priority": 2},
-                    due_date="1777982400000",  # 5/5/2026
+                task_to_record(
+                    make_task(
+                        name="Normal sooner",
+                        priority={"priority": 2},
+                        due_date="1777982400000",  # 5/5/2026
+                    ),
+                    "KFI Jefferson",
                 ),
-                "KFI Jefferson",
-            ),
-            task_to_record(
-                make_task(name="Normal no ETA", priority={"priority": 2}),
-                "KFI Jefferson",
-            ),
-        ]
+                task_to_record(
+                    make_task(name="Normal no ETA", priority={"priority": 2}),
+                    "KFI Jefferson",
+                ),
+            ]
         sorted_records = sort_tasks_by_priority_and_eta(records)
         self.assertEqual(
             [r.Task for r in sorted_records],
             ["High", "Normal sooner", "Normal later", "Normal no ETA"],
         )
+
+
+def _record_with_eta_inputs(name: str, eta: str = "7/20/2026") -> TaskRecord:
+    """Build a record carrying eta_inputs metadata, like a due-date-less task."""
+    record = TaskRecord(
+        Task=name,
+        Company="KFI Jefferson",
+        Branch="",
+        Priority="Normal",
+        Status="to do",
+        ETA=eta,
+    )
+    record._metadata["eta_inputs"] = {
+        "task_name": name,
+        "priority": "Normal",
+        "status": "to do",
+        "description": "",
+        "subject": "",
+        "resolution": "",
+    }
+    return record
+
+
+class TestEtaInputs(unittest.TestCase):
+    """eta_inputs metadata carries the right AI context (issue #165)."""
+
+    def test_due_date_task_has_no_eta_inputs(self):
+        record = task_to_record(
+            make_task(due_date="1777982400000"), "KFI Jefferson"
+        )
+        self.assertNotIn("eta_inputs", record._metadata)
+
+    def test_eta_inputs_content_and_baseline_call(self):
+        fields = [
+            {"name": "Subject", "value": "Printer offline"},
+            {"name": "Description", "value": "Custom description"},
+            {"name": "Resolution", "value": "Pending parts"},
+        ]
+        with mock.patch(
+            "kfj_task_extractor.calculate_eta", return_value="7/20/2026"
+        ) as calc:
+            record = task_to_record(
+                make_task(
+                    name="Fix printer",
+                    priority={"priority": "high"},
+                    status={"status": "in progress", "type": "custom"},
+                    custom_fields=fields,
+                    description="Native description",
+                ),
+                "KFI Jefferson",
+            )
+        inputs = record._metadata["eta_inputs"]
+        self.assertEqual(inputs["task_name"], "Fix printer")
+        # Capitalized to match eta_calculator.PRIORITY_ETA_DAYS keys.
+        self.assertEqual(inputs["priority"], "High")
+        self.assertEqual(inputs["status"], "in progress")
+        self.assertEqual(inputs["description"], "Custom description")
+        self.assertEqual(inputs["subject"], "Printer offline")
+        self.assertEqual(inputs["resolution"], "Pending parts")
+        calc.assert_called_once_with(**inputs, enable_ai=False)
+
+    def test_description_falls_back_to_native_description(self):
+        with mock.patch("kfj_task_extractor.calculate_eta", return_value="x"):
+            record = task_to_record(
+                make_task(description="Native description"), "KFI Jefferson"
+            )
+        self.assertEqual(
+            record._metadata["eta_inputs"]["description"], "Native description"
+        )
+
+    def test_unmocked_baseline_is_a_date(self):
+        # The real deterministic fallback must produce M/D/YYYY, never blank.
+        record = task_to_record(make_task(due_date=None), "KFI Jefferson")
+        self.assertRegex(record.ETA, r"^\d{1,2}/\d{1,2}/\d{4}$")
+
+
+class TestApplyAiEtas(unittest.TestCase):
+    """The concurrent AI ETA pass (apply_ai_etas) and its pre-flight."""
+
+    def _cli_ready(self):
+        return (
+            mock.patch(
+                "kfj_task_extractor.claude_cli_available", return_value=True
+            ),
+            mock.patch(
+                "kfj_task_extractor.claude_cli_authenticated", return_value=True
+            ),
+        )
+
+    def test_upgrades_candidates_and_skips_due_date_records(self):
+        candidate = _record_with_eta_inputs("A")
+        with_due = TaskRecord(
+            Task="B",
+            Company="KFI Jefferson",
+            Branch="",
+            Priority="Normal",
+            Status="to do",
+            ETA="5/5/2026",
+        )
+        available, authenticated = self._cli_ready()
+        with (
+            available,
+            authenticated,
+            mock.patch(
+                "kfj_task_extractor.calculate_eta_with_source",
+                return_value=("12/25/2026", True),
+            ) as calc,
+        ):
+            apply_ai_etas([candidate, with_due])
+        self.assertEqual(candidate.ETA, "12/25/2026")
+        self.assertEqual(with_due.ETA, "5/5/2026")
+        calc.assert_called_once_with(
+            **candidate._metadata["eta_inputs"], enable_ai=True
+        )
+
+    def test_no_candidates_skips_preflight(self):
+        with_due = TaskRecord(
+            Task="B",
+            Company="KFI Jefferson",
+            Branch="",
+            Priority="Normal",
+            Status="to do",
+            ETA="5/5/2026",
+        )
+        with mock.patch("kfj_task_extractor.claude_cli_available") as available:
+            apply_ai_etas([with_due])
+        available.assert_not_called()
+
+    def test_cli_missing_keeps_baselines(self):
+        candidate = _record_with_eta_inputs("A")
+        with (
+            mock.patch(
+                "kfj_task_extractor.claude_cli_available", return_value=False
+            ),
+            mock.patch("kfj_task_extractor.calculate_eta_with_source") as calc,
+        ):
+            apply_ai_etas([candidate])
+        self.assertEqual(candidate.ETA, "7/20/2026")
+        calc.assert_not_called()
+
+    def test_logged_out_marks_unavailable_and_keeps_baselines(self):
+        candidate = _record_with_eta_inputs("A")
+        with (
+            mock.patch(
+                "kfj_task_extractor.claude_cli_available", return_value=True
+            ),
+            mock.patch(
+                "kfj_task_extractor.claude_cli_authenticated", return_value=False
+            ),
+            mock.patch("kfj_task_extractor.mark_claude_unavailable") as marker,
+            mock.patch("kfj_task_extractor.calculate_eta_with_source") as calc,
+        ):
+            apply_ai_etas([candidate])
+        marker.assert_called_once()
+        calc.assert_not_called()
+        self.assertEqual(candidate.ETA, "7/20/2026")
+
+    def test_unknown_auth_state_proceeds(self):
+        # claude_cli_authenticated() -> None means "unknown" and must not skip.
+        candidate = _record_with_eta_inputs("A")
+        with (
+            mock.patch(
+                "kfj_task_extractor.claude_cli_available", return_value=True
+            ),
+            mock.patch(
+                "kfj_task_extractor.claude_cli_authenticated", return_value=None
+            ),
+            mock.patch(
+                "kfj_task_extractor.calculate_eta_with_source",
+                return_value=("12/25/2026", True),
+            ),
+        ):
+            apply_ai_etas([candidate])
+        self.assertEqual(candidate.ETA, "12/25/2026")
+
+    def test_exception_keeps_baseline_for_that_record_only(self):
+        rec_ok = _record_with_eta_inputs("OK")
+        rec_bad = _record_with_eta_inputs("BAD")
+
+        def side_effect(**kwargs):
+            if kwargs["task_name"] == "BAD":
+                raise RuntimeError("boom")
+            return ("12/25/2026", True)
+
+        available, authenticated = self._cli_ready()
+        with (
+            available,
+            authenticated,
+            mock.patch(
+                "kfj_task_extractor.calculate_eta_with_source",
+                side_effect=side_effect,
+            ),
+        ):
+            apply_ai_etas([rec_ok, rec_bad])
+        self.assertEqual(rec_ok.ETA, "12/25/2026")
+        self.assertEqual(rec_bad.ETA, "7/20/2026")
+
+    def test_deterministic_result_still_applied(self):
+        # (eta, used_ai=False) — the in-call deterministic fallback is applied.
+        candidate = _record_with_eta_inputs("A")
+        available, authenticated = self._cli_ready()
+        with (
+            available,
+            authenticated,
+            mock.patch(
+                "kfj_task_extractor.calculate_eta_with_source",
+                return_value=("8/1/2026", False),
+            ),
+        ):
+            apply_ai_etas([candidate])
+        self.assertEqual(candidate.ETA, "8/1/2026")
+
+
+class TestEtaConcurrency(unittest.TestCase):
+    """Worker-count resolution for the AI ETA pass."""
+
+    def test_default_clamped_to_task_count(self):
+        with mock.patch.dict(os.environ, {}, clear=True):
+            self.assertEqual(_eta_concurrency(2), 2)
+            self.assertEqual(_eta_concurrency(10), 4)
+
+    def test_env_override(self):
+        with mock.patch.dict(os.environ, {"AI_SUMMARY_CONCURRENCY": "8"}):
+            self.assertEqual(_eta_concurrency(10), 8)
+
+    def test_invalid_env_uses_default(self):
+        with mock.patch.dict(os.environ, {"AI_SUMMARY_CONCURRENCY": "lots"}):
+            self.assertEqual(_eta_concurrency(10), 4)
+
+    def test_minimum_one_worker(self):
+        with mock.patch.dict(os.environ, {"AI_SUMMARY_CONCURRENCY": "0"}):
+            self.assertEqual(_eta_concurrency(10), 1)
 
 
 class TestCredentialResolution(unittest.TestCase):
