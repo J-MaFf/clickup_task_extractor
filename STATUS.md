@@ -55,12 +55,13 @@ Python CLI for extracting, processing, and exporting tasks from the ClickUp API.
 | [#159](https://github.com/J-MaFf/clickup_task_extractor/issues/159) | Claude CLI "Not logged in" fail-fast + pre-flight auth check | [#162](https://github.com/J-MaFf/clickup_task_extractor/pull/162) |
 | [#160](https://github.com/J-MaFf/clickup_task_extractor/issues/160) | Report real generated-vs-fallback counts in AI passes | [#163](https://github.com/J-MaFf/clickup_task_extractor/pull/163) |
 | [#161](https://github.com/J-MaFf/clickup_task_extractor/issues/161) | Limit ClickUp Summary empty-field notice to ClickUp/Both | [#164](https://github.com/J-MaFf/clickup_task_extractor/pull/164) |
+| [#165](https://github.com/J-MaFf/clickup_task_extractor/issues/165) | KFJ sheet sync: calculate ETAs for due-date-less tasks | [#167](https://github.com/J-MaFf/clickup_task_extractor/pull/167) |
+| [#168](https://github.com/J-MaFf/clickup_task_extractor/issues/168) | Ctrl+C cancels queued futures in the concurrent AI passes | [#169](https://github.com/J-MaFf/clickup_task_extractor/pull/169) |
 
 ### Open Issues
 
 - [#154](https://github.com/J-MaFf/clickup_task_extractor/issues/154) — Release v1.06 (in review on `release/v1.06`)
-- [#165](https://github.com/J-MaFf/clickup_task_extractor/issues/165) — KFJ sheet sync ETA calculation (in review on [#167](https://github.com/J-MaFf/clickup_task_extractor/pull/167))
-- Beads follow-ups from the #165 review: `54p` (extractor Ctrl+C cancel_futures), `07s` (Claude CLI timeout kill-switch), `28q` (Gemini ETA token validation)
+- Beads follow-ups from the #165 review: `07s` (Claude CLI timeout kill-switch), `28q` (Gemini ETA token validation) — in progress this session
 
 ## Natural Next Steps
 

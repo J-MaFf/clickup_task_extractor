@@ -8,6 +8,7 @@ concurrency clamping, the ClickUp-only no-op, and that a mid-run provider
 usage-limit short-circuits remaining calls.
 """
 
+import time
 import unittest
 from unittest.mock import patch
 
@@ -277,6 +278,68 @@ class ETAConcurrencyTests(unittest.TestCase):
         ):
             extractor._generate_etas_concurrently(tasks)
         mock_eta.assert_not_called()
+
+
+class InterruptCancellationTests(unittest.TestCase):
+    """Ctrl+C during a concurrent pass cancels the queued futures instead of
+    running every remaining Claude call after the interrupt (issue #168)."""
+
+    def setUp(self) -> None:
+        ai_summary._reset_claude_state()
+        ai_summary._reset_api_state()
+
+    def tearDown(self) -> None:
+        ai_summary._reset_claude_state()
+        ai_summary._reset_api_state()
+
+    def test_summary_pass_cancels_queued_futures_on_interrupt(self) -> None:
+        extractor = ClickUpTaskExtractor(_config(AISource.CLAUDE), _DummyAPIClient())
+        records = [_make_record(f"Task {i}") for i in range(8)]
+        calls: list[str] = []
+
+        def fake_claude(task_name, fields, progress_pause_callback=None):
+            calls.append(task_name)
+            if task_name == "Task 0":
+                raise KeyboardInterrupt
+            # Hold the single worker briefly so the main thread's cancel lands
+            # before the worker can dequeue more of the queue.
+            time.sleep(0.2)
+            return f"summary::{task_name}"
+
+        with patch("extractor.get_claude_summary", side_effect=fake_claude), patch(
+            "extractor.console"
+        ), patch.dict("os.environ", {"AI_SUMMARY_CONCURRENCY": "1"}, clear=False):
+            with self.assertRaises(KeyboardInterrupt):
+                extractor._generate_summaries_concurrently(records)
+
+        # With one worker only the in-flight follow-up may still have started;
+        # the queued remainder must be cancelled (pre-fix: all 8 ran).
+        self.assertLessEqual(len(calls), 2)
+
+    def test_eta_pass_cancels_queued_futures_on_interrupt(self) -> None:
+        extractor = ClickUpTaskExtractor(_config(AISource.CLAUDE), _DummyAPIClient())
+        tasks = [_make_eta_record(f"Task {i}") for i in range(8)]
+        calls: list[str] = []
+
+        def fake_eta(**kwargs):
+            calls.append(kwargs["task_name"])
+            if kwargs["task_name"] == "Task 0":
+                raise KeyboardInterrupt
+            time.sleep(0.2)
+            return ("12/31/2026", True)
+
+        with patch(
+            "extractor.calculate_eta_with_source", side_effect=fake_eta
+        ), patch("extractor.console"), patch.dict(
+            "os.environ", {"AI_SUMMARY_CONCURRENCY": "1"}, clear=False
+        ):
+            with self.assertRaises(KeyboardInterrupt):
+                extractor._generate_etas_concurrently(tasks)
+
+        self.assertLessEqual(len(calls), 2)
+        # Baselines stay untouched for tasks whose AI ETA never ran.
+        for task in tasks[2:]:
+            self.assertEqual(task.ETA, "01/01/2026")
 
 
 def _console_text(mock_console) -> str:
