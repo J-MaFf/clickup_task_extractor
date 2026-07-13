@@ -24,6 +24,67 @@ def _completed(returncode=0, stdout="", stderr=""):
     return proc
 
 
+class TimeoutKillSwitchTests(unittest.TestCase):
+    """Consecutive CLI timeouts disable the Claude path for the run
+    (issue #170), mirroring the usage-limit behavior."""
+
+    def setUp(self) -> None:
+        ai_summary._reset_claude_state()
+
+    def tearDown(self) -> None:
+        ai_summary._reset_claude_state()
+
+    @staticmethod
+    def _timeout_patch():
+        return patch(
+            "ai_summary.subprocess.run",
+            side_effect=subprocess.TimeoutExpired(cmd="claude", timeout=120),
+        )
+
+    def test_below_threshold_keeps_claude_available(self) -> None:
+        with patch(
+            "ai_summary.shutil.which", return_value="/usr/bin/claude"
+        ), self._timeout_patch():
+            for _ in range(ai_summary._CLAUDE_TIMEOUT_STRIKES - 1):
+                text, unavailable = ai_summary.run_claude_cli("p", "s")
+                self.assertIsNone(text)
+                self.assertFalse(unavailable)
+        self.assertTrue(ai_summary._claude_available)
+
+    def test_nth_consecutive_timeout_disables_claude(self) -> None:
+        with patch(
+            "ai_summary.shutil.which", return_value="/usr/bin/claude"
+        ), self._timeout_patch():
+            for _ in range(ai_summary._CLAUDE_TIMEOUT_STRIKES):
+                text, unavailable = ai_summary.run_claude_cli("p", "s")
+        self.assertFalse(ai_summary._claude_available)
+        # The disabling call reports the terminal condition to its caller.
+        self.assertTrue(unavailable)
+        # Subsequent calls short-circuit without spawning a subprocess.
+        with patch("ai_summary.subprocess.run") as mock_run:
+            text, unavailable = ai_summary.run_claude_cli("p", "s")
+        self.assertIsNone(text)
+        self.assertTrue(unavailable)
+        mock_run.assert_not_called()
+
+    def test_success_resets_the_strike_count(self) -> None:
+        strikes = ai_summary._CLAUDE_TIMEOUT_STRIKES
+        with patch("ai_summary.shutil.which", return_value="/usr/bin/claude"):
+            with self._timeout_patch():
+                for _ in range(strikes - 1):
+                    ai_summary.run_claude_cli("p", "s")
+            with patch(
+                "ai_summary.subprocess.run", return_value=_completed(stdout="ok")
+            ):
+                text, _ = ai_summary.run_claude_cli("p", "s")
+            self.assertEqual(text, "ok")
+            # After the reset, another strikes-1 timeouts still don't disable.
+            with self._timeout_patch():
+                for _ in range(strikes - 1):
+                    ai_summary.run_claude_cli("p", "s")
+        self.assertTrue(ai_summary._claude_available)
+
+
 class ClaudeSummaryTests(unittest.TestCase):
     def setUp(self) -> None:
         ai_summary._reset_claude_state()
@@ -240,6 +301,11 @@ class ClaudeAuthProbeTests(unittest.TestCase):
             side_effect=subprocess.TimeoutExpired(cmd="claude", timeout=15),
         ):
             self.assertIsNone(ai_summary.claude_cli_authenticated())
+
+    def test_timeout_kill_switch_state_reset(self) -> None:
+        ai_summary._claude_timeout_count = 2
+        ai_summary._reset_claude_state()
+        self.assertEqual(ai_summary._claude_timeout_count, 0)
 
     def test_mark_claude_unavailable_short_circuits_cli(self) -> None:
         self.assertTrue(ai_summary.claude_generation_available())

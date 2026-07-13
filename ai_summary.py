@@ -55,6 +55,13 @@ _CLAUDE_SUMMARY_SYSTEM_PROMPT = (
 # Seconds to allow a single `claude` CLI summary call before giving up.
 _CLAUDE_TIMEOUT_SECONDS = int(os.environ.get("CLAUDE_SUMMARY_TIMEOUT", "120"))
 
+# Consecutive `claude` CLI timeouts (no intervening success) tolerated before
+# the Claude path is disabled for the rest of the run. Unlike auth and
+# usage-limit failures, timeouts never flipped _claude_available, so a hung
+# CLI stalled the concurrent passes in full-timeout waves with no kill switch
+# (issue #170). A successful call resets the count.
+_CLAUDE_TIMEOUT_STRIKES = int(os.environ.get("CLAUDE_TIMEOUT_STRIKES", "3"))
+
 # Rich console imports - create singleton instance with proper encoding for Windows
 try:
     from rich.console import Console
@@ -89,6 +96,7 @@ _last_error_message = ""
 # first failure lands).
 _claude_available = True
 _claude_missing_warned = False
+_claude_timeout_count = 0
 _claude_state_lock = threading.Lock()
 
 # Google GenAI SDK imports (google.genai)
@@ -198,9 +206,10 @@ def _reset_api_state() -> None:
 
 def _reset_claude_state() -> None:
     """Reset Claude CLI availability state (for testing or manual reset)."""
-    global _claude_available, _claude_missing_warned
+    global _claude_available, _claude_missing_warned, _claude_timeout_count
     _claude_available = True
     _claude_missing_warned = False
+    _claude_timeout_count = 0
 
 
 def _normalize_field_entries(
@@ -531,6 +540,31 @@ def mark_claude_unavailable() -> None:
     _disable_claude_once()
 
 
+def _register_claude_timeout() -> bool:
+    """Count a CLI timeout; disable the Claude path on the Nth consecutive one.
+
+    "Consecutive" means without an intervening successful call (which resets
+    the count via ``_register_claude_success``). Returns True only for the
+    caller whose strike disabled the path, so exactly one worker prints the
+    run-wide message — several concurrent workers can time out simultaneously.
+    """
+    global _claude_available, _claude_timeout_count
+    with _claude_state_lock:
+        _claude_timeout_count += 1
+        if _claude_timeout_count < _CLAUDE_TIMEOUT_STRIKES:
+            return False
+        was_available = _claude_available
+        _claude_available = False
+        return was_available
+
+
+def _register_claude_success() -> None:
+    """Reset the consecutive-timeout count after a successful CLI call."""
+    global _claude_timeout_count
+    with _claude_state_lock:
+        _claude_timeout_count = 0
+
+
 def claude_generation_available() -> bool:
     """Return True while the Claude CLI path is still usable this run."""
     return _claude_available
@@ -628,6 +662,16 @@ def run_claude_cli(
             env=child_env,
         )
     except subprocess.TimeoutExpired:
+        if _register_claude_timeout():
+            _emit(
+                f"[red]Claude CLI timed out {_CLAUDE_TIMEOUT_STRIKES} times in a "
+                "row - AI generation will be skipped for the rest of this "
+                "extraction (fallback content is used).[/red]\n"
+                "[dim]A hung or slow CLI won't recover mid-run; if your machine "
+                "is just slow, raise CLAUDE_SUMMARY_TIMEOUT (default 120s) or "
+                "CLAUDE_TIMEOUT_STRIKES (default 3).[/dim]"
+            )
+            return None, True
         _emit(
             f"⚠️ [yellow]Claude {label} timed out. Using fallback content.[/yellow]"
         )
@@ -659,6 +703,8 @@ def run_claude_cli(
         return None, False
 
     text = (proc.stdout or "").strip()
+    if text:
+        _register_claude_success()
     return (text or None), False
 
 
