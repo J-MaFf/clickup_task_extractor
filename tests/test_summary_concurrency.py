@@ -200,7 +200,9 @@ class ClaudeUnavailableSkipTests(unittest.TestCase):
         extractor = ClickUpTaskExtractor(_config(AISource.CLAUDE), _DummyAPIClient())
         tasks = [_make_eta_record("A")]
         ai_summary.mark_claude_unavailable()
-        with patch("extractor.calculate_eta") as mock_eta, patch("extractor.console"):
+        with patch("extractor.calculate_eta_with_source") as mock_eta, patch(
+            "extractor.console"
+        ):
             extractor._generate_etas_concurrently(tasks)
         mock_eta.assert_not_called()
         self.assertEqual(tasks[0].ETA, "01/01/2026")  # baseline kept
@@ -210,7 +212,9 @@ class ClaudeUnavailableSkipTests(unittest.TestCase):
         extractor = ClickUpTaskExtractor(_config(AISource.BOTH), _DummyAPIClient())
         tasks = [_make_eta_record("A")]
         ai_summary.mark_claude_unavailable()
-        with patch("extractor.calculate_eta") as mock_eta, patch("extractor.console"):
+        with patch("extractor.calculate_eta_with_source") as mock_eta, patch(
+            "extractor.console"
+        ):
             extractor._generate_etas_concurrently(tasks)
         mock_eta.assert_not_called()
 
@@ -232,11 +236,11 @@ class ETAConcurrencyTests(unittest.TestCase):
         tasks = [candidates[0], with_due, candidates[1]]
 
         def fake_eta(**kwargs):
-            return f"12/31/2026"  # AI estimate
+            return ("12/31/2026", True)  # AI estimate
 
-        with patch("extractor.calculate_eta", side_effect=fake_eta) as mock_eta, patch(
-            "extractor.console"
-        ):
+        with patch(
+            "extractor.calculate_eta_with_source", side_effect=fake_eta
+        ) as mock_eta, patch("extractor.console"):
             extractor._generate_etas_concurrently(tasks)
 
         # Only the two candidates got the AI ETA; the due-date task is untouched.
@@ -248,14 +252,18 @@ class ETAConcurrencyTests(unittest.TestCase):
     def test_eta_pass_noop_for_clickup_source(self) -> None:
         extractor = ClickUpTaskExtractor(_config(AISource.CLICKUP), _DummyAPIClient())
         tasks = [_make_eta_record("A")]
-        with patch("extractor.calculate_eta") as mock_eta, patch("extractor.console"):
+        with patch("extractor.calculate_eta_with_source") as mock_eta, patch(
+            "extractor.console"
+        ):
             extractor._generate_etas_concurrently(tasks)
         mock_eta.assert_not_called()
 
     def test_eta_pass_noop_when_no_candidates(self) -> None:
         extractor = ClickUpTaskExtractor(_config(AISource.CLAUDE), _DummyAPIClient())
         tasks = [_make_eta_record("A", with_inputs=False)]
-        with patch("extractor.calculate_eta") as mock_eta, patch("extractor.console"):
+        with patch("extractor.calculate_eta_with_source") as mock_eta, patch(
+            "extractor.console"
+        ):
             extractor._generate_etas_concurrently(tasks)
         mock_eta.assert_not_called()
 
@@ -264,9 +272,91 @@ class ETAConcurrencyTests(unittest.TestCase):
         config.enable_ai_summary = False
         extractor = ClickUpTaskExtractor(config, _DummyAPIClient())
         tasks = [_make_eta_record("A")]
-        with patch("extractor.calculate_eta") as mock_eta, patch("extractor.console"):
+        with patch("extractor.calculate_eta_with_source") as mock_eta, patch(
+            "extractor.console"
+        ):
             extractor._generate_etas_concurrently(tasks)
         mock_eta.assert_not_called()
+
+
+def _console_text(mock_console) -> str:
+    """Join every console.print() call into one searchable string."""
+    return "\n".join(str(call.args[0]) for call in mock_console.print.call_args_list)
+
+
+class ResultReportingTests(unittest.TestCase):
+    """The final pass messages report real generated-vs-fallback counts, not
+    just completion (issue #160)."""
+
+    def setUp(self) -> None:
+        ai_summary._reset_claude_state()
+        ai_summary._reset_api_state()
+
+    def tearDown(self) -> None:
+        ai_summary._reset_claude_state()
+        ai_summary._reset_api_state()
+
+    def test_summary_report_counts_generated_and_fallback(self) -> None:
+        extractor = ClickUpTaskExtractor(_config(AISource.CLAUDE), _DummyAPIClient())
+        records = [_make_record(f"T{i}") for i in range(3)]
+
+        # Two summaries succeed, one fails (falls back to base notes).
+        def fake_claude(task_name, fields, progress_pause_callback=None):
+            return None if task_name == "T1" else f"summary::{task_name}"
+
+        with patch("extractor.get_claude_summary", side_effect=fake_claude), patch(
+            "extractor.console"
+        ) as mock_console:
+            extractor._generate_summaries_concurrently(records)
+
+        text = _console_text(mock_console)
+        self.assertIn("2 of 3 generated", text)
+        self.assertIn("1 fell back", text)
+        self.assertEqual(records[1].Notes, "base notes for T1")
+
+    def test_summary_report_warns_when_none_generated(self) -> None:
+        extractor = ClickUpTaskExtractor(_config(AISource.CLAUDE), _DummyAPIClient())
+        records = [_make_record(f"T{i}") for i in range(2)]
+
+        with patch("extractor.get_claude_summary", return_value=None), patch(
+            "extractor.console"
+        ) as mock_console:
+            extractor._generate_summaries_concurrently(records)
+
+        text = _console_text(mock_console)
+        self.assertIn("0 of 2 generated", text)
+        self.assertNotIn("AI summaries complete:", text)
+
+    def test_eta_report_counts_ai_and_fallback(self) -> None:
+        extractor = ClickUpTaskExtractor(_config(AISource.CLAUDE), _DummyAPIClient())
+        tasks = [_make_eta_record("A"), _make_eta_record("B")]
+
+        results = {"A": ("12/31/2026", True), "B": ("01/05/2026", False)}
+
+        def fake_eta(**kwargs):
+            return results[kwargs["task_name"]]
+
+        with patch(
+            "extractor.calculate_eta_with_source", side_effect=fake_eta
+        ), patch("extractor.console") as mock_console:
+            extractor._generate_etas_concurrently(tasks)
+
+        text = _console_text(mock_console)
+        self.assertIn("1 of 2 AI-estimated", text)
+        self.assertIn("1 deterministic fallback", text)
+
+    def test_eta_report_warns_when_none_ai_estimated(self) -> None:
+        extractor = ClickUpTaskExtractor(_config(AISource.CLAUDE), _DummyAPIClient())
+        tasks = [_make_eta_record("A")]
+
+        with patch(
+            "extractor.calculate_eta_with_source",
+            return_value=("01/05/2026", False),
+        ), patch("extractor.console") as mock_console:
+            extractor._generate_etas_concurrently(tasks)
+
+        text = _console_text(mock_console)
+        self.assertIn("0 of 1 AI-estimated", text)
 
 
 if __name__ == "__main__":

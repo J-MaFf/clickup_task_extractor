@@ -60,7 +60,7 @@ from ai_summary import (
     get_claude_summary,
 )
 from mappers import get_yes_no_input, get_choice_input, get_date_range, extract_images, LocationMapper
-from eta_calculator import calculate_eta
+from eta_calculator import calculate_eta, calculate_eta_with_source
 
 # Get the directory of this script for output path resolution
 script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -825,7 +825,7 @@ class ClickUpTaskExtractor:
             # deferred to a single concurrent pass after all tasks are processed
             # (see _generate_summaries_concurrently) so they don't serialize the
             # per-task fetch loop. The AI inputs are stashed in _metadata below.
-            notes = self._apply_ai_source(
+            notes, _ = self._apply_ai_source(
                 task_detail.get("name", ""),
                 ai_field_items,
                 base_notes,
@@ -962,14 +962,18 @@ class ClickUpTaskExtractor:
         task_name: str,
         ai_field_items: tuple[tuple[str, str], ...] | list[tuple[str, str]],
         base_notes: str,
-    ) -> str:
-        """Summarize via the Claude CLI, falling back to base notes on failure."""
+    ) -> tuple[str, bool]:
+        """Summarize via the Claude CLI, falling back to base notes on failure.
+
+        Returns ``(notes, generated)`` — ``generated`` is False when the CLI
+        was unavailable/errored and the base notes were used instead.
+        """
         ai_notes = get_claude_summary(
             task_name,
             ai_field_items,
             progress_pause_callback=self._pause_progress_callback,
         )
-        return ai_notes or base_notes
+        return (ai_notes or base_notes, bool(ai_notes))
 
     def _generate_gemini_notes(
         self,
@@ -977,15 +981,21 @@ class ClickUpTaskExtractor:
         ai_field_items: tuple[tuple[str, str], ...] | list[tuple[str, str]],
         base_notes: str,
         gemini_key: str,
-    ) -> str:
-        """Summarize via Gemini, falling back to base notes on failure."""
+    ) -> tuple[str, bool]:
+        """Summarize via Gemini, falling back to base notes on failure.
+
+        Returns ``(notes, generated)``. ``generated`` is False when Gemini was
+        already rate-limited (returns None); a non-None return counts as
+        generated, though get_ai_summary() may itself have fallen back to the
+        raw field block on a hard error (it warns on those individually).
+        """
         ai_notes = get_ai_summary(
             task_name,
             ai_field_items,
             gemini_key,
             progress_pause_callback=self._pause_progress_callback,
         )
-        return ai_notes or base_notes
+        return (ai_notes or base_notes, bool(ai_notes))
 
     def _apply_ai_source(
         self,
@@ -994,23 +1004,28 @@ class ClickUpTaskExtractor:
         base_notes: str,
         clickup_ai_summary: str | None,
         allow_generative: bool,
-    ) -> str:
+    ) -> tuple[str, bool]:
         """Resolve notes based on AI source selection and availability.
 
         ``allow_generative`` gates the generative providers (Claude/Gemini) for
         this pass: in interactive mode the bulk pass sets it False so summaries
         are only generated for tasks the user actually selects.
+
+        Returns ``(notes, generated)`` — ``generated`` is True when an AI
+        provider (or the ClickUp Summary field) supplied the notes, False when
+        they fell back to the base notes, so the concurrent pass can report
+        real success/fallback counts.
         """
 
         if not self.config.enable_ai_summary:
-            return base_notes
+            return base_notes, False
 
         source = self.config.ai_source
         gemini_key = self.config.gemini_api_key if allow_generative else None
         clickup_value = (clickup_ai_summary or "").strip()
 
         if source == AISource.CLICKUP:
-            return clickup_value or base_notes
+            return clickup_value or base_notes, bool(clickup_value)
 
         if source == AISource.CLAUDE:
             if allow_generative:
@@ -1018,8 +1033,8 @@ class ClickUpTaskExtractor:
                     task_name, ai_field_items, base_notes
                 )
             if clickup_value:
-                return clickup_value
-            return base_notes
+                return clickup_value, True
+            return base_notes, False
 
         if source == AISource.GEMINI:
             if gemini_key:
@@ -1027,16 +1042,16 @@ class ClickUpTaskExtractor:
                     task_name, ai_field_items, base_notes, gemini_key
                 )
             if clickup_value:
-                return clickup_value
-            return base_notes
+                return clickup_value, True
+            return base_notes, False
 
         # AISource.BOTH: prefer the ClickUp Summary field, then fall back to the
         # Claude CLI (no API key / no Gemini quota).
         if clickup_value:
-            return clickup_value
+            return clickup_value, True
         if allow_generative:
             return self._generate_claude_notes(task_name, ai_field_items, base_notes)
-        return base_notes
+        return base_notes, False
 
     def _summary_concurrency(self, task_count: int) -> int:
         """Resolve the worker count for the concurrent summary pass.
@@ -1054,8 +1069,11 @@ class ClickUpTaskExtractor:
             configured = 1
         return max(1, min(configured, task_count))
 
-    def _summarize_one(self, task: TaskRecord) -> str:
-        """Generate AI notes for a single task from its stashed metadata."""
+    def _summarize_one(self, task: TaskRecord) -> tuple[str, bool]:
+        """Generate AI notes for a single task from its stashed metadata.
+
+        Returns ``(notes, generated)`` from :meth:`_apply_ai_source`.
+        """
         metadata = getattr(task, "_metadata", {}) or {}
         task_name = metadata.get("task_name", task.Task)
         raw_fields = metadata.get("ai_fields") or []
@@ -1115,7 +1133,7 @@ class ClickUpTaskExtractor:
             )
         )
 
-        results: list[str | None] = [None] * total
+        results: list[tuple[str, bool] | None] = [None] * total
         with ThreadPoolExecutor(max_workers=workers) as executor:
             future_to_index = {
                 executor.submit(self._summarize_one, task): index
@@ -1133,23 +1151,41 @@ class ClickUpTaskExtractor:
                     )
                     results[index] = None
                 completed += 1
-                console.print(f"  [dim]{completed}/{total} summaries generated[/dim]")
+                console.print(f"  [dim]{completed}/{total} summaries processed[/dim]")
 
-        # Write results back in original order. _apply_ai_source always returns a
-        # string (base notes on failure), so None only occurs on the unexpected
+        # Write results back in original order. _apply_ai_source always returns
+        # notes (base notes on failure), so None only occurs on the unexpected
         # exception above — leave those tasks' existing Notes untouched.
         for index, task in enumerate(tasks):
             if results[index] is not None:
-                task.Notes = results[index]
+                task.Notes = results[index][0]
 
-        console.print("✅ [bold green]AI summaries complete.[/bold green]")
+        # Report what actually happened — "processed" is not "generated"
+        # (issue #160: a fully-failed run used to end with a green success).
+        generated = sum(1 for r in results if r is not None and r[1])
+        fell_back = sum(1 for r in results if r is not None and not r[1])
+        if generated == 0:
+            console.print(
+                f"⚠️ [yellow]AI summaries: 0 of {total} generated - all tasks "
+                "fell back to base notes.[/yellow]"
+            )
+        else:
+            detail = f", {fell_back} fell back to base notes" if fell_back else ""
+            console.print(
+                f"✅ [bold green]AI summaries complete: {generated} of {total} "
+                f"generated{detail}.[/bold green]"
+            )
 
-    def _compute_eta_one(self, task: TaskRecord) -> str | None:
-        """Compute an AI ETA for a single task from its stashed eta_inputs."""
+    def _compute_eta_one(self, task: TaskRecord) -> tuple[str, bool] | None:
+        """Compute an AI ETA for a single task from its stashed eta_inputs.
+
+        Returns ``(eta, used_ai)`` from :func:`calculate_eta_with_source`, or
+        None when the task has no eta_inputs (it already had a due date).
+        """
         inputs = (getattr(task, "_metadata", {}) or {}).get("eta_inputs") or {}
         if not inputs:
             return None
-        return calculate_eta(
+        return calculate_eta_with_source(
             **inputs,
             enable_ai=True,
             ai_source=self.config.ai_source,
@@ -1202,7 +1238,7 @@ class ClickUpTaskExtractor:
             )
         )
 
-        results: list[str | None] = [None] * total
+        results: list[tuple[str, bool] | None] = [None] * total
         with ThreadPoolExecutor(max_workers=workers) as executor:
             future_to_index = {
                 executor.submit(self._compute_eta_one, task): index
@@ -1220,15 +1256,33 @@ class ClickUpTaskExtractor:
                     )
                     results[index] = None
                 completed += 1
-                console.print(f"  [dim]{completed}/{total} ETAs estimated[/dim]")
+                console.print(f"  [dim]{completed}/{total} ETAs processed[/dim]")
 
-        # calculate_eta always returns a string (deterministic fallback on AI
-        # failure); None only on the unexpected exception above — keep baseline.
+        # calculate_eta_with_source always returns a date (deterministic
+        # fallback on AI failure); None only on the unexpected exception above —
+        # keep the baseline ETA in that case.
         for index, task in enumerate(candidates):
-            if results[index]:
-                task.ETA = results[index]
+            if results[index] is not None and results[index][0]:
+                task.ETA = results[index][0]
 
-        console.print("✅ [bold green]ETA estimation complete.[/bold green]")
+        # Report real AI-vs-fallback counts (issue #160).
+        ai_count = sum(1 for r in results if r is not None and r[1])
+        fallback_count = sum(1 for r in results if r is not None and not r[1])
+        if ai_count == 0:
+            console.print(
+                f"⚠️ [yellow]ETA estimation: 0 of {total} AI-estimated - "
+                "deterministic fallback ETAs kept.[/yellow]"
+            )
+        else:
+            detail = (
+                f", {fallback_count} deterministic fallback(s)"
+                if fallback_count
+                else ""
+            )
+            console.print(
+                f"✅ [bold green]ETA estimation complete: {ai_count} of {total} "
+                f"AI-estimated{detail}.[/bold green]"
+            )
 
     def interactive_include(self, tasks: TaskList) -> TaskList:
         """
