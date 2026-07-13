@@ -56,7 +56,7 @@ from api_client import (
 )
 from ai_summary import (
     claude_generation_available,
-    get_ai_summary,
+    get_ai_summary_with_status,
     get_claude_summary,
 )
 from mappers import get_yes_no_input, get_choice_input, get_date_range, extract_images, LocationMapper
@@ -984,18 +984,18 @@ class ClickUpTaskExtractor:
     ) -> tuple[str, bool]:
         """Summarize via Gemini, falling back to base notes on failure.
 
-        Returns ``(notes, generated)``. ``generated`` is False when Gemini was
-        already rate-limited (returns None); a non-None return counts as
-        generated, though get_ai_summary() may itself have fallen back to the
-        raw field block on a hard error (it warns on those individually).
+        Returns ``(notes, generated)``. Gemini's failure paths return fallback
+        content (the raw field block) rather than None, so the generated flag
+        comes from get_ai_summary_with_status() — a hard failure must not be
+        counted as a generated summary (issue #160).
         """
-        ai_notes = get_ai_summary(
+        ai_notes, generated = get_ai_summary_with_status(
             task_name,
             ai_field_items,
             gemini_key,
             progress_pause_callback=self._pause_progress_callback,
         )
-        return (ai_notes or base_notes, bool(ai_notes))
+        return (ai_notes or base_notes, generated)
 
     def _apply_ai_source(
         self,

@@ -114,7 +114,7 @@ class SummaryConcurrencyTests(unittest.TestCase):
         extractor = ClickUpTaskExtractor(_config(AISource.CLICKUP), _DummyAPIClient())
         records = [_make_record("A"), _make_record("B")]
         with patch("extractor.get_claude_summary") as mock_claude, patch(
-            "extractor.get_ai_summary"
+            "extractor.get_ai_summary_with_status"
         ) as mock_gemini, patch("extractor.console"):
             extractor._generate_summaries_concurrently(records)
         mock_claude.assert_not_called()
@@ -319,6 +319,28 @@ class ResultReportingTests(unittest.TestCase):
         records = [_make_record(f"T{i}") for i in range(2)]
 
         with patch("extractor.get_claude_summary", return_value=None), patch(
+            "extractor.console"
+        ) as mock_console:
+            extractor._generate_summaries_concurrently(records)
+
+        text = _console_text(mock_console)
+        self.assertIn("0 of 2 generated", text)
+        self.assertNotIn("AI summaries complete:", text)
+
+    def test_gemini_hard_failure_not_counted_as_generated(self) -> None:
+        """Gemini's hard-failure paths return fallback content (the raw field
+        block) rather than None — that must count as fallback, not generated
+        (the '3 of 3 generated' repro from the issue #160 review)."""
+        config = _config(AISource.GEMINI)
+        config.gemini_api_key = "invalid-key"
+        extractor = ClickUpTaskExtractor(config, _DummyAPIClient())
+        records = [_make_record(f"T{i}") for i in range(2)]
+
+        # Non-retryable Gemini error (e.g. API_KEY_INVALID): the real
+        # get_ai_summary_with_status returns (field_block, False).
+        with patch(
+            "ai_summary._try_ai_summary", return_value=(None, False)
+        ), patch("ai_summary._console"), patch(
             "extractor.console"
         ) as mock_console:
             extractor._generate_summaries_concurrently(records)

@@ -339,6 +339,9 @@ def get_ai_summary(
     Generate a concise 1-2 sentence summary about the current status of the task using Google Gemini Flash-Latest.
     Includes retry logic with exponential backoff for rate limits.
 
+    Thin wrapper over :func:`get_ai_summary_with_status` for callers that don't
+    need to know whether the return is a real AI summary or fallback content.
+
     Args:
         task_name: Name of the task
         field_entries: Iterable of (field label, value) pairs to include in prompt
@@ -348,6 +351,29 @@ def get_ai_summary(
     Returns:
         AI-generated summary or original content if AI fails
     """
+    text, _ = get_ai_summary_with_status(
+        task_name, field_entries, gemini_api_key, progress_pause_callback
+    )
+    return text
+
+
+def get_ai_summary_with_status(
+    task_name: str,
+    field_entries: Sequence[tuple[str, str]] | Mapping[str, str],
+    gemini_api_key: str,
+    progress_pause_callback: Callable[[], None] | None = None,
+) -> tuple[SummaryResult, bool]:
+    """
+    Like :func:`get_ai_summary`, but also reports whether Gemini generated the
+    text. Every failure path here returns content (the raw field block) rather
+    than None, so callers counting real successes need the flag — issue #160.
+
+    Returns:
+        ``(text, generated)`` — ``generated`` is True only when Gemini actually
+        produced the summary; False for every fallback (no key, SDK missing,
+        rate limit exhausted, non-retryable error, or the rate-limited skip
+        where ``text`` is None).
+    """
     global _api_available
 
     # Check if API is currently unavailable due to rate limiting
@@ -356,7 +382,8 @@ def get_ai_summary(
             _console.print(
                 f"[dim][⊘] API rate limited - skipping AI summary for: {task_name}[/dim]"
             )
-        return None  # Return None to signal API unavailability (caller will skip this task)
+        # None signals API unavailability (caller will skip this task)
+        return None, False
 
     normalized_entries = _normalize_field_entries(field_entries)
     field_block = "\n".join(
@@ -364,10 +391,10 @@ def get_ai_summary(
     )
 
     if not field_block:
-        return "No content available for summary."
+        return "No content available for summary.", False
 
     if not gemini_api_key:
-        return field_block
+        return field_block, False
 
     if GenerativeModel is None or configure is None or types is None:
         if RICH_AVAILABLE and _console:
@@ -378,7 +405,7 @@ def get_ai_summary(
             print(
                 "Warning: Google GenAI SDK not available - install with: pip install google-genai"
             )
-        return field_block
+        return field_block, False
 
     # Try with retries and exponential backoff
     max_retries = 2
@@ -389,7 +416,7 @@ def get_ai_summary(
 
         # Success case
         if summary is not None:
-            return summary
+            return summary, True
 
         # Rate limit error
         if is_rate_limit:
@@ -410,7 +437,7 @@ def get_ai_summary(
                     print(
                         "Rate limit - AI summaries will be skipped for this extraction."
                     )
-                return field_block
+                return field_block, False
         else:
             # Non-retryable error
             if RICH_AVAILABLE and _console:
@@ -419,10 +446,10 @@ def get_ai_summary(
                 )
             else:
                 print("Unable to generate summary. Using fallback content.")
-            return field_block
+            return field_block, False
 
     # Fallback (should not reach here, but safety net)
-    return field_block
+    return field_block, False
 
 
 def claude_cli_available() -> bool:
