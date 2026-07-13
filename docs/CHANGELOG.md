@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **Claude CLI login failures now fail fast instead of erroring on every task.** When the `claude` CLI is logged out, a run previously spawned a failing subprocess for every summary and every ETA (81 identical `Not logged in · Please run /login` errors on a 41-task export). Now: `main.py` pre-flights `claude auth status` when the AI source is Claude/Both and warns before extraction starts; the first in-run auth failure disables the Claude path for the rest of the run (mirroring the usage-limit behavior) with a one-time actionable message (`claude auth login`); and the concurrent summary/ETA passes skip entirely — with a single notice — when the Claude provider is already known to be unavailable. ([#159](https://github.com/J-MaFf/clickup_task_extractor/issues/159))
+
 ### Added
 
 - **Windows CI on the self-hosted `win-test` runner.** `tests.yml` gains a `pytest-windows` job (`runs-on: [self-hosted, windows]`, Python 3.14) alongside the existing hosted-Linux job (Python 3.11), so the suite now runs on the OS the extractor is primarily used on — with an incidental oldest-Python/newest-Python matrix. The job is gated off fork PRs (public repo + self-hosted runner), blanks all ambient `CLICKUP_*`/`OP_*`/`GEMINI_*` env vars, and mirrors the Linux job's exclusion of the `onepassword` SDK (the suite mocks it). Four test-file `open()` calls gained explicit `encoding="utf-8"` so results don't depend on Windows' cp1252 default. ([#156](https://github.com/J-MaFf/clickup_task_extractor/issues/156))

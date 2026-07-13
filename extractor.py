@@ -54,7 +54,11 @@ from api_client import (
     AuthenticationError,
     ShardRoutingError,
 )
-from ai_summary import get_ai_summary, get_claude_summary
+from ai_summary import (
+    claude_generation_available,
+    get_ai_summary,
+    get_claude_summary,
+)
 from mappers import get_yes_no_input, get_choice_input, get_date_range, extract_images, LocationMapper
 from eta_calculator import calculate_eta
 
@@ -1089,6 +1093,15 @@ class ClickUpTaskExtractor:
         # ClickUp-only source was already resolved synchronously in _process_task.
         if self.config.ai_source == AISource.CLICKUP:
             return
+        # A Claude-only run can't generate anything once the CLI is unavailable
+        # (not logged in / usage-limited); Notes already hold the fallback from
+        # _process_task. (Both still runs — it consumes the ClickUp field.)
+        if self.config.ai_source == AISource.CLAUDE and not claude_generation_available():
+            console.print(
+                "[yellow]⊘ Skipping AI summaries - the Claude CLI is unavailable "
+                "(not logged in or usage-limited); using base task notes.[/yellow]"
+            )
+            return
 
         total = len(tasks)
         workers = self._summary_concurrency(total)
@@ -1155,6 +1168,18 @@ class ClickUpTaskExtractor:
         if not self.config.enable_ai_summary or not tasks:
             return
         if self.config.ai_source == AISource.CLICKUP:
+            return
+        # AI ETAs come from the Claude CLI for both the Claude and Both sources;
+        # when it's unavailable the deterministic baselines are already in place.
+        if (
+            self.config.ai_source in (AISource.CLAUDE, AISource.BOTH)
+            and not claude_generation_available()
+        ):
+            console.print(
+                "[yellow]⊘ Skipping AI ETA estimation - the Claude CLI is "
+                "unavailable (not logged in or usage-limited); keeping "
+                "deterministic baseline ETAs.[/yellow]"
+            )
             return
 
         candidates = [

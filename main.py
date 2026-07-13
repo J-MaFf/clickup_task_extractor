@@ -30,7 +30,11 @@ except ImportError:
     sys.exit(1)
 
 # Import project modules
-from ai_summary import claude_cli_available
+from ai_summary import (
+    claude_cli_authenticated,
+    claude_cli_available,
+    mark_claude_unavailable,
+)
 from auth import load_secret_with_fallback
 from config import (
     ClickUpConfig,
@@ -648,24 +652,37 @@ def main():
             ai_source = AISource.CLAUDE
 
     # The Claude source (and Both's fallback) shells out to the local `claude`
-    # CLI. Warn early if it isn't installed so the user understands why summaries
-    # may fall back to raw field content.
-    if (
-        args.ai_summary
-        and ai_source in (AISource.CLAUDE, AISource.BOTH)
-        and not claude_cli_available()
-    ):
-        console.print(
-            Panel(
-                "[yellow]⚠️  The 'claude' CLI was not found on PATH.[/yellow]\n"
-                "[dim]The Claude AI source needs Claude Code installed and signed in "
-                "(Max/Pro OAuth). Without it, summaries fall back to raw task content.[/dim]\n"
-                "[dim]Install: https://docs.claude.com/en/docs/claude-code  •  "
-                "or use [cyan]--ai-source Gemini[/cyan] with a Google API key.[/dim]",
-                title="Claude CLI Not Found",
-                style="yellow",
+    # CLI. Warn early if it isn't installed or isn't logged in, so the user
+    # learns before the extraction starts — not after a run's worth of failed
+    # generation calls (issue #159).
+    if args.ai_summary and ai_source in (AISource.CLAUDE, AISource.BOTH):
+        if not claude_cli_available():
+            console.print(
+                Panel(
+                    "[yellow]⚠️  The 'claude' CLI was not found on PATH.[/yellow]\n"
+                    "[dim]The Claude AI source needs Claude Code installed and signed in "
+                    "(Max/Pro OAuth). Without it, summaries fall back to raw task content.[/dim]\n"
+                    "[dim]Install: https://docs.claude.com/en/docs/claude-code  •  "
+                    "or use [cyan]--ai-source Gemini[/cyan] with a Google API key.[/dim]",
+                    title="Claude CLI Not Found",
+                    style="yellow",
+                )
             )
-        )
+        elif claude_cli_authenticated() is False:
+            # Confident "logged out" — skip the doomed generation calls up front.
+            # (None means "unknown" — e.g. an older CLI — and proceeds as usual.)
+            mark_claude_unavailable()
+            console.print(
+                Panel(
+                    "[yellow]⚠️  The 'claude' CLI is installed but not logged in.[/yellow]\n"
+                    "[dim]Claude summaries and ETA estimates will fall back to raw task "
+                    "content / deterministic ETAs for this run.[/dim]\n"
+                    "[dim]Fix: run [cyan]claude auth login[/cyan] in a terminal (or /login "
+                    "inside Claude Code), then re-run the extractor.[/dim]",
+                    title="Claude CLI Not Logged In",
+                    style="yellow",
+                )
+            )
 
     ai_clickup_field_id = args.ai_clickup_field_id or CLICKUP_AI_SUMMARY_FIELD_ID
 

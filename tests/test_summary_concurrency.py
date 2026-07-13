@@ -162,6 +162,59 @@ class SummaryConcurrencyTests(unittest.TestCase):
             self.assertTrue(rec.Notes.startswith("base notes for "))
 
 
+class ClaudeUnavailableSkipTests(unittest.TestCase):
+    """When the Claude CLI is known-unavailable (e.g. failed pre-flight auth
+    check), the Claude-dependent passes skip instead of queueing doomed work."""
+
+    def setUp(self) -> None:
+        ai_summary._reset_claude_state()
+        ai_summary._reset_api_state()
+
+    def tearDown(self) -> None:
+        ai_summary._reset_claude_state()
+        ai_summary._reset_api_state()
+
+    def test_summary_pass_skipped_for_claude_source(self) -> None:
+        extractor = ClickUpTaskExtractor(_config(AISource.CLAUDE), _DummyAPIClient())
+        records = [_make_record("A"), _make_record("B")]
+        ai_summary.mark_claude_unavailable()
+        with patch("extractor.get_claude_summary") as mock_claude, patch(
+            "extractor.console"
+        ):
+            extractor._generate_summaries_concurrently(records)
+        mock_claude.assert_not_called()
+        for rec in records:
+            self.assertTrue(rec.Notes.startswith("base notes for "))
+
+    def test_summary_pass_still_runs_for_both_source(self) -> None:
+        """Both consumes the ClickUp Summary field, so the pass must still run."""
+        extractor = ClickUpTaskExtractor(_config(AISource.BOTH), _DummyAPIClient())
+        record = _make_record("A")
+        record._metadata["clickup_ai_summary"] = "Summary from ClickUp field"
+        ai_summary.mark_claude_unavailable()
+        with patch("extractor.console"):
+            extractor._generate_summaries_concurrently([record])
+        self.assertEqual(record.Notes, "Summary from ClickUp field")
+
+    def test_eta_pass_skipped_for_claude_source(self) -> None:
+        extractor = ClickUpTaskExtractor(_config(AISource.CLAUDE), _DummyAPIClient())
+        tasks = [_make_eta_record("A")]
+        ai_summary.mark_claude_unavailable()
+        with patch("extractor.calculate_eta") as mock_eta, patch("extractor.console"):
+            extractor._generate_etas_concurrently(tasks)
+        mock_eta.assert_not_called()
+        self.assertEqual(tasks[0].ETA, "01/01/2026")  # baseline kept
+
+    def test_eta_pass_skipped_for_both_source(self) -> None:
+        """AI ETAs are Claude-only even for Both, so it skips too."""
+        extractor = ClickUpTaskExtractor(_config(AISource.BOTH), _DummyAPIClient())
+        tasks = [_make_eta_record("A")]
+        ai_summary.mark_claude_unavailable()
+        with patch("extractor.calculate_eta") as mock_eta, patch("extractor.console"):
+            extractor._generate_etas_concurrently(tasks)
+        mock_eta.assert_not_called()
+
+
 class ETAConcurrencyTests(unittest.TestCase):
     def setUp(self) -> None:
         ai_summary._reset_claude_state()

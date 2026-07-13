@@ -107,6 +107,53 @@ class ClaudeSummaryTests(unittest.TestCase):
         # Second call short-circuits before invoking the CLI again.
         self.assertEqual(mock_run.call_count, 1)
 
+    def test_auth_error_message_emitted_once_across_threads(self) -> None:
+        """Workers already past the entry gate must not duplicate the run-wide
+        'not logged in' message — only the thread that flips the flag prints."""
+        import threading
+
+        barrier = threading.Barrier(2, timeout=5)
+
+        def fake_run(*args, **kwargs):
+            barrier.wait()  # both workers in-flight before either sees the error
+            return _completed(
+                returncode=1, stderr="Not logged in · Please run /login"
+            )
+
+        with patch("ai_summary.shutil.which", return_value="/usr/bin/claude"), patch(
+            "ai_summary.subprocess.run", side_effect=fake_run
+        ), patch("ai_summary._emit") as mock_emit:
+            threads = [
+                threading.Thread(
+                    target=get_claude_summary, args=(f"T{i}", [("Status", "open")])
+                )
+                for i in range(2)
+            ]
+            for t in threads:
+                t.start()
+            for t in threads:
+                t.join(timeout=10)
+
+        self.assertFalse(ai_summary._claude_available)
+        self.assertEqual(mock_emit.call_count, 1)
+
+    def test_auth_error_disables_claude_for_run(self) -> None:
+        """'Not logged in' is terminal: one failure disables the rest of the run."""
+        with patch("ai_summary.shutil.which", return_value="/usr/bin/claude"), patch(
+            "ai_summary.subprocess.run",
+            return_value=_completed(
+                returncode=1, stderr="Not logged in · Please run /login"
+            ),
+        ) as mock_run:
+            first = get_claude_summary("Task A", [("Status", "open")])
+            second = get_claude_summary("Task B", [("Status", "open")])
+
+        self.assertIsNone(first)
+        self.assertIsNone(second)
+        self.assertFalse(ai_summary._claude_available)
+        # Second call short-circuits before invoking the CLI again.
+        self.assertEqual(mock_run.call_count, 1)
+
     def test_timeout_returns_none(self) -> None:
         with patch("ai_summary.shutil.which", return_value="/usr/bin/claude"), patch(
             "ai_summary.subprocess.run",
@@ -122,6 +169,86 @@ class ClaudeSummaryTests(unittest.TestCase):
         ):
             result = get_claude_summary("Task", [("Status", "open")])
         self.assertIsNone(result)
+
+
+class ClaudeAuthProbeTests(unittest.TestCase):
+    """Tests for the `claude auth status` pre-flight probe and skip-flag setters."""
+
+    def setUp(self) -> None:
+        ai_summary._reset_claude_state()
+
+    def tearDown(self) -> None:
+        ai_summary._reset_claude_state()
+
+    def test_logged_in_returns_true(self) -> None:
+        with patch("ai_summary.shutil.which", return_value="/usr/bin/claude"), patch(
+            "ai_summary.subprocess.run",
+            return_value=_completed(stdout='{"loggedIn": true, "authMethod": "oauth"}'),
+        ) as mock_run:
+            self.assertTrue(ai_summary.claude_cli_authenticated())
+        cmd = mock_run.call_args.args[0]
+        self.assertEqual(cmd[1:3], ["auth", "status"])
+
+    def test_probe_env_scrubs_api_key(self) -> None:
+        """The probe must report the OAuth state the generation calls will use —
+        an exported ANTHROPIC_API_KEY would otherwise mask a logged-out CLI
+        (`authMethod: api_key` reports loggedIn=true)."""
+        with patch.dict(
+            "os.environ",
+            {"ANTHROPIC_API_KEY": "sk-should-be-removed", "PATH": "x"},
+            clear=False,
+        ), patch("ai_summary.shutil.which", return_value="/usr/bin/claude"), patch(
+            "ai_summary.subprocess.run",
+            return_value=_completed(
+                returncode=1, stdout='{"loggedIn": false, "authMethod": "none"}'
+            ),
+        ) as mock_run:
+            self.assertFalse(ai_summary.claude_cli_authenticated())
+
+        env = mock_run.call_args.kwargs["env"]
+        self.assertNotIn("ANTHROPIC_API_KEY", env)
+        self.assertNotIn("ANTHROPIC_AUTH_TOKEN", env)
+
+    def test_logged_out_returns_false(self) -> None:
+        with patch("ai_summary.shutil.which", return_value="/usr/bin/claude"), patch(
+            "ai_summary.subprocess.run",
+            return_value=_completed(
+                returncode=1,
+                stdout='{"loggedIn": false, "authMethod": "none"}',
+            ),
+        ):
+            self.assertFalse(ai_summary.claude_cli_authenticated())
+
+    def test_missing_cli_returns_none(self) -> None:
+        with patch("ai_summary.shutil.which", return_value=None), patch(
+            "ai_summary.subprocess.run"
+        ) as mock_run:
+            self.assertIsNone(ai_summary.claude_cli_authenticated())
+        mock_run.assert_not_called()
+
+    def test_unparseable_output_returns_none(self) -> None:
+        """Older CLIs without `auth status` print usage text, not JSON."""
+        with patch("ai_summary.shutil.which", return_value="/usr/bin/claude"), patch(
+            "ai_summary.subprocess.run",
+            return_value=_completed(returncode=1, stdout="Usage: claude [options]"),
+        ):
+            self.assertIsNone(ai_summary.claude_cli_authenticated())
+
+    def test_timeout_returns_none(self) -> None:
+        with patch("ai_summary.shutil.which", return_value="/usr/bin/claude"), patch(
+            "ai_summary.subprocess.run",
+            side_effect=subprocess.TimeoutExpired(cmd="claude", timeout=15),
+        ):
+            self.assertIsNone(ai_summary.claude_cli_authenticated())
+
+    def test_mark_claude_unavailable_short_circuits_cli(self) -> None:
+        self.assertTrue(ai_summary.claude_generation_available())
+        ai_summary.mark_claude_unavailable()
+        self.assertFalse(ai_summary.claude_generation_available())
+        with patch("ai_summary.subprocess.run") as mock_run:
+            result = get_claude_summary("Task", [("Status", "open")])
+        self.assertIsNone(result)
+        mock_run.assert_not_called()
 
 
 if __name__ == "__main__":
