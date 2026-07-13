@@ -11,7 +11,7 @@ ClickUp list and writes them into the weekly tracking Google Sheet:
 
 This script does not modify the main extractor workflow (main.py /
 extractor.py); it only imports shared components (API client, auth chain,
-TaskRecord, sorting, logging).
+TaskRecord, sorting, ETA calculation, Claude CLI helpers, logging).
 
 Authentication (each secret, in order):
 1. Environment variable (CLICKUP_API_KEY / GOOGLE_SHEETS_CREDENTIALS_JSON),
@@ -218,12 +218,19 @@ PERSONAL_ACCOUNT_URL = os.environ.get("KFJ_OP_ACCOUNT_URL", "my.1password.com")
 
 # AI ETA estimation for tasks without a due date (Claude CLI, repo-default AI
 # source). Enabled unless KFJ_AI_ETA is a falsy value; --no-ai-eta overrides.
-AI_ETA_DEFAULT = os.environ.get("KFJ_AI_ETA", "1").strip().lower() not in (
-    "0",
-    "false",
-    "no",
-    "off",
-)
+
+
+def _env_flag(name: str, default: str = "1") -> bool:
+    """Parse a boolean env var: false for 0/false/no/off (any case), else true."""
+    return os.environ.get(name, default).strip().lower() not in (
+        "0",
+        "false",
+        "no",
+        "off",
+    )
+
+
+AI_ETA_DEFAULT = _env_flag("KFJ_AI_ETA")
 
 
 def read_secret_via_op_cli(
@@ -526,17 +533,26 @@ def apply_ai_etas(records: list[TaskRecord]) -> None:
 
     generated = 0
     with ThreadPoolExecutor(max_workers=workers) as executor:
-        futures = {executor.submit(estimate_one, r): r for r in candidates}
-        for future in as_completed(futures):
-            record = futures[future]
-            try:
-                eta, used_ai = future.result()
-            except Exception as exc:  # keep the deterministic baseline ETA
-                logger.warning(f"AI ETA failed for '{record.Task}': {str(exc)[:80]}")
-                continue
-            record.ETA = eta
-            if used_ai:
-                generated += 1
+        try:
+            futures = {executor.submit(estimate_one, r): r for r in candidates}
+            for future in as_completed(futures):
+                record = futures[future]
+                try:
+                    eta, used_ai = future.result()
+                except Exception as exc:  # keep the deterministic baseline ETA
+                    logger.warning(
+                        f"AI ETA failed for '{record.Task}': {str(exc)[:80]}"
+                    )
+                    continue
+                record.ETA = eta
+                if used_ai:
+                    generated += 1
+        except BaseException:
+            # Ctrl+C etc.: without cancel_futures the with-block's shutdown
+            # would still run every queued future, spawning fresh `claude`
+            # subprocesses after the user interrupted.
+            executor.shutdown(wait=False, cancel_futures=True)
+            raise
 
     fallback = total - generated
     detail = f", {fallback} deterministic fallback(s)" if fallback else ""
@@ -544,6 +560,20 @@ def apply_ai_etas(records: list[TaskRecord]) -> None:
         f"[green]✓ ETA estimates: {generated} of {total} Claude-generated"
         f"{detail}.[/green]"
     )
+
+
+def build_records(
+    raw_tasks: list[dict], company: str, ai_eta: bool
+) -> list[TaskRecord]:
+    """Map raw tasks to sorted records, applying AI ETAs when enabled.
+
+    The AI pass must run before sorting: the sorter orders by ETA within each
+    priority tier, so the sheet must reflect the final dates.
+    """
+    records = [task_to_record(t, company) for t in raw_tasks]
+    if ai_eta:
+        apply_ai_etas(records)
+    return sort_tasks_by_priority_and_eta(records)
 
 
 def record_to_row(record: TaskRecord) -> list[str]:
@@ -610,8 +640,8 @@ def write_to_sheet(gc, sheet_id: str, tab_name: str, rows: list[list[str]]) -> N
     sh.update_title(tab_name)
 
 
-def parse_args() -> argparse.Namespace:
-    """Parse command line arguments."""
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+    """Parse command line arguments (argv defaults to sys.argv, for tests)."""
     parser = argparse.ArgumentParser(
         description="Extract open KFI Jefferson tasks from ClickUp into the weekly Google Sheet"
     )
@@ -645,7 +675,7 @@ def parse_args() -> argparse.Namespace:
         metavar="M/D/YY",
         help="Override the date used in the tab name (e.g. 6/10/26)",
     )
-    return parser.parse_args()
+    return parser.parse_args(argv)
 
 
 def main() -> int:
@@ -698,12 +728,7 @@ def main() -> int:
         console.print(f"[red]ClickUp API error: {e}[/red]")
         return 1
 
-    records = [task_to_record(t, company) for t in raw_tasks]
-    # AI ETAs must land before sorting: the sorter orders by ETA within each
-    # priority tier, so the sheet must reflect the final dates.
-    if not args.no_ai_eta:
-        apply_ai_etas(records)
-    records = sort_tasks_by_priority_and_eta(records)
+    records = build_records(raw_tasks, company, ai_eta=not args.no_ai_eta)
     rows = [record_to_row(r) for r in records]
     logger.info(f"Fetched {len(rows)} open task(s) from list '{company}'")
 

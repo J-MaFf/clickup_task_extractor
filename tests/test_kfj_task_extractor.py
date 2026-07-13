@@ -17,12 +17,15 @@ from config import TaskRecord, sort_tasks_by_priority_and_eta
 from kfj_task_extractor import (
     FALLBACK_BRANCH,
     HEADER,
+    _env_flag,
     _eta_concurrency,
     _load_dotenv,
     apply_ai_etas,
+    build_records,
     build_tab_name,
     fetch_open_tasks,
     load_google_credentials_json,
+    parse_args,
     record_to_row,
     resolve_clickup_api_key,
     task_to_record,
@@ -498,6 +501,88 @@ class TestApplyAiEtas(unittest.TestCase):
         ):
             apply_ai_etas([candidate])
         self.assertEqual(candidate.ETA, "8/1/2026")
+
+
+class TestEnvFlagAndArgs(unittest.TestCase):
+    """KFJ_AI_ETA parsing and the --no-ai-eta flag default wiring."""
+
+    def test_env_flag_falsy_values(self):
+        for value in ("0", "false", "False", "NO", " off "):
+            with mock.patch.dict(os.environ, {"KFJ_AI_ETA": value}):
+                self.assertFalse(_env_flag("KFJ_AI_ETA"), value)
+
+    def test_env_flag_truthy_values(self):
+        for value in ("1", "true", "yes", "on", "anything"):
+            with mock.patch.dict(os.environ, {"KFJ_AI_ETA": value}):
+                self.assertTrue(_env_flag("KFJ_AI_ETA"), value)
+
+    def test_env_flag_unset_uses_default(self):
+        with mock.patch.dict(os.environ, {}, clear=True):
+            self.assertTrue(_env_flag("KFJ_AI_ETA"))
+            self.assertFalse(_env_flag("KFJ_AI_ETA", default="0"))
+
+    def test_no_ai_eta_flag_parses(self):
+        # parse_args reads the module global at call time, so patching
+        # AI_ETA_DEFAULT exercises both defaults regardless of the ambient env.
+        with mock.patch("kfj_task_extractor.AI_ETA_DEFAULT", True):
+            self.assertFalse(parse_args([]).no_ai_eta)
+            self.assertTrue(parse_args(["--no-ai-eta"]).no_ai_eta)
+
+    def test_kfj_ai_eta_env_default_disables_ai(self):
+        with mock.patch("kfj_task_extractor.AI_ETA_DEFAULT", False):
+            self.assertTrue(parse_args([]).no_ai_eta)
+
+
+class TestBuildRecords(unittest.TestCase):
+    """build_records composition: AI pass gated by ai_eta and run pre-sort."""
+
+    def test_ai_disabled_skips_ai_pass(self):
+        with (
+            mock.patch("kfj_task_extractor.apply_ai_etas") as ai_pass,
+            mock.patch("kfj_task_extractor.calculate_eta", return_value=""),
+        ):
+            build_records([make_task()], "KFI Jefferson", ai_eta=False)
+        ai_pass.assert_not_called()
+
+    def test_ai_enabled_runs_ai_pass(self):
+        with (
+            mock.patch("kfj_task_extractor.apply_ai_etas") as ai_pass,
+            mock.patch("kfj_task_extractor.calculate_eta", return_value=""),
+        ):
+            build_records([make_task()], "KFI Jefferson", ai_eta=True)
+        ai_pass.assert_called_once()
+
+    def test_ai_etas_applied_before_sorting(self):
+        # Two same-priority tasks without due dates share an identical
+        # baseline; the AI dates invert their input order, so the sorted
+        # output proves the AI pass ran before the sorter.
+        ai_dates = {"Task early": "8/1/2026", "Task late": "9/1/2026"}
+
+        def fake_source(**kwargs):
+            return (ai_dates[kwargs["task_name"]], True)
+
+        with (
+            mock.patch(
+                "kfj_task_extractor.calculate_eta", return_value="7/20/2026"
+            ),
+            mock.patch(
+                "kfj_task_extractor.claude_cli_available", return_value=True
+            ),
+            mock.patch(
+                "kfj_task_extractor.claude_cli_authenticated", return_value=True
+            ),
+            mock.patch(
+                "kfj_task_extractor.calculate_eta_with_source",
+                side_effect=fake_source,
+            ),
+        ):
+            records = build_records(
+                [make_task(name="Task late"), make_task(name="Task early")],
+                "KFI Jefferson",
+                ai_eta=True,
+            )
+        self.assertEqual([r.Task for r in records], ["Task early", "Task late"])
+        self.assertEqual([r.ETA for r in records], ["8/1/2026", "9/1/2026"])
 
 
 class TestEtaConcurrency(unittest.TestCase):
