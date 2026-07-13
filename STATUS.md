@@ -6,13 +6,12 @@ Python CLI for extracting, processing, and exporting tasks from the ClickUp API.
 
 ## Current State — 2026-07-13
 
-**v1.06 in release.** CI now runs the suite on two OSes: hosted Linux (Python 3.11) and the self-hosted `win-test` Windows runner (Python 3.14) ([#156](https://github.com/J-MaFf/clickup_task_extractor/issues/156)). Beads (`bd`) is active as the task/memory layer beneath GitHub Issues. Since v1.05: AI summaries default to Claude (Max OAuth, [#145](https://github.com/J-MaFf/clickup_task_extractor/pull/145)); summaries + ETAs run concurrently ([#148](https://github.com/J-MaFf/clickup_task_extractor/pull/148)); ETAs can use Claude ([#149](https://github.com/J-MaFf/clickup_task_extractor/pull/149)); `main.py` auto-loads a project-local `.env` so configured workspace/space apply ([#151](https://github.com/J-MaFf/clickup_task_extractor/pull/151)); `kfj_task_extractor.py` auto-loads `.env.kfj` secret-safely ([#153](https://github.com/J-MaFf/clickup_task_extractor/pull/153)) — all merged.
+**v1.06 released 2026-06-26** ([#154](https://github.com/J-MaFf/clickup_task_extractor/issues/154)). CI now runs the suite on two OSes: hosted Linux (Python 3.11) and the self-hosted `win-test` Windows runner (Python 3.14) ([#156](https://github.com/J-MaFf/clickup_task_extractor/issues/156)). Beads (`bd`) is active as the task/memory layer beneath GitHub Issues. Since v1.05: AI summaries default to Claude (Max OAuth, [#145](https://github.com/J-MaFf/clickup_task_extractor/pull/145)); summaries + ETAs run concurrently ([#148](https://github.com/J-MaFf/clickup_task_extractor/pull/148)); ETAs can use Claude ([#149](https://github.com/J-MaFf/clickup_task_extractor/pull/149)); `main.py` auto-loads a project-local `.env` so configured workspace/space apply ([#151](https://github.com/J-MaFf/clickup_task_extractor/pull/151)); `kfj_task_extractor.py` auto-loads `.env.kfj` secret-safely ([#153](https://github.com/J-MaFf/clickup_task_extractor/pull/153)) — all merged.
 
 **2026-07-13 — Claude CLI login-failure incident fixed.** A logged-out `claude` CLI produced 81 repeated "Not logged in" errors and false success reporting in one run; fixed across [#162](https://github.com/J-MaFf/clickup_task_extractor/pull/162) (pre-flight auth check + fail-fast), [#163](https://github.com/J-MaFf/clickup_task_extractor/pull/163) (real generated-vs-fallback counts), and [#164](https://github.com/J-MaFf/clickup_task_extractor/pull/164) (ClickUp field notice scoped to ClickUp/Both sources). All 355 tests pass.
 
 **2026-07-13 — KFJ sheet sync now calculates ETAs.** `kfj_task_extractor.py` previously left the ETA column blank for tasks without a ClickUp due date; [#167](https://github.com/J-MaFf/clickup_task_extractor/pull/167) wires it into the shared `eta_calculator` pipeline (deterministic priority/status baseline + concurrent Claude CLI upgrade pass before sorting, `--no-ai-eta` / `KFJ_AI_ETA=0` opt-out) and hardens `_extract_date_token` with strptime validation for all consumers. 381 tests pass.
 
-**In progress:** `release/v1.06` ([#154](https://github.com/J-MaFf/clickup_task_extractor/issues/154)) — version bump (`version.py` → 1.06, README badge, `CHANGELOG.md` `[1.06]`), then tag `v1.06` on `main`.
 
 ### Components
 
@@ -62,11 +61,12 @@ Python CLI for extracting, processing, and exporting tasks from the ClickUp API.
 
 ### Open Issues
 
-- [#154](https://github.com/J-MaFf/clickup_task_extractor/issues/154) — Release v1.06 (in review on `release/v1.06`)
+- [#166](https://github.com/J-MaFf/clickup_task_extractor/issues/166) — Optional 1Password service-account-token auth for unattended KFJ scheduled runs
 
 ## Natural Next Steps
 
-- After v1.06 tags: optionally build the PyInstaller exe into `dist/v1.06/` (gitignored; not required for source users)
+- [#166](https://github.com/J-MaFf/clickup_task_extractor/issues/166): service-account-token auth so the weekly KFJ sync can run unattended (scheduled task, no desktop 1Password approval)
+- Optionally build the v1.06 PyInstaller exe into `dist/v1.06/` (gitignored; not required for source users)
 - Identify any bugs or improvements from real usage
 
 ## Prerequisites to Run
