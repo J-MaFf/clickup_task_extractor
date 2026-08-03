@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
 """
 Entry Point and CLI Module for ClickUp Task Extractor
 
@@ -37,15 +36,15 @@ from ai_summary import (
 )
 from auth import load_secret_with_fallback
 from config import (
-    ClickUpConfig,
-    TIMESTAMP_FORMAT,
-    DateFilter,
-    OutputFormat,
-    AISource,
-    format_datetime,
     CLICKUP_AI_SUMMARY_FIELD_ID,
     CLICKUP_API_SECRET_REFERENCE,
     GEMINI_API_SECRET_REFERENCE,
+    TIMESTAMP_FORMAT,
+    AISource,
+    ClickUpConfig,
+    DateFilter,
+    OutputFormat,
+    format_datetime,
 )
 from logger_config import setup_logging
 from mappers import get_choice_input, get_yes_no_input
@@ -189,6 +188,7 @@ def _op_run_environments_flag():
             capture_output=True,
             text=True,
             timeout=10,
+            check=False,
         )
     except (OSError, subprocess.SubprocessError):
         return None
@@ -510,17 +510,17 @@ def main():
         args.ai_summary
         and ai_source_includes_gemini(args.ai_source)
         and not gemini_api_key
+        and not load_gemini_api_key()
     ):
-        if not load_gemini_api_key():
-            # If still no Gemini API key and AI summary is enabled, prompt for manual input
-            gemini_api_key = console.input(
-                "🤖 [bold cyan]Enter Gemini API Key (or press Enter to disable AI summary): [/bold cyan]"
+        # If still no Gemini API key and AI summary is enabled, prompt for manual input
+        gemini_api_key = console.input(
+            "🤖 [bold cyan]Enter Gemini API Key (or press Enter to disable AI summary): [/bold cyan]"
+        )
+        if not gemini_api_key:
+            console.print(
+                "[yellow]⚠️  No Gemini API key provided. AI summary will be disabled.[/yellow]"
             )
-            if not gemini_api_key:
-                console.print(
-                    "[yellow]⚠️  No Gemini API key provided. AI summary will be disabled.[/yellow]"
-                )
-                args.ai_summary = False
+            args.ai_summary = False
 
     # Check if interactive mode should be enabled when not explicitly set
     interactive_mode = args.interactive
@@ -694,7 +694,7 @@ def main():
         space_name=args.space or os.environ.get("CLICKUP_SPACE_NAME", ""),
         list_name=args.list,
         output_path=args.output
-        or f"output/WeeklyTaskList_{format_datetime(datetime.now(), TIMESTAMP_FORMAT)}.md",
+        or f"output/WeeklyTaskList_{format_datetime(datetime.now().astimezone(), TIMESTAMP_FORMAT)}.md",
         include_completed=args.include_completed,
         date_filter=date_filter,
         enable_ai_summary=args.ai_summary,
