@@ -276,8 +276,10 @@ unattended — machine locked or logged out — opt in to a 1Password
    definitions are readable as XML).
 3. In Task Scheduler, edit the task ("KFJ Weekly ClickUp Sheet Sync") and
    select **"Run whether user is logged on or not"** (you'll be prompted for
-   the run-as account's password; "Do not store password" would block network
-   access, so leave it unchecked).
+   the run-as account's password). Leave **"Do not store password"**
+   unchecked: without the stored password the task runs under a limited (S4U)
+   logon that may not load the user's registry environment — where the
+   `setx`-stored token lives.
 4. Verify headlessly before relying on it: with the 1Password app closed or
    locked, `python kfj_task_extractor.py --dry-run` should still resolve both
    secrets and print the rows.

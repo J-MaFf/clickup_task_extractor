@@ -4,7 +4,7 @@
 
 Python CLI for extracting, processing, and exporting tasks from the ClickUp API. Supports Markdown, HTML, and CSV output, optional AI summaries (Claude via Max/Pro OAuth by default, or Google Gemini, or the ClickUp Summary field), 1Password-backed authentication, and a Rich console UI with interactive task selection and priority/ETA sorting.
 
-## Current State — 2026-07-13
+## Current State — 2026-08-09
 
 **v1.06 released 2026-06-26** ([#154](https://github.com/J-MaFf/clickup_task_extractor/issues/154)). CI now runs the suite on two OSes: hosted Linux (Python 3.11) and the self-hosted `win-test` Windows runner (Python 3.14) ([#156](https://github.com/J-MaFf/clickup_task_extractor/issues/156)). Beads (`bd`) is active as the task/memory layer beneath GitHub Issues. Since v1.05: AI summaries default to Claude (Max OAuth, [#145](https://github.com/J-MaFf/clickup_task_extractor/pull/145)); summaries + ETAs run concurrently ([#148](https://github.com/J-MaFf/clickup_task_extractor/pull/148)); ETAs can use Claude ([#149](https://github.com/J-MaFf/clickup_task_extractor/pull/149)); `main.py` auto-loads a project-local `.env` so configured workspace/space apply ([#151](https://github.com/J-MaFf/clickup_task_extractor/pull/151)); `kfj_task_extractor.py` auto-loads `.env.kfj` secret-safely ([#153](https://github.com/J-MaFf/clickup_task_extractor/pull/153)) — all merged.
 
@@ -61,11 +61,11 @@ Python CLI for extracting, processing, and exporting tasks from the ClickUp API.
 
 ### Open Issues
 
-- [#166](https://github.com/J-MaFf/clickup_task_extractor/issues/166) — Optional 1Password service-account-token auth for unattended KFJ scheduled runs
+- [#166](https://github.com/J-MaFf/clickup_task_extractor/issues/166) — Optional 1Password service-account-token auth for unattended KFJ scheduled runs — **[PR #179](https://github.com/J-MaFf/clickup_task_extractor/pull/179) open, awaiting review.** Code + docs + tests done (395 pass); remaining are the manual steps: create the 1Password service account, `setx OP_SERVICE_ACCOUNT_TOKEN` for the task's user, switch the task to "Run whether user is logged on or not", and live-verify a logged-out run.
 
 ## Natural Next Steps
 
-- [#166](https://github.com/J-MaFf/clickup_task_extractor/issues/166): service-account-token auth so the weekly KFJ sync can run unattended (scheduled task, no desktop 1Password approval)
+- Review/merge [PR #179](https://github.com/J-MaFf/clickup_task_extractor/pull/179) (#166), then complete the manual 1Password/Task Scheduler steps listed above and live-verify the headless weekly run
 - Optionally build the v1.06 PyInstaller exe into `dist/v1.06/` (gitignored; not required for source users)
 - Identify any bugs or improvements from real usage
 
