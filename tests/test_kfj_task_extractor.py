@@ -26,6 +26,7 @@ from kfj_task_extractor import (
     fetch_open_tasks,
     load_google_credentials_json,
     parse_args,
+    read_secret_via_service_token,
     record_to_row,
     resolve_clickup_api_key,
     task_to_record,
@@ -727,6 +728,128 @@ class TestCredentialResolution(unittest.TestCase):
                 self.assertIsNone(resolve_clickup_api_key())
                 sdk.assert_not_called()
                 fallback.assert_not_called()
+
+
+class TestServiceTokenResolution(unittest.TestCase):
+    """Headless service-account-token path in _resolve_secret (issue #166).
+
+    With OP_SERVICE_ACCOUNT_TOKEN set, the service-token SDK path must be
+    tried before DesktopAuth and must not be short-circuited by a globally
+    set OP_ENVIRONMENT_ID (which makes auth.load_secret_with_fallback skip
+    vault references entirely). Without the token, behavior is unchanged.
+    """
+
+    def test_token_set_wins_before_desktop_sdk(self):
+        with mock.patch.dict(
+            os.environ, {"OP_SERVICE_ACCOUNT_TOKEN": "ops_dummy"}, clear=True
+        ):
+            with (
+                mock.patch(
+                    "kfj_task_extractor.CLICKUP_SECRET_REFERENCE",
+                    "op://vault/item/credential",
+                ),
+                mock.patch(
+                    "kfj_task_extractor.get_secret_from_1password",
+                    return_value="pk_from_service_token",
+                ) as token_sdk,
+                mock.patch(
+                    "kfj_task_extractor.resolve_secret_with_desktop_sdk"
+                ) as desktop,
+                mock.patch("kfj_task_extractor.load_secret_with_fallback") as fallback,
+            ):
+                self.assertEqual(resolve_clickup_api_key(), "pk_from_service_token")
+                token_sdk.assert_called_once_with(
+                    "op://vault/item/credential", "ClickUp API key"
+                )
+                desktop.assert_not_called()
+                fallback.assert_not_called()
+
+    def test_environment_id_does_not_short_circuit_token_path(self):
+        """A globally-set OP_ENVIRONMENT_ID must not block the token path."""
+        with mock.patch.dict(
+            os.environ,
+            {
+                "OP_SERVICE_ACCOUNT_TOKEN": "ops_dummy",
+                "OP_ENVIRONMENT_ID": "someenvironmentid",
+            },
+            clear=True,
+        ):
+            with (
+                mock.patch(
+                    "kfj_task_extractor.GOOGLE_SA_SECRET_REFERENCE",
+                    "op://vault/item/credential",
+                ),
+                mock.patch(
+                    "kfj_task_extractor.get_secret_from_1password",
+                    return_value='{"type": "service_account"}',
+                ),
+                mock.patch(
+                    "kfj_task_extractor.resolve_secret_with_desktop_sdk"
+                ) as desktop,
+                mock.patch("kfj_task_extractor.load_secret_with_fallback") as fallback,
+            ):
+                self.assertEqual(
+                    load_google_credentials_json(), '{"type": "service_account"}'
+                )
+                desktop.assert_not_called()
+                fallback.assert_not_called()
+
+    def test_token_failure_falls_back_to_desktop_sdk(self):
+        """A failing token resolution keeps DesktopAuth as the fallback."""
+        with mock.patch.dict(
+            os.environ, {"OP_SERVICE_ACCOUNT_TOKEN": "ops_dummy"}, clear=True
+        ):
+            with (
+                mock.patch(
+                    "kfj_task_extractor.CLICKUP_SECRET_REFERENCE",
+                    "op://vault/item/credential",
+                ),
+                mock.patch(
+                    "kfj_task_extractor.get_secret_from_1password",
+                    side_effect=RuntimeError("boom"),
+                ),
+                mock.patch(
+                    "kfj_task_extractor.resolve_secret_with_desktop_sdk",
+                    return_value="pk_from_desktop",
+                ) as desktop,
+            ):
+                self.assertEqual(resolve_clickup_api_key(), "pk_from_desktop")
+                desktop.assert_called_once()
+
+    def test_no_token_skips_service_token_path(self):
+        """Without the opt-in token, DesktopAuth stays first (default path)."""
+        with mock.patch.dict(os.environ, {}, clear=True):
+            with (
+                mock.patch(
+                    "kfj_task_extractor.CLICKUP_SECRET_REFERENCE",
+                    "op://vault/item/credential",
+                ),
+                mock.patch(
+                    "kfj_task_extractor.get_secret_from_1password"
+                ) as token_sdk,
+                mock.patch(
+                    "kfj_task_extractor.resolve_secret_with_desktop_sdk",
+                    return_value="pk_from_desktop",
+                ),
+            ):
+                self.assertEqual(resolve_clickup_api_key(), "pk_from_desktop")
+                token_sdk.assert_not_called()
+
+    def test_helper_returns_none_without_token(self):
+        with mock.patch.dict(os.environ, {}, clear=True):
+            with mock.patch("kfj_task_extractor.get_secret_from_1password") as sdk:
+                self.assertIsNone(read_secret_via_service_token("op://v/i/c", "x"))
+                sdk.assert_not_called()
+
+    def test_helper_never_raises(self):
+        with mock.patch.dict(
+            os.environ, {"OP_SERVICE_ACCOUNT_TOKEN": "ops_dummy"}, clear=True
+        ):
+            with mock.patch(
+                "kfj_task_extractor.get_secret_from_1password",
+                side_effect=RuntimeError("network down"),
+            ):
+                self.assertIsNone(read_secret_via_service_token("op://v/i/c", "x"))
 
 
 class LoadDotenvTests(unittest.TestCase):

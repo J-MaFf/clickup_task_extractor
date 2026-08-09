@@ -94,6 +94,8 @@ The `auth.load_secret_with_fallback()` follows this fallback order:
 
 All retrieval is logged (DEBUG level); failures don't raise exceptions—they return None and proceed to the next fallback.
 
+**KFJ sync (`kfj_task_extractor.py`) chain** (`_resolve_secret`, per secret): env var → **service-account-token SDK** (only when `OP_SERVICE_ACCOUNT_TOKEN` is set — the headless opt-in for unattended scheduled runs; tried before DesktopAuth and immune to the `OP_ENVIRONMENT_ID` short-circuit in `load_secret_with_fallback`, issue #166) → desktop-app SDK (DesktopAuth, default interactive path) → `load_secret_with_fallback` → `op read` with explicit account. The token is provisioned as an OS-level env var for the scheduled task's user (`setx`), never stored in `.env.kfj`, the repo, or task arguments. See README "Unattended / headless scheduled runs" for setup, including switching the task to "Run whether user is logged on or not".
+
 ### Core Modules
 
 **`main.py`**: CLI orchestrator
