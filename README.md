@@ -216,6 +216,7 @@ variables (see `.env.kfj.example` for the full list):
 | `KFJ_CLICKUP_SECRET_REFERENCE` | `op://` reference for the ClickUp key | No (skips 1Password if empty) |
 | `KFJ_GOOGLE_SA_SECRET_REFERENCE` | `op://` reference for the service-account JSON | No (skips 1Password if empty) |
 | `KFJ_OP_ACCOUNT_NAME` / `KFJ_OP_ACCOUNT_URL` | 1Password account display name / URL | No |
+| `OP_SERVICE_ACCOUNT_TOKEN` | 1Password service-account token for headless runs (set via the OS, **never** in `.env.kfj`) | No (opt-in for unattended runs) |
 
 > Finding the IDs: the **list ID** is the number in the ClickUp list URL; the
 > **sheet ID** is the long ID in the Google Sheets URL
@@ -244,10 +245,48 @@ op run --account my.1password.com --env-file=.env.kfj -- python kfj_task_extract
 | `--date M/D/YY` | Override the date used in the tab name (for backfill) | Today |
 
 **Authentication:** ClickUp uses `CLICKUP_API_KEY` from the environment first,
-then (if `KFJ_CLICKUP_SECRET_REFERENCE` is set) the 1Password SDK and the repo's
-fallback chain. The Google service account JSON is resolved the same way (env
-var `GOOGLE_SHEETS_CREDENTIALS_JSON` → 1Password if `KFJ_GOOGLE_SA_SECRET_REFERENCE`
-is set) and parsed in-memory — credentials are never written to disk.
+then (if `KFJ_CLICKUP_SECRET_REFERENCE` is set) the 1Password chain:
+service-account token SDK (only when `OP_SERVICE_ACCOUNT_TOKEN` is set — the
+headless opt-in below) → desktop-app SDK (DesktopAuth, the default interactive
+path) → the repo's fallback chain → `op read`. The Google service account JSON
+is resolved the same way (env var `GOOGLE_SHEETS_CREDENTIALS_JSON` → 1Password
+if `KFJ_GOOGLE_SA_SECRET_REFERENCE` is set) and parsed in-memory — credentials
+are never written to disk.
+
+### Unattended / headless scheduled runs (optional)
+
+By default the weekly Task Scheduler task must run **while you are logged in**
+with the 1Password desktop app unlocked (DesktopAuth). To make the sync fully
+unattended — machine locked or logged out — opt in to a 1Password
+**service-account token**:
+
+1. In 1Password, create a **service account** with **read** access to the vault
+   that holds the ClickUp key and the Google service-account JSON, and copy its
+   token (*manual step — done once in 1Password*).
+2. On the machine that runs the task, set the token as a **user-scoped
+   environment variable** for the account the task runs as (open a terminal as
+   that user):
+
+   ```powershell
+   setx OP_SERVICE_ACCOUNT_TOKEN "ops_..."
+   ```
+
+   The token lives only in that user's registry profile. **Never** put it in
+   `.env.kfj`, any file in the repo, or the task's command-line arguments (task
+   definitions are readable as XML).
+3. In Task Scheduler, edit the task ("KFJ Weekly ClickUp Sheet Sync") and
+   select **"Run whether user is logged on or not"** (you'll be prompted for
+   the run-as account's password; "Do not store password" would block network
+   access, so leave it unchecked).
+4. Verify headlessly before relying on it: with the 1Password app closed or
+   locked, `python kfj_task_extractor.py --dry-run` should still resolve both
+   secrets and print the rows.
+
+When `OP_SERVICE_ACCOUNT_TOKEN` is set, the script resolves the `op://`
+references through the 1Password SDK headlessly, *before* trying the desktop
+app — a globally configured `OP_ENVIRONMENT_ID` does not interfere. When the
+token is not set, nothing changes: DesktopAuth remains the default. Secrets
+still only ever exist in memory.
 
 **One-time setup** before the first real run:
 

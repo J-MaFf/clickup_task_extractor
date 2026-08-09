@@ -16,9 +16,13 @@ TaskRecord, sorting, ETA calculation, Claude CLI helpers, logging).
 Authentication (each secret, in order):
 1. Environment variable (CLICKUP_API_KEY / GOOGLE_SHEETS_CREDENTIALS_JSON),
    e.g. injected via `op run --env-file=.env.kfj`
-2. 1Password Python SDK via desktop app auth (no token setup needed; the
-   unlocked 1Password app approves the access)
-3. Repo fallback chain (auth.load_secret_with_fallback): SDK with
+2. 1Password SDK via service-account token — only when OP_SERVICE_ACCOUNT_TOKEN
+   is set. Fully headless: no desktop app, works while logged out/locked, so a
+   scheduled task can run "whether user is logged on or not". Opt-in; tried
+   before DesktopAuth so an unattended run never waits on the desktop app.
+3. 1Password Python SDK via desktop app auth (no token setup needed; the
+   unlocked 1Password app approves the access) — the default interactive path
+4. Repo fallback chain (auth.load_secret_with_fallback): SDK with
    OP_SERVICE_ACCOUNT_TOKEN, then `op read` CLI
 
 Credentials only ever exist in memory and are never written to disk.
@@ -171,7 +175,11 @@ from ai_summary import (  # noqa: E402
     mark_claude_unavailable,
 )
 from api_client import APIError, AuthenticationError, ClickUpAPIClient  # noqa: E402
-from auth import load_secret_with_fallback, resolve_secret_with_desktop_sdk  # noqa: E402
+from auth import (  # noqa: E402
+    get_secret_from_1password,
+    load_secret_with_fallback,
+    resolve_secret_with_desktop_sdk,
+)
 from config import TaskRecord, format_datetime, sort_tasks_by_priority_and_eta  # noqa: E402
 from eta_calculator import calculate_eta, calculate_eta_with_source  # noqa: E402
 from logger_config import get_logger, setup_logging  # noqa: E402
@@ -262,6 +270,39 @@ def read_secret_via_op_cli(
     return None
 
 
+def read_secret_via_service_token(
+    secret_reference: str, secret_name: str
+) -> str | None:
+    """
+    Headless resolution via the 1Password SDK with a service-account token.
+
+    Only active when OP_SERVICE_ACCOUNT_TOKEN is set (the opt-in for unattended
+    scheduled runs). Called directly — rather than relying on
+    auth.load_secret_with_fallback — because that chain short-circuits to the
+    1Password Environment path whenever OP_ENVIRONMENT_ID is set globally and
+    never reaches the service-token vault lookup for our op:// references.
+
+    Returns:
+        The secret string, or None if the token is unset or resolution failed
+        (never raises)
+    """
+    if not os.environ.get("OP_SERVICE_ACCOUNT_TOKEN"):
+        return None
+    try:
+        value = get_secret_from_1password(secret_reference, secret_name)
+        if value:
+            logger.info(
+                f"✅ {secret_name} loaded via 1Password service-account token."
+            )
+            return value
+    except Exception as e:
+        logger.debug(
+            f"Service-account token resolution failed for {secret_name} "
+            f"(will fall back to DesktopAuth/CLI): {e}"
+        )
+    return None
+
+
 def _resolve_secret(
     env_var: str,
     secret_reference: str,
@@ -273,9 +314,11 @@ def _resolve_secret(
     Resolve a secret through the full chain:
 
     1. Environment variable (e.g. injected via `op run`)
-    2. 1Password Python SDK via desktop app auth
-    3. Repo fallback chain (1Password Environment / service-token SDK / CLI)
-    4. Direct `op read` with explicit account
+    2. 1Password SDK via service-account token (only if OP_SERVICE_ACCOUNT_TOKEN
+       is set — the headless/unattended opt-in; see issue #166)
+    3. 1Password Python SDK via desktop app auth
+    4. Repo fallback chain (1Password Environment / service-token SDK / CLI)
+    5. Direct `op read` with explicit account
 
     Returns:
         The secret string, or None if every source failed
@@ -292,6 +335,11 @@ def _resolve_secret(
             f"set {env_var} or KFJ_*_SECRET_REFERENCE to enable 1Password lookup."
         )
         return None
+    # Headless-first when the service-account token is present: on a locked or
+    # logged-out machine the DesktopAuth attempts below would only stall/fail.
+    value = read_secret_via_service_token(secret_reference, secret_name)
+    if value:
+        return value
     value = resolve_secret_with_desktop_sdk(
         secret_reference, secret_name, [sdk_account_name] if sdk_account_name else []
     )
