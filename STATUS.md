@@ -4,7 +4,7 @@
 
 Python CLI for extracting, processing, and exporting tasks from the ClickUp API. Supports Markdown, HTML, and CSV output, optional AI summaries (Claude via Max/Pro OAuth by default, or Google Gemini, or the ClickUp Summary field), 1Password-backed authentication, and a Rich console UI with interactive task selection and priority/ETA sorting.
 
-## Current State — 2026-08-09
+## Current State — 2026-08-10
 
 **v1.06 released 2026-06-26** ([#154](https://github.com/J-MaFf/clickup_task_extractor/issues/154)). CI now runs the suite on two OSes: hosted Linux (Python 3.11) and the self-hosted `win-test` Windows runner (Python 3.14) ([#156](https://github.com/J-MaFf/clickup_task_extractor/issues/156)). Beads (`bd`) is active as the task/memory layer beneath GitHub Issues. Since v1.05: AI summaries default to Claude (Max OAuth, [#145](https://github.com/J-MaFf/clickup_task_extractor/pull/145)); summaries + ETAs run concurrently ([#148](https://github.com/J-MaFf/clickup_task_extractor/pull/148)); ETAs can use Claude ([#149](https://github.com/J-MaFf/clickup_task_extractor/pull/149)); `main.py` auto-loads a project-local `.env` so configured workspace/space apply ([#151](https://github.com/J-MaFf/clickup_task_extractor/pull/151)); `kfj_task_extractor.py` auto-loads `.env.kfj` secret-safely ([#153](https://github.com/J-MaFf/clickup_task_extractor/pull/153)) — all merged.
 
@@ -58,6 +58,7 @@ Python CLI for extracting, processing, and exporting tasks from the ClickUp API.
 | [#168](https://github.com/J-MaFf/clickup_task_extractor/issues/168) | Ctrl+C cancels queued futures in the concurrent AI passes | [#169](https://github.com/J-MaFf/clickup_task_extractor/pull/169) |
 | [#170](https://github.com/J-MaFf/clickup_task_extractor/issues/170) | Claude CLI timeout kill-switch (3 strikes disables the path) | [#171](https://github.com/J-MaFf/clickup_task_extractor/pull/171) |
 | [#172](https://github.com/J-MaFf/clickup_task_extractor/issues/172) | Gemini ETA path uses the validated date extraction | [#173](https://github.com/J-MaFf/clickup_task_extractor/pull/173) |
+| [#180](https://github.com/J-MaFf/clickup_task_extractor/issues/180) | Adopt shared reusable claude.yml workflow from J-MaFf/.github | [#181](https://github.com/J-MaFf/clickup_task_extractor/pull/181) |
 
 ### Open Issues
 
