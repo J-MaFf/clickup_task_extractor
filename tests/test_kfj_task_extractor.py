@@ -142,7 +142,7 @@ class TestTaskToRecord(unittest.TestCase):
             "type_config": {
                 "options": [
                     {"id": "opt-remote", "name": "Remote", "orderindex": 0},
-                    {"id": "opt-onsite", "name": "On-site", "orderindex": 1},
+                    {"id": "opt-onsite", "name": "On-Site", "orderindex": 1},
                 ]
             },
         }
@@ -162,7 +162,7 @@ class TestTaskToRecord(unittest.TestCase):
             "type_config": {
                 "options": [
                     {"id": "opt-remote", "name": "Remote", "orderindex": 0},
-                    {"id": "opt-onsite", "name": "On-site", "orderindex": 1},
+                    {"id": "opt-onsite", "name": "On-Site", "orderindex": 1},
                 ]
             },
         }
@@ -201,7 +201,7 @@ class TestRecordToRow(unittest.TestCase):
 
     def test_work_location_at_index_3_with_display_casing(self):
         # Full row order per the 7-column header: Work Location sits between
-        # Branch (2) and lowercased Priority (4), keeping "On-site" casing.
+        # Branch (2) and lowercased Priority (4), keeping "On-Site" casing.
         fields = [
             {
                 "name": "Branch",
@@ -216,7 +216,7 @@ class TestRecordToRow(unittest.TestCase):
                 "type_config": {
                     "options": [
                         {"id": "opt-remote", "name": "Remote", "orderindex": 0},
-                        {"id": "opt-onsite", "name": "On-site", "orderindex": 1},
+                        {"id": "opt-onsite", "name": "On-Site", "orderindex": 1},
                     ]
                 },
             },
@@ -236,7 +236,7 @@ class TestRecordToRow(unittest.TestCase):
                 "Task A",
                 "KFI Jefferson",
                 "KFJ (213)",
-                "On-site",
+                "On-Site",
                 "high",
                 "to do",
                 "5/5/2026",

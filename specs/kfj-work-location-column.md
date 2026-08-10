@@ -31,13 +31,13 @@ from a ClickUp dropdown custom field.
 - Old weekly tabs are never modified (`write_to_sheet` only writes the new/current tab),
   so the new column appears only on tabs generated after this change. That is accepted.
 - **Prerequisite (manual, one-time, outside this spec's code):** a dropdown custom field
-  named **"Work Location"** with options **"Remote"** and **"On-site"** must exist on the
+  named **"Work Location"** with options **"Remote"** and **"On-Site"** must exist on the
   ClickUp "KFI Jefferson" list. The ClickUp v2 API cannot create custom field
   *definitions* (only set values on existing fields), so Joey creates the field in the
   ClickUp UI and sets it per task. The code must behave correctly (blank cell) both
   before the field exists and for tasks where it is unset.
 - Decisions already made (interview, 2026-08-10): source = new ClickUp dropdown field;
-  header text = "Work Location"; cell values = "Remote" / "On-site" (dropdown option
+  header text = "Work Location"; cell values = "Remote" / "On-Site" (dropdown option
   names); unset tasks render a **blank** cell (no default guess); column position =
   between Branch and Priority.
 
@@ -60,7 +60,7 @@ repository. No other files change (no `config.py`, no `extractor.py`).
   constant, no inference. [verify: unit test]
 - R4. `record_to_row()` emits the work-location value at index 3 (between Branch and
   Priority), preserving the dropdown option's display casing (e.g. "Remote",
-  "On-site" — not lowercased). [verify: unit test asserting the full row order]
+  "On-Site" — not lowercased). [verify: unit test asserting the full row order]
 - R5. The bold-header format range in `write_to_sheet()` covers all 7 columns — either
   computed from `len(HEADER)` or the literal `"A1:G1"`. [verify: read the diff]
 - R6. `python -m pytest tests/ -v` passes: all pre-existing tests still green (none
@@ -108,7 +108,7 @@ repository. No other files change (no `config.py`, no `extractor.py`).
   `git diff` shows zero changes to `config.py` and `extractor.py`.
 - C3 (from R3): PASS iff a test feeds a task with (a) no "Work Location" field and
   (b) the field with `value: None`, and both assert the stored value is `""`.
-- C4 (from R4): PASS iff a test builds a record with work location "On-site" and asserts
+- C4 (from R4): PASS iff a test builds a record with work location "On-Site" and asserts
   `record_to_row()` returns it at index 3 with casing intact, with Branch at 2 and
   lowercased priority at 4.
 - C5 (from R5): PASS iff the header-format call's range spans columns A through G (or is

@@ -178,7 +178,7 @@ same day is idempotent — the existing tab's contents are replaced rather than
 duplicated.
 
 **Work Location column:** sourced from a ClickUp dropdown custom field named
-`Work Location` (options `Remote` / `On-site`) on the KFI Jefferson list. The
+`Work Location` (options `Remote` / `On-Site`) on the KFI Jefferson list. The
 option's display casing is preserved; tasks where the field is absent or unset
 render a blank cell.
 
