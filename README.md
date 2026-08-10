@@ -172,9 +172,15 @@ workflow is untouched.
 
 Each run creates a new tab named `KFI Jefferson current tasks (M/D/YY)` (today's
 date, no leading zeros), writes the header and task rows
-(`Task | Company | Branch | Priority | Status | ETA`) sorted by priority then
-ETA, and renames the workbook title to match. Re-running on the same day is
-idempotent — the existing tab's contents are replaced rather than duplicated.
+(`Task | Company | Branch | Work Location | Priority | Status | ETA`) sorted by
+priority then ETA, and renames the workbook title to match. Re-running on the
+same day is idempotent — the existing tab's contents are replaced rather than
+duplicated.
+
+**Work Location column:** sourced from a ClickUp dropdown custom field named
+`Work Location` (options `Remote` / `On-site`) on the KFI Jefferson list. The
+option's display casing is preserved; tasks where the field is absent or unset
+render a blank cell.
 
 **ETA column:** tasks with a ClickUp due date use that date. Tasks without one
 get a **calculated ETA**: by default the local `claude` CLI (Claude Code

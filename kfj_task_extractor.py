@@ -1,12 +1,12 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
 """
 KFJ Task Extractor - Weekly ClickUp -> Google Sheets sync
 
 Standalone entry point that pulls all open tasks from the "KFI Jefferson"
 ClickUp list and writes them into the weekly tracking Google Sheet:
 - Creates a new worksheet tab named "KFI Jefferson current tasks (M/D/YY)"
-- Writes header + task rows (Task, Company, Branch, Priority, Status, ETA)
+- Writes header + task rows (Task, Company, Branch, Work Location, Priority,
+  Status, ETA)
 - Renames the workbook title to match the new tab
 
 This script does not modify the main extractor workflow (main.py /
@@ -169,21 +169,25 @@ except ImportError:
     print("Please install it using: pip install -r requirements.txt")
     sys.exit(1)
 
-from ai_summary import (  # noqa: E402
+from ai_summary import (
     claude_cli_authenticated,
     claude_cli_available,
     mark_claude_unavailable,
 )
-from api_client import APIError, AuthenticationError, ClickUpAPIClient  # noqa: E402
-from auth import (  # noqa: E402
+from api_client import APIError, AuthenticationError, ClickUpAPIClient
+from auth import (
     get_secret_from_1password,
     load_secret_with_fallback,
     resolve_secret_with_desktop_sdk,
 )
-from config import TaskRecord, format_datetime, sort_tasks_by_priority_and_eta  # noqa: E402
-from eta_calculator import calculate_eta, calculate_eta_with_source  # noqa: E402
-from logger_config import get_logger, setup_logging  # noqa: E402
-from mappers import LocationMapper  # noqa: E402
+from config import (
+    TaskRecord,
+    format_datetime,
+    sort_tasks_by_priority_and_eta,
+)
+from eta_calculator import calculate_eta, calculate_eta_with_source
+from logger_config import get_logger, setup_logging
+from mappers import LocationMapper
 
 console = Console()
 logger = get_logger(__name__)
@@ -205,7 +209,7 @@ DEFAULT_LIST_ID = os.environ.get("KFJ_CLICKUP_LIST_ID", "")
 DEFAULT_SHEET_ID = os.environ.get("KFJ_GOOGLE_SHEET_ID", "")
 
 TAB_PREFIX = os.environ.get("KFJ_TAB_PREFIX", "KFI Jefferson current tasks")
-HEADER = ["Task", "Company", "Branch", "Priority", "Status", "ETA"]
+HEADER = ["Task", "Company", "Branch", "Work Location", "Priority", "Status", "ETA"]
 FALLBACK_BRANCH = os.environ.get("KFJ_FALLBACK_BRANCH", "")
 PRIORITY_MAP = {1: "Low", 2: "Normal", 3: "High", 4: "Urgent"}
 SCOPES = ["https://www.googleapis.com/auth/spreadsheets"]
@@ -260,6 +264,7 @@ def read_secret_via_op_cli(
             capture_output=True,
             text=True,
             timeout=10,
+            check=False,
         )
         if result.returncode == 0 and result.stdout.strip():
             logger.info(f"✅ {secret_name} loaded from 1Password CLI ({account_url}).")
@@ -295,7 +300,8 @@ def read_secret_via_service_token(
                 f"✅ {secret_name} loaded via 1Password service-account token."
             )
             return value
-    except Exception as e:
+    # Any resolution failure falls back to DesktopAuth/CLI (never raises).
+    except Exception as e:  # noqa: BLE001
         logger.debug(
             f"Service-account token resolution failed for {secret_name} "
             f"(will fall back to DesktopAuth/CLI): {e}"
@@ -441,6 +447,23 @@ def _text_custom_field(custom_fields: dict[str, dict], name: str) -> str:
     return value if isinstance(value, str) else ""
 
 
+def _dropdown_custom_field(
+    custom_fields: dict[str, dict], name: str, fallback: str = ""
+) -> str:
+    """Resolve a dropdown custom field to its option's display name.
+
+    Uses ``LocationMapper.map_location`` (id -> orderindex -> name priority),
+    preserving the option's display casing. Returns ``fallback`` when the
+    field is absent or its value is unset (``None``).
+    """
+    field = custom_fields.get(name)
+    if field and field.get("value") is not None:
+        type_config = field.get("type_config", {})
+        options = type_config.get("options", [])
+        return LocationMapper.map_location(field["value"], type_config, options)
+    return fallback
+
+
 def task_to_record(task: dict, company: str) -> TaskRecord:
     """
     Map a raw ClickUp task dict (list endpoint shape) to a TaskRecord.
@@ -477,15 +500,14 @@ def task_to_record(task: dict, company: str) -> TaskRecord:
 
     # Branch: resolve the dropdown custom field, falling back to the
     # constant used by the KFI Jefferson list
-    branch = FALLBACK_BRANCH
     custom_fields = {f.get("name"): f for f in task.get("custom_fields", [])}
-    branch_field = custom_fields.get("Branch")
-    if branch_field and branch_field.get("value") is not None:
-        type_config = branch_field.get("type_config", {})
-        options = type_config.get("options", [])
-        branch = LocationMapper.map_location(
-            branch_field["value"], type_config, options
-        )
+    branch = _dropdown_custom_field(custom_fields, "Branch", FALLBACK_BRANCH)
+
+    # Work Location: same dropdown mechanism as Branch, but with no fallback —
+    # an absent field or unset value renders a blank sheet cell. Carried in
+    # _metadata (not a TaskRecord field) so the main extractor's exports,
+    # which derive their columns from TaskRecord, are unaffected.
+    work_location = _dropdown_custom_field(custom_fields, "Work Location")
 
     # Tasks without a (valid) due date get a deterministic priority/status
     # baseline ETA now; the inputs are stashed in _metadata so apply_ai_etas()
@@ -515,6 +537,7 @@ def task_to_record(task: dict, company: str) -> TaskRecord:
         Status=status,
         ETA=eta,
     )
+    record._metadata["work_location"] = work_location
     if eta_inputs is not None:
         record._metadata["eta_inputs"] = eta_inputs
     return record
@@ -587,7 +610,8 @@ def apply_ai_etas(records: list[TaskRecord]) -> None:
                 record = futures[future]
                 try:
                     eta, used_ai = future.result()
-                except Exception as exc:  # keep the deterministic baseline ETA
+                # Any estimate failure keeps the deterministic baseline ETA.
+                except Exception as exc:  # noqa: BLE001
                     logger.warning(
                         f"AI ETA failed for '{record.Task}': {str(exc)[:80]}"
                     )
@@ -627,12 +651,15 @@ def build_records(
 def record_to_row(record: TaskRecord) -> list[str]:
     """
     Convert a TaskRecord to a sheet row, normalized to match the existing
-    sheet's conventions (lowercase priority/status, date-only ETA).
+    sheet's conventions (lowercase priority/status, date-only ETA). Work
+    Location keeps its dropdown display casing (like Branch) and renders
+    blank when unset.
     """
     return [
         record.Task,
         record.Company,
         record.Branch,
+        record._metadata.get("work_location", ""),
         record.Priority.lower(),
         record.Status.lower(),
         record.ETA,
@@ -684,7 +711,8 @@ def write_to_sheet(gc, sheet_id: str, tab_name: str, rows: list[list[str]]) -> N
         range_name="A1",
         value_input_option="USER_ENTERED",
     )
-    ws.format("A1:F1", {"textFormat": {"bold": True}})
+    # Bold the header row across all columns (range grows with HEADER).
+    ws.format(f"A1:{chr(ord('A') + len(HEADER) - 1)}1", {"textFormat": {"bold": True}})
     sh.update_title(tab_name)
 
 
@@ -748,12 +776,13 @@ def main() -> int:
 
     if args.date:
         try:
-            tab_date = datetime.strptime(args.date, "%m/%d/%y").date()
+            # Date-only value; timezone is irrelevant to the tab name.
+            tab_date = datetime.strptime(args.date, "%m/%d/%y").date()  # noqa: DTZ007
         except ValueError:
             console.print(f"[red]Invalid --date '{args.date}', expected M/D/YY[/red]")
             return 1
     else:
-        tab_date = date.today()
+        tab_date = date.today()  # noqa: DTZ011 - the local date names the weekly tab
     tab_name = build_tab_name(tab_date)
 
     api_key = resolve_clickup_api_key()
