@@ -135,6 +135,42 @@ class TestTaskToRecord(unittest.TestCase):
         )
         self.assertEqual(record.Branch, FALLBACK_BRANCH)
 
+    def test_work_location_dropdown_resolved_by_option_id(self):
+        work_location_field = {
+            "name": "Work Location",
+            "value": "opt-remote",
+            "type_config": {
+                "options": [
+                    {"id": "opt-remote", "name": "Remote", "orderindex": 0},
+                    {"id": "opt-onsite", "name": "On-Site", "orderindex": 1},
+                ]
+            },
+        }
+        record = task_to_record(
+            make_task(custom_fields=[work_location_field]), "KFI Jefferson"
+        )
+        self.assertEqual(record._metadata["work_location"], "Remote")
+
+    def test_work_location_missing_field_is_blank(self):
+        record = task_to_record(make_task(custom_fields=[]), "KFI Jefferson")
+        self.assertEqual(record._metadata["work_location"], "")
+
+    def test_work_location_with_null_value_is_blank(self):
+        work_location_field = {
+            "name": "Work Location",
+            "value": None,
+            "type_config": {
+                "options": [
+                    {"id": "opt-remote", "name": "Remote", "orderindex": 0},
+                    {"id": "opt-onsite", "name": "On-Site", "orderindex": 1},
+                ]
+            },
+        }
+        record = task_to_record(
+            make_task(custom_fields=[work_location_field]), "KFI Jefferson"
+        )
+        self.assertEqual(record._metadata["work_location"], "")
+
 
 class TestRecordToRow(unittest.TestCase):
     """Test suite for record_to_row normalization."""
@@ -148,8 +184,8 @@ class TestRecordToRow(unittest.TestCase):
             "KFI Jefferson",
         )
         row = record_to_row(record)
-        self.assertEqual(row[3], "high")
-        self.assertEqual(row[4], "investigating")
+        self.assertEqual(row[4], "high")
+        self.assertEqual(row[5], "investigating")
 
     def test_column_order_matches_header(self):
         record = task_to_record(
@@ -160,7 +196,52 @@ class TestRecordToRow(unittest.TestCase):
         self.assertEqual(row[0], "Task A")  # Task
         self.assertEqual(row[1], "KFI Jefferson")  # Company
         self.assertEqual(row[2], FALLBACK_BRANCH)  # Branch
-        self.assertEqual(row[5], "5/5/2026")  # ETA
+        self.assertEqual(row[3], "")  # Work Location (unset -> blank)
+        self.assertEqual(row[6], "5/5/2026")  # ETA
+
+    def test_work_location_at_index_3_with_display_casing(self):
+        # Full row order per the 7-column header: Work Location sits between
+        # Branch (2) and lowercased Priority (4), keeping "On-Site" casing.
+        fields = [
+            {
+                "name": "Branch",
+                "value": "opt-123",
+                "type_config": {
+                    "options": [{"id": "opt-123", "name": "KFJ (213)", "orderindex": 0}]
+                },
+            },
+            {
+                "name": "Work Location",
+                "value": "opt-onsite",
+                "type_config": {
+                    "options": [
+                        {"id": "opt-remote", "name": "Remote", "orderindex": 0},
+                        {"id": "opt-onsite", "name": "On-Site", "orderindex": 1},
+                    ]
+                },
+            },
+        ]
+        record = task_to_record(
+            make_task(
+                name="Task A",
+                priority={"priority": 3},
+                due_date="1777982400000",
+                custom_fields=fields,
+            ),
+            "KFI Jefferson",
+        )
+        self.assertEqual(
+            record_to_row(record),
+            [
+                "Task A",
+                "KFI Jefferson",
+                "KFJ (213)",
+                "On-Site",
+                "high",
+                "to do",
+                "5/5/2026",
+            ],
+        )
 
 
 class TestBuildTabName(unittest.TestCase):
@@ -611,123 +692,120 @@ class TestCredentialResolution(unittest.TestCase):
     """Secrets resolve in order: env var -> desktop SDK -> fallback chain."""
 
     def test_clickup_key_env_var_wins(self):
-        with mock.patch.dict(os.environ, {"CLICKUP_API_KEY": "pk_from_env"}):
-            with mock.patch(
+        with (
+            mock.patch.dict(os.environ, {"CLICKUP_API_KEY": "pk_from_env"}),
+            mock.patch(
                 "kfj_task_extractor.resolve_secret_with_desktop_sdk"
-            ) as sdk:
-                self.assertEqual(resolve_clickup_api_key(), "pk_from_env")
-                sdk.assert_not_called()
+            ) as sdk,
+        ):
+            self.assertEqual(resolve_clickup_api_key(), "pk_from_env")
+            sdk.assert_not_called()
 
     def test_clickup_key_sdk_before_fallback(self):
-        with mock.patch.dict(os.environ, {}, clear=True):
-            with (
-                mock.patch(
-                    "kfj_task_extractor.CLICKUP_SECRET_REFERENCE",
-                    "op://vault/item/credential",
-                ),
-                mock.patch(
-                    "kfj_task_extractor.resolve_secret_with_desktop_sdk",
-                    return_value="pk_from_sdk",
-                ) as sdk,
-                mock.patch(
-                    "kfj_task_extractor.load_secret_with_fallback"
-                ) as fallback,
-            ):
-                self.assertEqual(resolve_clickup_api_key(), "pk_from_sdk")
-                sdk.assert_called_once()
-                fallback.assert_not_called()
+        with (
+            mock.patch.dict(os.environ, {}, clear=True), mock.patch(
+                "kfj_task_extractor.CLICKUP_SECRET_REFERENCE",
+                "op://vault/item/credential",
+            ),
+            mock.patch(
+                "kfj_task_extractor.resolve_secret_with_desktop_sdk",
+                return_value="pk_from_sdk",
+            ) as sdk,
+            mock.patch(
+                "kfj_task_extractor.load_secret_with_fallback"
+            ) as fallback,
+        ):
+            self.assertEqual(resolve_clickup_api_key(), "pk_from_sdk")
+            sdk.assert_called_once()
+            fallback.assert_not_called()
 
     def test_clickup_key_falls_back_when_sdk_fails(self):
-        with mock.patch.dict(os.environ, {}, clear=True):
-            with (
-                mock.patch(
-                    "kfj_task_extractor.CLICKUP_SECRET_REFERENCE",
-                    "op://vault/item/credential",
-                ),
-                mock.patch(
-                    "kfj_task_extractor.resolve_secret_with_desktop_sdk",
-                    return_value=None,
-                ),
-                mock.patch(
-                    "kfj_task_extractor.load_secret_with_fallback",
-                    return_value="pk_from_cli",
-                ) as fallback,
-            ):
-                self.assertEqual(resolve_clickup_api_key(), "pk_from_cli")
-                fallback.assert_called_once()
+        with (
+            mock.patch.dict(os.environ, {}, clear=True), mock.patch(
+                "kfj_task_extractor.CLICKUP_SECRET_REFERENCE",
+                "op://vault/item/credential",
+            ),
+            mock.patch(
+                "kfj_task_extractor.resolve_secret_with_desktop_sdk",
+                return_value=None,
+            ),
+            mock.patch(
+                "kfj_task_extractor.load_secret_with_fallback",
+                return_value="pk_from_cli",
+            ) as fallback,
+        ):
+            self.assertEqual(resolve_clickup_api_key(), "pk_from_cli")
+            fallback.assert_called_once()
 
     def test_google_creds_env_var_wins(self):
         with mock.patch.dict(
             os.environ, {"GOOGLE_SHEETS_CREDENTIALS_JSON": '{"a": 1}'}
-        ):
-            with mock.patch(
-                "kfj_task_extractor.resolve_secret_with_desktop_sdk"
-            ) as sdk:
-                self.assertEqual(load_google_credentials_json(), '{"a": 1}')
-                sdk.assert_not_called()
+        ), mock.patch(
+            "kfj_task_extractor.resolve_secret_with_desktop_sdk"
+        ) as sdk:
+            self.assertEqual(load_google_credentials_json(), '{"a": 1}')
+            sdk.assert_not_called()
 
     def test_google_creds_sdk_before_fallback(self):
-        with mock.patch.dict(os.environ, {}, clear=True):
-            with (
-                mock.patch(
-                    "kfj_task_extractor.GOOGLE_SA_SECRET_REFERENCE",
-                    "op://vault/item/credential",
-                ),
-                mock.patch(
-                    "kfj_task_extractor.resolve_secret_with_desktop_sdk",
-                    return_value='{"type": "service_account"}',
-                ) as sdk,
-                mock.patch(
-                    "kfj_task_extractor.load_secret_with_fallback"
-                ) as fallback,
-            ):
-                self.assertEqual(
-                    load_google_credentials_json(), '{"type": "service_account"}'
-                )
-                sdk.assert_called_once()
-                fallback.assert_not_called()
+        with (
+            mock.patch.dict(os.environ, {}, clear=True), mock.patch(
+                "kfj_task_extractor.GOOGLE_SA_SECRET_REFERENCE",
+                "op://vault/item/credential",
+            ),
+            mock.patch(
+                "kfj_task_extractor.resolve_secret_with_desktop_sdk",
+                return_value='{"type": "service_account"}',
+            ) as sdk,
+            mock.patch(
+                "kfj_task_extractor.load_secret_with_fallback"
+            ) as fallback,
+        ):
+            self.assertEqual(
+                load_google_credentials_json(), '{"type": "service_account"}'
+            )
+            sdk.assert_called_once()
+            fallback.assert_not_called()
 
     def test_google_creds_all_sources_fail(self):
-        with mock.patch.dict(os.environ, {}, clear=True):
-            with (
-                mock.patch(
-                    "kfj_task_extractor.GOOGLE_SA_SECRET_REFERENCE",
-                    "op://vault/item/credential",
-                ),
-                mock.patch(
-                    "kfj_task_extractor.resolve_secret_with_desktop_sdk",
-                    return_value=None,
-                ),
-                mock.patch(
-                    "kfj_task_extractor.load_secret_with_fallback",
-                    return_value=None,
-                ),
-                mock.patch(
-                    "kfj_task_extractor.read_secret_via_op_cli",
-                    return_value=None,
-                ) as op_cli,
-            ):
-                self.assertIsNone(load_google_credentials_json())
-                op_cli.assert_called_once()
+        with (
+            mock.patch.dict(os.environ, {}, clear=True), mock.patch(
+                "kfj_task_extractor.GOOGLE_SA_SECRET_REFERENCE",
+                "op://vault/item/credential",
+            ),
+            mock.patch(
+                "kfj_task_extractor.resolve_secret_with_desktop_sdk",
+                return_value=None,
+            ),
+            mock.patch(
+                "kfj_task_extractor.load_secret_with_fallback",
+                return_value=None,
+            ),
+            mock.patch(
+                "kfj_task_extractor.read_secret_via_op_cli",
+                return_value=None,
+            ) as op_cli,
+        ):
+            self.assertIsNone(load_google_credentials_json())
+            op_cli.assert_called_once()
 
     def test_clickup_key_skips_1password_when_reference_unset(self):
         """With no env var and an empty secret reference, the 1Password chain is
         skipped and resolution returns None (issue #110)."""
-        with mock.patch.dict(os.environ, {}, clear=True):
-            with (
-                mock.patch("kfj_task_extractor.CLICKUP_SECRET_REFERENCE", ""),
-                mock.patch(
-                    "kfj_task_extractor.resolve_secret_with_desktop_sdk",
-                    return_value="should_not_be_used",
-                ) as sdk,
-                mock.patch(
-                    "kfj_task_extractor.load_secret_with_fallback",
-                    return_value="should_not_be_used",
-                ) as fallback,
-            ):
-                self.assertIsNone(resolve_clickup_api_key())
-                sdk.assert_not_called()
-                fallback.assert_not_called()
+        with (
+            mock.patch.dict(os.environ, {}, clear=True),
+            mock.patch("kfj_task_extractor.CLICKUP_SECRET_REFERENCE", ""),
+            mock.patch(
+                "kfj_task_extractor.resolve_secret_with_desktop_sdk",
+                return_value="should_not_be_used",
+            ) as sdk,
+            mock.patch(
+                "kfj_task_extractor.load_secret_with_fallback",
+                return_value="should_not_be_used",
+            ) as fallback,
+        ):
+            self.assertIsNone(resolve_clickup_api_key())
+            sdk.assert_not_called()
+            fallback.assert_not_called()
 
 
 class TestServiceTokenResolution(unittest.TestCase):
@@ -740,116 +818,113 @@ class TestServiceTokenResolution(unittest.TestCase):
     """
 
     def test_token_set_wins_before_desktop_sdk(self):
-        with mock.patch.dict(
+        with (
+            mock.patch.dict(
             os.environ, {"OP_SERVICE_ACCOUNT_TOKEN": "ops_dummy"}, clear=True
+        ), mock.patch(
+                "kfj_task_extractor.CLICKUP_SECRET_REFERENCE",
+                "op://vault/item/credential",
+            ),
+            mock.patch(
+                "kfj_task_extractor.get_secret_from_1password",
+                return_value="pk_from_service_token",
+            ) as token_sdk,
+            mock.patch(
+                "kfj_task_extractor.resolve_secret_with_desktop_sdk"
+            ) as desktop,
+            mock.patch("kfj_task_extractor.load_secret_with_fallback") as fallback,
         ):
-            with (
-                mock.patch(
-                    "kfj_task_extractor.CLICKUP_SECRET_REFERENCE",
-                    "op://vault/item/credential",
-                ),
-                mock.patch(
-                    "kfj_task_extractor.get_secret_from_1password",
-                    return_value="pk_from_service_token",
-                ) as token_sdk,
-                mock.patch(
-                    "kfj_task_extractor.resolve_secret_with_desktop_sdk"
-                ) as desktop,
-                mock.patch("kfj_task_extractor.load_secret_with_fallback") as fallback,
-            ):
-                self.assertEqual(resolve_clickup_api_key(), "pk_from_service_token")
-                token_sdk.assert_called_once_with(
-                    "op://vault/item/credential", "ClickUp API key"
-                )
-                desktop.assert_not_called()
-                fallback.assert_not_called()
+            self.assertEqual(resolve_clickup_api_key(), "pk_from_service_token")
+            token_sdk.assert_called_once_with(
+                "op://vault/item/credential", "ClickUp API key"
+            )
+            desktop.assert_not_called()
+            fallback.assert_not_called()
 
     def test_environment_id_does_not_short_circuit_token_path(self):
         """A globally-set OP_ENVIRONMENT_ID must not block the token path."""
-        with mock.patch.dict(
+        with (
+            mock.patch.dict(
             os.environ,
             {
                 "OP_SERVICE_ACCOUNT_TOKEN": "ops_dummy",
                 "OP_ENVIRONMENT_ID": "someenvironmentid",
             },
             clear=True,
+        ), mock.patch(
+                "kfj_task_extractor.GOOGLE_SA_SECRET_REFERENCE",
+                "op://vault/item/credential",
+            ),
+            mock.patch(
+                "kfj_task_extractor.get_secret_from_1password",
+                return_value='{"type": "service_account"}',
+            ),
+            mock.patch(
+                "kfj_task_extractor.resolve_secret_with_desktop_sdk"
+            ) as desktop,
+            mock.patch("kfj_task_extractor.load_secret_with_fallback") as fallback,
         ):
-            with (
-                mock.patch(
-                    "kfj_task_extractor.GOOGLE_SA_SECRET_REFERENCE",
-                    "op://vault/item/credential",
-                ),
-                mock.patch(
-                    "kfj_task_extractor.get_secret_from_1password",
-                    return_value='{"type": "service_account"}',
-                ),
-                mock.patch(
-                    "kfj_task_extractor.resolve_secret_with_desktop_sdk"
-                ) as desktop,
-                mock.patch("kfj_task_extractor.load_secret_with_fallback") as fallback,
-            ):
-                self.assertEqual(
-                    load_google_credentials_json(), '{"type": "service_account"}'
-                )
-                desktop.assert_not_called()
-                fallback.assert_not_called()
+            self.assertEqual(
+                load_google_credentials_json(), '{"type": "service_account"}'
+            )
+            desktop.assert_not_called()
+            fallback.assert_not_called()
 
     def test_token_failure_falls_back_to_desktop_sdk(self):
         """A failing token resolution keeps DesktopAuth as the fallback."""
-        with mock.patch.dict(
+        with (
+            mock.patch.dict(
             os.environ, {"OP_SERVICE_ACCOUNT_TOKEN": "ops_dummy"}, clear=True
+        ), mock.patch(
+                "kfj_task_extractor.CLICKUP_SECRET_REFERENCE",
+                "op://vault/item/credential",
+            ),
+            mock.patch(
+                "kfj_task_extractor.get_secret_from_1password",
+                side_effect=RuntimeError("boom"),
+            ),
+            mock.patch(
+                "kfj_task_extractor.resolve_secret_with_desktop_sdk",
+                return_value="pk_from_desktop",
+            ) as desktop,
         ):
-            with (
-                mock.patch(
-                    "kfj_task_extractor.CLICKUP_SECRET_REFERENCE",
-                    "op://vault/item/credential",
-                ),
-                mock.patch(
-                    "kfj_task_extractor.get_secret_from_1password",
-                    side_effect=RuntimeError("boom"),
-                ),
-                mock.patch(
-                    "kfj_task_extractor.resolve_secret_with_desktop_sdk",
-                    return_value="pk_from_desktop",
-                ) as desktop,
-            ):
-                self.assertEqual(resolve_clickup_api_key(), "pk_from_desktop")
-                desktop.assert_called_once()
+            self.assertEqual(resolve_clickup_api_key(), "pk_from_desktop")
+            desktop.assert_called_once()
 
     def test_no_token_skips_service_token_path(self):
         """Without the opt-in token, DesktopAuth stays first (default path)."""
-        with mock.patch.dict(os.environ, {}, clear=True):
-            with (
-                mock.patch(
-                    "kfj_task_extractor.CLICKUP_SECRET_REFERENCE",
-                    "op://vault/item/credential",
-                ),
-                mock.patch(
-                    "kfj_task_extractor.get_secret_from_1password"
-                ) as token_sdk,
-                mock.patch(
-                    "kfj_task_extractor.resolve_secret_with_desktop_sdk",
-                    return_value="pk_from_desktop",
-                ),
-            ):
-                self.assertEqual(resolve_clickup_api_key(), "pk_from_desktop")
-                token_sdk.assert_not_called()
+        with (
+            mock.patch.dict(os.environ, {}, clear=True), mock.patch(
+                "kfj_task_extractor.CLICKUP_SECRET_REFERENCE",
+                "op://vault/item/credential",
+            ),
+            mock.patch(
+                "kfj_task_extractor.get_secret_from_1password"
+            ) as token_sdk,
+            mock.patch(
+                "kfj_task_extractor.resolve_secret_with_desktop_sdk",
+                return_value="pk_from_desktop",
+            ),
+        ):
+            self.assertEqual(resolve_clickup_api_key(), "pk_from_desktop")
+            token_sdk.assert_not_called()
 
     def test_helper_returns_none_without_token(self):
-        with mock.patch.dict(os.environ, {}, clear=True):
-            with mock.patch("kfj_task_extractor.get_secret_from_1password") as sdk:
-                self.assertIsNone(read_secret_via_service_token("op://v/i/c", "x"))
-                sdk.assert_not_called()
+        with (
+            mock.patch.dict(os.environ, {}, clear=True),
+            mock.patch("kfj_task_extractor.get_secret_from_1password") as sdk,
+        ):
+            self.assertIsNone(read_secret_via_service_token("op://v/i/c", "x"))
+            sdk.assert_not_called()
 
     def test_helper_never_raises(self):
         with mock.patch.dict(
             os.environ, {"OP_SERVICE_ACCOUNT_TOKEN": "ops_dummy"}, clear=True
+        ), mock.patch(
+            "kfj_task_extractor.get_secret_from_1password",
+            side_effect=RuntimeError("network down"),
         ):
-            with mock.patch(
-                "kfj_task_extractor.get_secret_from_1password",
-                side_effect=RuntimeError("network down"),
-            ):
-                self.assertIsNone(read_secret_via_service_token("op://v/i/c", "x"))
+            self.assertIsNone(read_secret_via_service_token("op://v/i/c", "x"))
 
 
 class LoadDotenvTests(unittest.TestCase):
@@ -857,11 +932,10 @@ class LoadDotenvTests(unittest.TestCase):
 
     def _write_env(self, contents: str) -> str:
         """Write contents to a temp .env file and return its path."""
-        handle = tempfile.NamedTemporaryFile(
+        with tempfile.NamedTemporaryFile(
             "w", suffix=".env.kfj", delete=False, encoding="utf-8"
-        )
-        handle.write(contents)
-        handle.close()
+        ) as handle:
+            handle.write(contents)
         self.addCleanup(os.unlink, handle.name)
         return handle.name
 
