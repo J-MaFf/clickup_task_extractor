@@ -759,7 +759,10 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
 def main() -> int:
     """Run the extraction and sheet update. Returns process exit code."""
-    setup_logging(logging.INFO)
+    log_file = os.path.join(
+        os.path.dirname(os.path.abspath(__file__)), "output", "kfj_task_extractor.log"
+    )
+    setup_logging(logging.INFO, log_file=log_file)
     args = parse_args()
 
     # The list/sheet ids are no longer hardcoded; require them via --list-id /
