@@ -249,6 +249,59 @@ class TestGetLogger(unittest.TestCase):
         self.assertIs(logger1, logger2)
 
 
+class TestModuleLoggerPropagation(unittest.TestCase):
+    """Regression tests: module loggers must nest under "clickup_extractor" so
+    their records reach the handlers setup_logging() attaches there."""
+
+    def tearDown(self):
+        """Clean up logger handlers after each test."""
+        logger = logging.getLogger("clickup_extractor")
+        for handler in list(logger.handlers):
+            try:
+                handler.flush()
+            except Exception:
+                pass
+            handler.close()
+            logger.removeHandler(handler)
+
+    def test_auth_logger_is_child_of_clickup_extractor(self):
+        """auth.py's logger must be a "clickup_extractor.*" child, not a bare
+        module-name logger disconnected from the configured handlers."""
+        import auth
+
+        self.assertTrue(auth.logger.name.startswith("clickup_extractor."))
+
+    def test_api_client_logger_is_child_of_clickup_extractor(self):
+        """api_client.py's logger must be a "clickup_extractor.*" child, not a
+        bare module-name logger disconnected from the configured handlers."""
+        import api_client
+
+        self.assertTrue(api_client.logger.name.startswith("clickup_extractor."))
+
+    def test_auth_logger_records_reach_configured_file_handler(self):
+        """A record emitted via auth.logger must actually land in the log
+        file that setup_logging(log_file=...) configures on "clickup_extractor"."""
+        import auth
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            log_file = os.path.join(tmpdir, 'test.log')
+
+            logger = setup_logging(log_level=logging.DEBUG, log_file=log_file, console_output=False)
+            auth.logger.info("auth propagation regression check")
+
+            for handler in logger.handlers:
+                handler.flush()
+
+            with open(log_file, 'r', encoding='utf-8') as f:
+                content = f.read()
+                self.assertIn("auth propagation regression check", content)
+
+            for handler in list(logger.handlers):
+                if isinstance(handler, logging.FileHandler):
+                    handler.flush()
+                    handler.close()
+
+
 class TestRichHandlerConfiguration(unittest.TestCase):
     """Tests for Rich handler configuration."""
 

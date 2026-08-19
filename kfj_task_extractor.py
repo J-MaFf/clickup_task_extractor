@@ -190,7 +190,10 @@ from logger_config import get_logger, setup_logging
 from mappers import LocationMapper
 
 console = Console()
-logger = get_logger(__name__)
+# Nest under "clickup_extractor" so records reach the handlers setup_logging()
+# attaches there — __name__ here is "__main__" (run as script) or
+# "kfj_task_extractor" (imported), neither a child of "clickup_extractor".
+logger = get_logger(f"clickup_extractor.{__name__}")
 
 # ---------------------------------------------------------------------------
 # Configuration.

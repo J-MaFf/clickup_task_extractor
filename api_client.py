@@ -16,7 +16,10 @@ import random
 from typing import Any, Protocol
 from logger_config import get_logger
 
-logger = get_logger(__name__)
+# Nest under "clickup_extractor" so records reach the handlers setup_logging()
+# attaches there — a bare module-name logger (e.g. "api_client") is not a
+# child of "clickup_extractor" and would log nowhere.
+logger = get_logger(f"clickup_extractor.{__name__}")
 
 
 class APIError(Exception):

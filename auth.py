@@ -18,8 +18,10 @@ from typing import TypeAlias
 # Import logging infrastructure
 from logger_config import get_logger
 
-# Initialize logger for this module
-logger = get_logger(__name__)
+# Initialize logger for this module. Nest under "clickup_extractor" so records
+# reach the handlers setup_logging() attaches there — a bare module-name logger
+# (e.g. "auth") is not a child of "clickup_extractor" and would log nowhere.
+logger = get_logger(f"clickup_extractor.{__name__}")
 
 # Type aliases for clarity
 SecretValue: TypeAlias = str | None
