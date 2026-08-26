@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-08-26
+
 ### Fixed
 
 - **The Gemini ETA path now uses the same validated date extraction as Claude.** `_try_ai_eta_calculation` kept its own inline `'/' + digit` heuristic after #167 hardened `_extract_date_token`, so an off-format Gemini reply (`"12/25/2026."`, a prose token like `"1/2"`) could still overwrite a valid deterministic baseline with a string the sorter can't parse and Sheets stores as text. It now routes through `_extract_date_token` (salvage punctuation / 2-digit years, reject anything unparseable → deterministic fallback). ([#172](https://github.com/J-MaFf/clickup_task_extractor/issues/172))
