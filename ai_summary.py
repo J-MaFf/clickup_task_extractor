@@ -62,6 +62,14 @@ _CLAUDE_TIMEOUT_SECONDS = int(os.environ.get("CLAUDE_SUMMARY_TIMEOUT", "120"))
 # (issue #170). A successful call resets the count.
 _CLAUDE_TIMEOUT_STRIKES = int(os.environ.get("CLAUDE_TIMEOUT_STRIKES", "3"))
 
+# Backoff (seconds) between retries when the CLI fails because another Claude
+# Code process holds the OAuth refresh lock. With an expired token at run
+# start, the concurrent workers all race to refresh and every loser fails
+# fast (issue #191); the CLI itself says to "retry in a minute", so the
+# schedule spans ~75s. The first retry is immediate: a worker queued behind
+# one that already recovered should find a fresh token without waiting.
+_CLAUDE_REFRESH_RETRY_DELAYS = (0, 5, 10, 20, 40)
+
 # Rich console imports - create singleton instance with proper encoding for Windows
 try:
     from rich.console import Console
@@ -98,6 +106,9 @@ _claude_available = True
 _claude_missing_warned = False
 _claude_timeout_count = 0
 _claude_state_lock = threading.Lock()
+# Serializes refresh-contention retries so one worker at a time waits out the
+# lock; the rest queue behind it and retry once the token is fresh.
+_claude_refresh_lock = threading.Lock()
 
 # Google GenAI SDK imports (google.genai)
 try:
@@ -195,6 +206,15 @@ def _is_auth_error(error_str: str) -> bool:
         or "authentication_error" in error_lower
         or "invalid bearer token" in error_lower
     )
+
+
+def _is_token_refresh_contention(error_str: str) -> bool:
+    """
+    Detect the CLI failing because another Claude Code process holds the OAuth
+    refresh lock ("another Claude Code process is refreshing it or exited
+    mid-refresh"). Transient, unlike :func:`_is_auth_error` — retry it.
+    """
+    return "another claude code process is refreshing" in error_str.lower()
 
 
 def _reset_api_state() -> None:
@@ -581,6 +601,40 @@ def _emit(message: str) -> None:
         print(re.sub(r"\[/?[^\]]*\]", "", message))
 
 
+def _retry_through_refresh_contention(
+    spawn: Callable[[], subprocess.CompletedProcess],
+    proc: subprocess.CompletedProcess,
+) -> subprocess.CompletedProcess | None:
+    """Re-run ``spawn`` with backoff while the CLI reports OAuth refresh
+    contention (issue #191).
+
+    Returns the first result that is not contention, for run_claude_cli's
+    normal handling. Returns None when Claude is (or becomes) unavailable:
+    the path was disabled while this worker queued on the lock, or the
+    contention outlasted every retry, in which case this worker disables it.
+    """
+    with _claude_refresh_lock:
+        for delay in _CLAUDE_REFRESH_RETRY_DELAYS:
+            if not _claude_available:
+                return None
+            time.sleep(delay)
+            proc = spawn()
+            if proc.returncode == 0 or not _is_token_refresh_contention(
+                proc.stderr or proc.stdout or ""
+            ):
+                return proc
+
+        if _disable_claude_once():
+            _emit(
+                "[red]Claude CLI couldn't refresh its OAuth token - another Claude "
+                "Code process kept the refresh lock. AI generation will be skipped "
+                "for the rest of this extraction.[/red]\n"
+                "[dim]Fix: close other Claude Code windows or run [cyan]claude[/cyan] "
+                "once interactively to refresh the token, then re-run.[/dim]"
+            )
+        return None
+
+
 def run_claude_cli(
     prompt: str,
     system_prompt: str,
@@ -649,8 +703,8 @@ def run_claude_cli(
     # Force OAuth/subscription auth: scrub API-key env vars (no-op when absent).
     child_env = _subscription_env()
 
-    try:
-        proc = subprocess.run(
+    def spawn() -> subprocess.CompletedProcess:
+        return subprocess.run(
             cmd,
             input=prompt,
             capture_output=True,
@@ -661,6 +715,15 @@ def run_claude_cli(
             cwd=tempfile.gettempdir(),
             env=child_env,
         )
+
+    try:
+        proc = spawn()
+        if proc.returncode != 0 and _is_token_refresh_contention(
+            proc.stderr or proc.stdout or ""
+        ):
+            proc = _retry_through_refresh_contention(spawn, proc)
+            if proc is None:
+                return None, True
     except subprocess.TimeoutExpired:
         if _register_claude_timeout():
             _emit(
