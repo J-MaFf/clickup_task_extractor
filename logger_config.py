@@ -99,7 +99,9 @@ def setup_logging(
         log_path = Path(log_file)
         log_path.parent.mkdir(parents=True, exist_ok=True)
 
-        file_handler = logging.FileHandler(log_path)
+        # Explicit UTF-8: the locale default on Windows is cp1252, which can't
+        # encode the emoji used in log messages (issue #190).
+        file_handler = logging.FileHandler(log_path, encoding="utf-8")
         file_handler.setLevel(log_level)
         file_handler.setFormatter(formatter)
         logger.addHandler(file_handler)
