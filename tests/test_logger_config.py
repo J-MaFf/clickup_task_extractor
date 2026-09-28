@@ -217,6 +217,27 @@ class TestSetupLogging(unittest.TestCase):
                     handler.flush()
                     handler.close()
 
+    def test_setup_logging_file_handler_writes_emoji(self):
+        """File handler must be UTF-8 regardless of the locale codec (issue #190).
+
+        On Windows the default is cp1252, which can't encode emoji such as the
+        auth module's '✅ ... loaded' lines and raised UnicodeEncodeError."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            log_file = os.path.join(tmpdir, 'test.log')
+
+            logger = setup_logging(log_file=log_file, console_output=False)
+            with patch('logging.Handler.handleError') as handle_error:
+                logger.info("✅ key loaded")
+            handle_error.assert_not_called()
+
+            for handler in logger.handlers:
+                if isinstance(handler, logging.FileHandler):
+                    self.assertEqual(handler.encoding.lower(), 'utf-8')
+                    handler.close()
+
+            with open(log_file, 'r', encoding='utf-8') as f:
+                self.assertIn("✅ key loaded", f.read())
+
 
 class TestGetLogger(unittest.TestCase):
     """Tests for the get_logger function."""
