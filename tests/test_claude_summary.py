@@ -85,6 +85,84 @@ class TimeoutKillSwitchTests(unittest.TestCase):
         self.assertTrue(ai_summary._claude_available)
 
 
+_REFRESH_CONTENTION = (
+    "Failed to refresh OAuth token: another Claude Code process is refreshing "
+    "it or exited mid-refresh. This is usually transient; retry in a minute"
+)
+
+
+class RefreshContentionRetryTests(unittest.TestCase):
+    """Concurrent `claude -p` calls racing to refresh an expired OAuth token:
+    the losers fail fast, so they are retried with backoff (issue #191)."""
+
+    def setUp(self) -> None:
+        ai_summary._reset_claude_state()
+        self._which = patch("ai_summary.shutil.which", return_value="/usr/bin/claude")
+        self._sleep = patch("ai_summary.time.sleep")
+        self._which.start()
+        self.mock_sleep = self._sleep.start()
+
+    def tearDown(self) -> None:
+        self._sleep.stop()
+        self._which.stop()
+        ai_summary._reset_claude_state()
+
+    def test_contention_then_success_returns_text(self) -> None:
+        with patch(
+            "ai_summary.subprocess.run",
+            side_effect=[
+                _completed(returncode=1, stderr=_REFRESH_CONTENTION),
+                _completed(stdout="02/15/2026"),
+            ],
+        ) as mock_run:
+            text, unavailable = ai_summary.run_claude_cli("p", "s")
+
+        self.assertEqual(text, "02/15/2026")
+        self.assertFalse(unavailable)
+        self.assertEqual(mock_run.call_count, 2)
+        self.assertTrue(ai_summary._claude_available)
+
+    def test_persistent_contention_disables_claude_for_run(self) -> None:
+        with patch(
+            "ai_summary.subprocess.run",
+            return_value=_completed(returncode=1, stderr=_REFRESH_CONTENTION),
+        ) as mock_run:
+            text, unavailable = ai_summary.run_claude_cli("p", "s")
+            self.assertIsNone(text)
+            self.assertTrue(unavailable)
+            self.assertFalse(ai_summary._claude_available)
+            self.assertEqual(
+                mock_run.call_count, 1 + len(ai_summary._CLAUDE_REFRESH_RETRY_DELAYS)
+            )
+            # Later calls short-circuit instead of retrying all over again.
+            mock_run.reset_mock()
+            text, unavailable = ai_summary.run_claude_cli("p", "s")
+        self.assertIsNone(text)
+        self.assertTrue(unavailable)
+        mock_run.assert_not_called()
+
+    def test_retry_hitting_other_error_uses_normal_handling(self) -> None:
+        with patch(
+            "ai_summary.subprocess.run",
+            side_effect=[
+                _completed(returncode=1, stderr=_REFRESH_CONTENTION),
+                _completed(returncode=1, stderr="some transient error"),
+            ],
+        ) as mock_run:
+            text, unavailable = ai_summary.run_claude_cli("p", "s")
+
+        self.assertIsNone(text)
+        self.assertFalse(unavailable)
+        self.assertEqual(mock_run.call_count, 2)
+        self.assertTrue(ai_summary._claude_available)
+
+    def test_contention_is_not_classified_as_auth_error(self) -> None:
+        # "Failed to refresh OAuth token" must not trip the terminal
+        # not-logged-in path, which would skip the retry entirely.
+        self.assertFalse(ai_summary._is_auth_error(_REFRESH_CONTENTION))
+        self.assertTrue(ai_summary._is_token_refresh_contention(_REFRESH_CONTENTION))
+
+
 class ClaudeSummaryTests(unittest.TestCase):
     def setUp(self) -> None:
         ai_summary._reset_claude_state()

@@ -7,11 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **The KFJ log file no longer crashes on emoji.** `setup_logging` opened its `FileHandler` with the locale codec (cp1252 on Windows), so the `✅ ... loaded from 1Password SDK` records printed a `--- Logging error ---` traceback and were dropped from `output/kfj_task_extractor.log`. The file handler now writes UTF-8. ([#190](https://github.com/J-MaFf/clickup_task_extractor/issues/190))
+- **Claude CLI calls now survive OAuth refresh contention.** When the stored access token had expired at run start (e.g. the Monday scheduled KFJ run), the concurrent AI workers all raced to refresh it and every loser failed fast with "another Claude Code process is refreshing it" — the 2026-09-28 run got 0 of 24 Claude ETAs. `run_claude_cli` now retries that error with backoff (~75s, serialized so one worker waits while the rest queue behind it), and disables the Claude path for the run with a single message if the lock never clears. ([#191](https://github.com/J-MaFf/clickup_task_extractor/issues/191))
+
 ## [1.1.0] - 2026-08-26
 
 ### Fixed
 
-- **The KFJ log file no longer crashes on emoji.** `setup_logging` opened its `FileHandler` with the locale codec (cp1252 on Windows), so the `✅ ... loaded from 1Password SDK` records printed a `--- Logging error ---` traceback and were dropped from `output/kfj_task_extractor.log`. The file handler now writes UTF-8. ([#190](https://github.com/J-MaFf/clickup_task_extractor/issues/190))
 - **The Gemini ETA path now uses the same validated date extraction as Claude.** `_try_ai_eta_calculation` kept its own inline `'/' + digit` heuristic after #167 hardened `_extract_date_token`, so an off-format Gemini reply (`"12/25/2026."`, a prose token like `"1/2"`) could still overwrite a valid deterministic baseline with a string the sorter can't parse and Sheets stores as text. It now routes through `_extract_date_token` (salvage punctuation / 2-digit years, reject anything unparseable → deterministic fallback). ([#172](https://github.com/J-MaFf/clickup_task_extractor/issues/172))
 
 - **A hung `claude` CLI now fails fast instead of stalling the whole run.** Timeouts, unlike auth and usage-limit failures, never flipped the run-wide `_claude_available` flag — so a wedged CLI made the concurrent summary/ETA passes grind through every queued call at up to `CLAUDE_SUMMARY_TIMEOUT` (120 s) each (~20 min of nothing on a 40-task run). `run_claude_cli` now counts consecutive timeouts (no intervening success) and disables the Claude path on the third strike (`CLAUDE_TIMEOUT_STRIKES` env override) with a one-time actionable message; a successful call resets the count. ([#170](https://github.com/J-MaFf/clickup_task_extractor/issues/170))
