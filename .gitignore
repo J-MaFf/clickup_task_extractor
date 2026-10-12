@@ -52,3 +52,6 @@ dist/
 
 # Beads / Dolt files (added by bd init)
 .beads/proxieddb/
+
+# bd 1.3+ gate lock, written at the repo root (outside .beads/, so .beads/.gitignore misses it)
+/.beads.gate.lock

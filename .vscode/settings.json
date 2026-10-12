@@ -1,0 +1,9 @@
+{
+    "python.defaultInterpreterPath": "${workspaceFolder}\\.venv\\Scripts\\python.exe",
+    "cSpell.words": [
+        "dotenv",
+        "reexec",
+        "STARTF",
+        "USESTDHANDLES"
+    ]
+}
