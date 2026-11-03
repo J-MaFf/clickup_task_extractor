@@ -3,8 +3,8 @@
  *
  * Paste this whole file into Markdown Here's Options page, in the
  * "Primary Styling CSS" box. It replaces the default stylesheet and keeps its
- * email-client fixes. Colours match the HTML export (extractor.py, the
- * <style> block in the HTML renderer), so an emailed Markdown export looks
+ * email-client fixes. Colours match the HTML export (the <style> block
+ * in render_html, extractor.py), so an emailed Markdown export looks
  * like the HTML one.
  *
  * Markdown Here inlines these rules on every element, because email clients
@@ -14,7 +14,7 @@
  * - structural selectors (h1 + p, li strong) are fine, since they are
  *   resolved when the styles are inlined.
  *
- * The export's shape (see _generate_markdown_content in extractor.py):
+ * The export's shape (see render_markdown in extractor.py):
  *   # Weekly Task List           -> h1
  *   **Generated:** ... lines     -> p right after the h1 (summary box)
  *   ## Tasks                     -> h2
