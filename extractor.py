@@ -1539,12 +1539,23 @@ h1{color:#2c5aa0;}
         Returns:
             Markdown formatted document as string
         """
-        # Generate header with metadata
+        # Header metadata is a list, not a paragraph of lines: line breaks
+        # inside a paragraph need trailing spaces (stripped by editors, and
+        # flagged by MD009) or GFM line-breaks mode, so a renderer with that
+        # mode off (e.g. Markdown Here) merged the three lines into one.
+        #
+        # Field values are written on one line each, unwrapped: a renderer
+        # with GFM line breaks on (Markdown Here's default) turns every wrap
+        # into a hard break. MD013 (line length) is disabled for the file
+        # instead. The comment sits after the h1 so MD041 still sees the
+        # heading first.
         header = f"""# Weekly Task List
 
-**Generated:** {format_datetime(datetime.now(), DISPLAY_FORMAT)}
-**Total Tasks:** {len(tasks)}
-**Workspace:** {self.config.workspace_name} / {self.config.space_name}
+<!-- markdownlint-disable MD013 -->
+
+- **Generated:** {format_datetime(datetime.now(), DISPLAY_FORMAT)}
+- **Total Tasks:** {len(tasks)}
+- **Workspace:** {self.config.workspace_name} / {self.config.space_name}
 
 ## Tasks
 
@@ -1557,10 +1568,9 @@ h1{color:#2c5aa0;}
             return header + "*No tasks found.*\n"
 
         import re
-        import textwrap
 
         def sanitize_markdown_value(raw: str) -> str:
-            """Normalize cell content to avoid markdownlint line-length/link violations."""
+            """Normalize a field value to one line and avoid markdownlint bare-URL/email violations (MD034)."""
 
             value = raw.replace("\n", " ")
             value = re.sub(r"\s+", " ", value).strip()
@@ -1573,18 +1583,10 @@ h1{color:#2c5aa0;}
             return value
 
         def format_bullet(label: str, value: str) -> str:
-            """Render a wrapped bullet line that stays markdownlint-safe."""
+            """Render a field as one unwrapped bullet line (see header note)."""
 
-            prefix = f"- **{label}:** "
             safe_value = value if value else "(not provided)"
-            return textwrap.fill(
-                prefix + safe_value,
-                width=79,
-                initial_indent="",
-                subsequent_indent="  ",
-                break_long_words=True,
-                break_on_hyphens=False,
-            )
+            return f"- **{label}:** {safe_value}"
 
         sections: list[str] = []
         for index, task in enumerate(tasks, start=1):

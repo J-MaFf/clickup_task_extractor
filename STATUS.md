@@ -61,11 +61,12 @@ Python CLI for extracting, processing, and exporting tasks from the ClickUp API.
 | [#170](https://github.com/J-MaFf/clickup_task_extractor/issues/170) | Claude CLI timeout kill-switch (3 strikes disables the path) | [#171](https://github.com/J-MaFf/clickup_task_extractor/pull/171) |
 | [#172](https://github.com/J-MaFf/clickup_task_extractor/issues/172) | Gemini ETA path uses the validated date extraction | [#173](https://github.com/J-MaFf/clickup_task_extractor/pull/173) |
 | [#180](https://github.com/J-MaFf/clickup_task_extractor/issues/180) | Adopt shared reusable claude.yml workflow from J-MaFf/.github | [#181](https://github.com/J-MaFf/clickup_task_extractor/pull/181) |
+| [#201](https://github.com/J-MaFf/clickup_task_extractor/issues/201) | Markdown Here stylesheet for emailing Markdown exports | [#202](https://github.com/J-MaFf/clickup_task_extractor/pull/202) |
 
 ### Open Issues
 
 - [#166](https://github.com/J-MaFf/clickup_task_extractor/issues/166) — Optional 1Password service-account-token auth for unattended KFJ scheduled runs — **[PR #179](https://github.com/J-MaFf/clickup_task_extractor/pull/179) open, awaiting review.** Code + docs + tests done (395 pass); remaining are the manual steps: create the 1Password service account, `setx OP_SERVICE_ACCOUNT_TOKEN` for the task's user, switch the task to "Run whether user is logged on or not", and live-verify a logged-out run.
-- [#201](https://github.com/J-MaFf/clickup_task_extractor/issues/201) — Markdown Here stylesheet for emailing Markdown exports (`docs/markdown-here.css`) — **[PR #202](https://github.com/J-MaFf/clickup_task_extractor/pull/202) open, awaiting review.**
+- [#203](https://github.com/J-MaFf/clickup_task_extractor/issues/203) — Markdown export line breaks in Markdown Here emails (unwrapped field bullets, header metadata as a list) — **[PR #204](https://github.com/J-MaFf/clickup_task_extractor/pull/204) open, awaiting review.**
 
 ## Natural Next Steps
 
