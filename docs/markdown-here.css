@@ -1,0 +1,255 @@
+/*
+ * Markdown Here stylesheet for ClickUp Task Extractor Markdown exports.
+ *
+ * Paste this whole file into Markdown Here's Options page, in the
+ * "Primary Styling CSS" box. It replaces the default stylesheet and keeps its
+ * email-client fixes. Colours match the HTML export (the <style> block
+ * in render_html, extractor.py), so an emailed Markdown export looks
+ * like the HTML one.
+ *
+ * Markdown Here inlines these rules on every element, because email clients
+ * strip stylesheets. So:
+ * - no browser-prefixed properties (-moz-, -webkit-);
+ * - no state-dependent selectors (:hover, :focus);
+ * - structural selectors (h1 + p, li strong) are fine, since they are
+ *   resolved when the styles are inlined.
+ *
+ * The export's shape (see render_markdown in extractor.py):
+ *   # Weekly Task List           -> h1
+ *   **Generated:** ... lines     -> p right after the h1 (summary box)
+ *   ## Tasks                     -> h2
+ *   ### Task N                   -> h3, one per task
+ *   - **Field:** value           -> ul > li > strong (label) + text
+ */
+
+/* Overall wrapper; treat it as the body. */
+.markdown-here-wrapper {
+  font-family: Arial, sans-serif;
+  font-size: 14px;
+  line-height: 1.4;
+  color: #222;
+}
+
+/* ---- Headings ---------------------------------------------------------- */
+
+h1, h2, h3, h4, h5, h6 {
+  margin: 1.3em 0 0.6em;
+  padding: 0;
+  font-weight: bold;
+}
+
+h1 {
+  font-size: 1.6em;
+  color: #2c5aa0;
+  border-bottom: 2px solid #2c5aa0;
+  padding-bottom: 0.2em;
+}
+
+h2 {
+  font-size: 1.3em;
+  color: #2c5aa0;
+  border-bottom: 1px solid #ddd;
+  padding-bottom: 0.2em;
+}
+
+/* One h3 per task: a bold blue title with a rule above it, so tasks read as
+   separate blocks. */
+h3 {
+  font-size: 1.1em;
+  color: #2c5aa0;
+  border-top: 1px solid #ddd;
+  padding-top: 0.8em;
+  margin: 1.4em 0 0.4em;
+}
+
+/* The first task sits right under the "Tasks" h2, which already has a rule. */
+h2 + h3 {
+  border-top: 0;
+  padding-top: 0;
+  margin-top: 0.8em;
+}
+
+h4 {
+  font-size: 1em;
+}
+
+h5 {
+  font-size: 1em;
+}
+
+h6 {
+  font-size: 1em;
+  color: #777;
+}
+
+/* ---- Summary box (the Generated / Total Tasks / Workspace lines) -------- */
+
+/* !important on margin to beat the p rule below. */
+h1 + p {
+  margin: 0 0 1.2em 0 !important;
+  padding: 0.8em 1em;
+  background-color: #f0f8ff;
+  border-left: 4px solid #2c5aa0;
+}
+
+/* ---- Paragraphs and lists --------------------------------------------- */
+
+/* Only a bottom margin, so there's no blank-line look at the top of the
+   email. !important because Outlook.com zeroes <p> margins with !important. */
+p {
+  margin: 0 0 1.2em 0 !important;
+}
+
+pre, dl, blockquote, q, ul, ol, table {
+  margin: 1em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+/* Task fields are one bullet each; keep them tight. */
+li {
+  margin: 0.25em 0;
+}
+
+li p {
+  margin: 0.25em 0 !important;
+}
+
+/* The bold field label at the start of each bullet ("Priority:", "ETA:"). */
+li strong {
+  color: #555;
+}
+
+/* Sub-lists */
+ul ul, ul ol, ol ul, ol ol {
+  margin: 0;
+  padding-left: 1em;
+}
+
+ol ol, ul ol {
+  list-style-type: lower-roman;
+}
+
+ul ul ol, ul ol ol, ol ul ol, ol ol ol {
+  list-style-type: lower-alpha;
+}
+
+/* ---- Code (the export wraps email addresses in backticks) -------------- */
+
+pre, code {
+  font-size: 0.9em;
+  font-family: Consolas, Inconsolata, Courier, monospace;
+}
+
+code {
+  margin: 0 0.15em;
+  padding: 0 0.3em;
+  white-space: pre-wrap;
+  border: 1px solid #eaeaea;
+  background-color: #f8f8f8;
+  border-radius: 3px;
+  display: inline; /* Yahoo otherwise renders inline code as a block */
+}
+
+pre {
+  font-size: 1em;
+  line-height: 1.2em;
+}
+
+pre code {
+  white-space: pre;
+  overflow: auto;
+  border-radius: 3px;
+  border: 1px solid #ccc;
+  padding: 0.5em 0.7em;
+  display: block !important; /* counteract the inline rule above */
+}
+
+/* WordPress edit mode forces a non-monospace font on spans in code. */
+.markdown-here-wrapper[data-md-url*="wordpress."] code span {
+  font: inherit;
+}
+
+.markdown-here-wrapper[data-md-url*="wordpress."] pre {
+  background-color: transparent;
+}
+
+/* ---- Links, quotes, rules ---------------------------------------------- */
+
+a {
+  color: #2c5aa0;
+}
+
+blockquote, q {
+  border-left: 4px solid #ddd;
+  padding: 0 1em;
+  color: #777;
+  quotes: none;
+}
+
+blockquote::before, blockquote::after, q::before, q::after {
+  content: none;
+}
+
+hr {
+  border: 0;
+  border-top: 1px solid #ddd;
+  margin: 1.5em 0;
+}
+
+dl {
+  padding: 0;
+}
+
+dl dt {
+  font-weight: bold;
+  font-style: italic;
+}
+
+dl dd {
+  margin: 0 0 1em;
+  padding: 0 1em;
+}
+
+/* ---- Tables (same look as the HTML export) ------------------------------ */
+
+table {
+  width: 100%;
+  padding: 0;
+  border-collapse: collapse;
+  border-spacing: 0;
+  font: inherit;
+  border: 0;
+}
+
+tbody {
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+table tr {
+  border: 0;
+  background-color: white;
+  margin: 0;
+  padding: 0;
+}
+
+table tr:nth-child(2n) {
+  background-color: #f9f9f9;
+}
+
+table tr th, table tr td {
+  border: 1px solid #ddd;
+  margin: 0;
+  padding: 8px 12px;
+  text-align: left;
+  vertical-align: top;
+}
+
+table tr th {
+  font-weight: bold;
+  background-color: #f2f2f2;
+}

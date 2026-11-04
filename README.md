@@ -405,6 +405,21 @@ clickup_task_extractor/
 - Cross-platform date formatting (e.g., "10/7/2025 at 3:45 PM" for October 7, 2025 - MM/DD/YYYY format)
 - Image extraction from task descriptions
 
+#### Emailing a Markdown export with Markdown Here
+
+The Markdown file has no styling of its own. To email it with the same look as
+the HTML export (blue headings, a shaded summary box, one block per task), use
+the [Markdown Here](https://markdown-here.com/) browser extension with this
+repo's stylesheet:
+
+1. Open Markdown Here's **Options** page.
+2. Replace everything in **Primary Styling CSS** with the contents of
+   [`docs/markdown-here.css`](docs/markdown-here.css), then save.
+3. Paste the export into a new email and click **Markdown Toggle**.
+
+The colored priority and status labels in the HTML export don't carry over,
+because the Markdown export has nothing for the CSS to target on those values.
+
 ### HTML Export
 
 - Professional-looking HTML tables with CSS styling

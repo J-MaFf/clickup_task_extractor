@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **A Markdown Here stylesheet for emailing Markdown exports.** `docs/markdown-here.css` gives an export sent through the Markdown Here browser extension the HTML export's look: blue headings, a shaded summary box, and one ruled block per task. The README's new "Emailing a Markdown export with Markdown Here" section explains how to install it. ([#201](https://github.com/J-MaFf/clickup_task_extractor/issues/201))
+
 ### Fixed
 
 - **The KFJ log file no longer crashes on emoji.** `setup_logging` opened its `FileHandler` with the locale codec (cp1252 on Windows), so the `✅ ... loaded from 1Password SDK` records printed a `--- Logging error ---` traceback and were dropped from `output/kfj_task_extractor.log`. The file handler now writes UTF-8. ([#190](https://github.com/J-MaFf/clickup_task_extractor/issues/190))
