@@ -115,6 +115,54 @@ class TestMarkdownLineBreaks(unittest.TestCase):
             "Should normalize newlines and preserve visible pipe characters",
         )
 
+    def test_markdown_header_metadata_is_a_list(self):
+        """Header metadata renders as list items, so each stays on its own line
+        whether or not the renderer turns soft line breaks into <br> (#203)."""
+        markdown = self.extractor.render_markdown([])
+        lines = markdown.splitlines()
+
+        generated = next(i for i, line in enumerate(lines) if "**Generated:**" in line)
+        self.assertTrue(lines[generated].startswith("- **Generated:** "))
+        self.assertEqual(lines[generated + 1], "- **Total Tasks:** 0")
+        self.assertEqual(
+            lines[generated + 2], "- **Workspace:** TestWorkspace / TestSpace"
+        )
+
+    def test_markdown_long_notes_are_not_wrapped(self):
+        """A long field value stays on one line: a renderer with GFM line breaks
+        on would turn every wrap into a hard break (#203)."""
+        long_note = " ".join(["word"] * 80)  # ~400 characters
+        task = TaskRecord(
+            Task="Long Task",
+            Company="Test",
+            Branch="Main",
+            Priority="Normal",
+            Status="Open",
+            ETA="",
+            Notes=long_note,
+            Extra="",
+        )
+
+        markdown = self.extractor.render_markdown([task])
+
+        self.assertIn(f"- **Notes:** {long_note}\n", markdown)
+        # No continuation lines (the old wrapping indented them two spaces)
+        self.assertFalse(
+            any(line.startswith("  ") for line in markdown.splitlines()),
+            "Field values should not wrap onto indented continuation lines",
+        )
+
+    def test_markdown_disables_line_length_rule_after_title(self):
+        """Unwrapped lines are long, so MD013 is disabled; the comment comes
+        after the h1 so the file still starts with a heading (MD041)."""
+        markdown = self.extractor.render_markdown([])
+        lines = markdown.splitlines()
+
+        self.assertEqual(lines[0], "# Weekly Task List")
+        disable = lines.index("<!-- markdownlint-disable MD013 -->")
+        generated = next(i for i, line in enumerate(lines) if "**Generated:**" in line)
+        self.assertLess(disable, generated)
+
     def test_markdown_empty_task_list(self):
         """Test markdown generation with no tasks."""
         markdown = self.extractor.render_markdown([])

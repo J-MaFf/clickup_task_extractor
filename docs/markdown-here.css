@@ -11,12 +11,12 @@
  * strip stylesheets. So:
  * - no browser-prefixed properties (-moz-, -webkit-);
  * - no state-dependent selectors (:hover, :focus);
- * - structural selectors (h1 + p, li strong) are fine, since they are
+ * - structural selectors (h1 + ul, li strong) are fine, since they are
  *   resolved when the styles are inlined.
  *
  * The export's shape (see render_markdown in extractor.py):
  *   # Weekly Task List           -> h1
- *   **Generated:** ... lines     -> p right after the h1 (summary box)
+ *   - **Generated:** ... list    -> ul right after the h1 (summary box)
  *   ## Tasks                     -> h2
  *   ### Task N                   -> h3, one per task
  *   - **Field:** value           -> ul > li > strong (label) + text
@@ -84,12 +84,22 @@ h6 {
 
 /* ---- Summary box (the Generated / Total Tasks / Workspace lines) -------- */
 
-/* !important on margin to beat the p rule below. */
-h1 + p {
-  margin: 0 0 1.2em 0 !important;
+/* The first list after the title. The markdownlint comment between them is
+   not an element, so h1 + ul still matches. */
+h1 + ul {
+  list-style-type: none;
+  margin: 0 0 1.2em 0;
   padding: 0.8em 1em;
   background-color: #f0f8ff;
   border-left: 4px solid #2c5aa0;
+}
+
+h1 + ul li {
+  margin: 0.15em 0;
+}
+
+h1 + ul li strong {
+  color: #222;
 }
 
 /* ---- Paragraphs and lists --------------------------------------------- */
