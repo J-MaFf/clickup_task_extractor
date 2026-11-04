@@ -1570,7 +1570,7 @@ h1{color:#2c5aa0;}
         import re
 
         def sanitize_markdown_value(raw: str) -> str:
-            """Normalize cell content to avoid markdownlint line-length/link violations."""
+            """Normalize a field value to one line and avoid markdownlint bare-URL/email violations (MD034)."""
 
             value = raw.replace("\n", " ")
             value = re.sub(r"\s+", " ", value).strip()
