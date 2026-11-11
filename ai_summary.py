@@ -34,11 +34,14 @@ GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash-lite")
 # mode). This path uses the user's Claude Code OAuth / Max subscription rather
 # than an API key, so it sidesteps Gemini's free-tier rate limits.
 #
-# Defaults to Haiku for speed and light subscription usage on short summaries;
-# overridable via CLAUDE_SUMMARY_MODEL (accepts a full id or a CLI alias like
-# "haiku"/"sonnet"/"opus").
+# Defaults to Haiku for speed and light subscription usage on short summaries.
+# The CLI alias "haiku" resolves to the newest Haiku (claude-haiku-5-5 as of
+# 2026-11), so the default follows new releases without a code change.
+# Overridable via CLAUDE_SUMMARY_MODEL (a full id to pin one, or another alias
+# such as "sonnet"/"opus").
+DEFAULT_CLAUDE_SUMMARY_MODEL = "haiku"
 CLAUDE_SUMMARY_MODEL = os.environ.get(
-    "CLAUDE_SUMMARY_MODEL", "claude-haiku-4-5-20251001"
+    "CLAUDE_SUMMARY_MODEL", DEFAULT_CLAUDE_SUMMARY_MODEL
 )
 
 # System prompt that constrains the CLI to a plain-text, first-person summary

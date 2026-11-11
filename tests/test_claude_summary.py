@@ -8,6 +8,7 @@ They cover the happy path, the CLI-missing path, error/timeout handling, and the
 usage-limit "skip the rest of the run" behavior.
 """
 
+import os
 import subprocess
 import unittest
 from unittest.mock import patch, MagicMock
@@ -170,8 +171,11 @@ class ClaudeSummaryTests(unittest.TestCase):
     def tearDown(self) -> None:
         ai_summary._reset_claude_state()
 
-    def test_model_default_is_a_claude_id(self) -> None:
-        self.assertTrue(ai_summary.CLAUDE_SUMMARY_MODEL.startswith("claude-"))
+    def test_model_default_tracks_latest_haiku(self) -> None:
+        """Default is the CLI alias, which resolves to the newest Haiku."""
+        self.assertEqual(ai_summary.DEFAULT_CLAUDE_SUMMARY_MODEL, "haiku")
+        if "CLAUDE_SUMMARY_MODEL" not in os.environ:
+            self.assertEqual(ai_summary.CLAUDE_SUMMARY_MODEL, "haiku")
 
     def test_happy_path_returns_cleaned_summary(self) -> None:
         with patch("ai_summary.shutil.which", return_value="/usr/bin/claude"), patch(
