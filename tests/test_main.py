@@ -9,6 +9,12 @@ from config import DateFilter, OutputFormat
 
 
 class MainEntrypointTests(unittest.TestCase):
+    def setUp(self) -> None:
+        # Keep the real op-secret wrapper (if installed) out of unit tests.
+        which = patch("auth.shutil.which", return_value=None)
+        which.start()
+        self.addCleanup(which.stop)
+
     def _import_main_module(self) -> Any:
         project_root = Path(__file__).resolve().parents[1]
         sys.modules.pop("main", None)
@@ -231,6 +237,94 @@ class MainEntrypointTests(unittest.TestCase):
         mock_load_secret.assert_not_called()
         mock_console.input.assert_called_once()
         mock_api_client_cls.assert_called_once_with("typed-key")
+
+    def test_secret_reference_loaded_from_dotenv_after_import(self) -> None:
+        """Regression: a CLICKUP_API_SECRET_REFERENCE from .env must be honored.
+
+        _load_dotenv() runs in the __main__ guard, after config.py has already
+        been imported. The reference must be read from os.environ at call time,
+        not from config's import-time snapshot (which is still empty).
+        """
+        main_module = self._import_main_module()
+
+        mock_console = MagicMock()
+        mock_console.input.return_value = ""
+        mock_api_client_cls = MagicMock()
+        mock_extractor_cls = MagicMock()
+
+        with (
+            # Simulates _load_dotenv() populating os.environ after import.
+            patch.dict(
+                main_module.os.environ,
+                {"CLICKUP_API_SECRET_REFERENCE": "op://vault/item/credential"},
+                clear=True,
+            ),
+            patch.object(main_module, "CLICKUP_API_SECRET_REFERENCE", ""),
+            patch.object(main_module, "console", mock_console),
+            patch.object(main_module, "get_yes_no_input", return_value=False),
+            patch.object(main_module, "get_choice_input", return_value="Markdown"),
+            patch.object(
+                main_module, "load_secret_with_fallback", return_value="ref-key"
+            ) as mock_load_secret,
+            patch.object(
+                main_module,
+                "_load_runtime_dependencies",
+                return_value=(mock_api_client_cls, mock_extractor_cls),
+            ),
+        ):
+            extractor_instance = mock_extractor_cls.return_value
+            extractor_instance.run = MagicMock()
+
+            argv = [
+                str(Path(__file__).resolve().parents[1] / "main.py"),
+                "--workspace",
+                "WS",
+            ]
+            self._run_main_with_args(main_module, argv)
+
+        mock_load_secret.assert_called_once_with(
+            "op://vault/item/credential", "ClickUp API key"
+        )
+        mock_console.input.assert_not_called()
+        mock_api_client_cls.assert_called_once_with("ref-key")
+
+    def test_op_secret_resolves_key_before_desktop_paths(self) -> None:
+        """The service-account wrapper is tried first; no 1Password prompt paths run."""
+        main_module = self._import_main_module()
+
+        mock_console = MagicMock()
+        mock_api_client_cls = MagicMock()
+        mock_extractor_cls = MagicMock()
+
+        with (
+            patch.dict(
+                main_module.os.environ, {"OP_ENVIRONMENT_ID": "envid"}, clear=True
+            ),
+            patch.object(main_module, "console", mock_console),
+            patch.object(main_module, "get_yes_no_input", return_value=False),
+            patch.object(main_module, "get_choice_input", return_value="Markdown"),
+            patch.object(
+                main_module, "load_secret_via_op_secret", return_value="sa-key"
+            ) as mock_op_secret,
+            patch.object(main_module, "load_secret_with_fallback") as mock_fallback,
+            patch.object(
+                main_module,
+                "_load_runtime_dependencies",
+                return_value=(mock_api_client_cls, mock_extractor_cls),
+            ),
+        ):
+            mock_extractor_cls.return_value.run = MagicMock()
+            argv = [
+                str(Path(__file__).resolve().parents[1] / "main.py"),
+                "--workspace",
+                "WS",
+            ]
+            self._run_main_with_args(main_module, argv)
+
+        mock_op_secret.assert_called_once_with("ClickUp API key")
+        mock_fallback.assert_not_called()
+        mock_console.input.assert_not_called()
+        mock_api_client_cls.assert_called_once_with("sa-key")
 
 
 class OpRunReexecTests(unittest.TestCase):

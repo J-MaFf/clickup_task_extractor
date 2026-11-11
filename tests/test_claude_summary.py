@@ -191,6 +191,10 @@ class ClaudeSummaryTests(unittest.TestCase):
         cmd = mock_run.call_args.args[0]
         self.assertIn("-p", cmd)
         self.assertIn("--model", cmd)
+        # No user/project MCP servers: one launched via `op run` raised a
+        # 1Password desktop approval prompt for every summary call.
+        self.assertIn("--strict-mcp-config", cmd)
+        self.assertNotIn("--mcp-config", cmd)
 
     def test_subprocess_env_scrubs_api_key(self) -> None:
         """The CLI runs without ANTHROPIC_API_KEY so it uses the OAuth subscription."""

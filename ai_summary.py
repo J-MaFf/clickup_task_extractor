@@ -696,6 +696,10 @@ def run_claude_cli(
         "--system-prompt",
         system_prompt,
         "--exclude-dynamic-system-prompt-sections",
+        # Load no MCP servers. Summaries use no tools, and user-scope servers
+        # spawn per call: one launched via `op run` raised a 1Password desktop
+        # approval prompt for every summary.
+        "--strict-mcp-config",
         "--output-format",
         "text",
     ]

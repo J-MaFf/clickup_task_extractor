@@ -13,6 +13,7 @@ import os
 import asyncio
 import subprocess
 import re
+import shutil
 from typing import TypeAlias
 
 # Import logging infrastructure
@@ -44,6 +45,77 @@ try:
         )
 except ImportError:
     pass  # Will use CLI fallback
+
+
+# op-secret logical names per secret, overridable via env var. op-secret is the
+# 1Password service-account routing wrapper: it resolves a logical name from
+# ~/.config/op/secrets.yaml with a service-account token, so it never raises a
+# desktop-app approval prompt (unlike DesktopAuth / `op run` / `op read`).
+_OP_SECRET_NAMES: dict[str, tuple[str, str]] = {
+    "ClickUp API key": ("CLICKUP_API_OP_SECRET_NAME", "clickup-api-key"),
+    "Gemini API key": ("GEMINI_API_OP_SECRET_NAME", "gemini-api-key"),
+}
+# Logical names are map keys; restricting the charset also keeps cmd.exe
+# metacharacters away from the Windows `op-secret.cmd` shim.
+_OP_SECRET_NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]*$")
+_OP_SECRET_TIMEOUT_SECONDS = 30
+
+
+def load_secret_via_op_secret(secret_name: str) -> SecretValue:
+    """
+    Resolve a secret through the ``op-secret`` service-account wrapper.
+
+    Tried first in the auth chain because it is headless: no desktop unlock or
+    approval prompt. Silently returns None when the wrapper is not installed,
+    the logical name is not in the map, or the lookup fails, so callers fall
+    through to the remaining 1Password methods. Never logs the secret or the
+    wrapper's stdout.
+
+    Args:
+        secret_name: Human-readable secret name (e.g. "ClickUp API key"); maps
+            to a logical name via ``_OP_SECRET_NAMES`` and its env override.
+
+    Returns:
+        The secret string if resolved, else None.
+    """
+    env_var, default_name = _OP_SECRET_NAMES.get(
+        secret_name, ("", secret_name.lower().replace(" ", "-"))
+    )
+    logical_name = (os.environ.get(env_var) if env_var else None) or default_name
+    if not _OP_SECRET_NAME_RE.match(logical_name):
+        logger.debug(f"Skipping op-secret for {secret_name}: invalid logical name")
+        return None
+
+    wrapper = shutil.which("op-secret")
+    if not wrapper:
+        logger.debug("op-secret not found on PATH; skipping service-account lookup")
+        return None
+
+    try:
+        result = subprocess.run(
+            [wrapper, logical_name],
+            capture_output=True,
+            text=True,
+            timeout=_OP_SECRET_TIMEOUT_SECONDS,
+            check=False,
+        )
+    except subprocess.TimeoutExpired:
+        logger.debug(f"op-secret timed out resolving {secret_name}")
+        return None
+    except OSError as exc:
+        logger.debug(f"op-secret could not run for {secret_name}: {exc}")
+        return None
+
+    secret = (result.stdout or "").strip()
+    if result.returncode != 0 or not secret:
+        # stderr carries only diagnostics (e.g. "unknown secret '<name>'").
+        stderr_lines = (result.stderr or "").strip().splitlines()
+        detail = stderr_lines[-1] if stderr_lines else f"exit {result.returncode}"
+        logger.debug(f"op-secret did not resolve '{logical_name}': {detail}")
+        return None
+
+    logger.info(f"✅ {secret_name} loaded via op-secret ('{logical_name}').")
+    return secret
 
 
 def get_secret_from_environment(
@@ -517,7 +589,11 @@ def load_gemini_api_key_from_environment():
     # to avoid any import-order coupling with the config module.
     from config import GEMINI_API_SECRET_REFERENCE
 
-    gemini_secret_reference = GEMINI_API_SECRET_REFERENCE
+    # Prefer the live env var: config's value is an import-time snapshot that
+    # misses anything main._load_dotenv() set afterwards.
+    gemini_secret_reference = (
+        os.environ.get("GEMINI_API_SECRET_REFERENCE") or GEMINI_API_SECRET_REFERENCE
+    )
     if not gemini_secret_reference:
         return None
     return load_secret_with_fallback(gemini_secret_reference, "Gemini API key")

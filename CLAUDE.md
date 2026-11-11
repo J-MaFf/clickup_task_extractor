@@ -83,12 +83,13 @@ python main.py --date-filter LastWeek
 The `auth.load_secret_with_fallback()` follows this fallback order:
 1. **CLI flag** (`--api-key YOUR_KEY`)
 2. **Environment variable** (`CLICKUP_API_KEY=xxx`)
-3. **1Password Environment** (requires `OP_ENVIRONMENT_ID`)
+3. **`op-secret` service account** (`load_secret_via_op_secret`, called from `main.py`): runs `op-secret clickup-api-key` / `gemini-api-key` (override via `CLICKUP_API_OP_SECRET_NAME` / `GEMINI_API_OP_SECRET_NAME`) when the wrapper is on PATH. Headless, no desktop prompt; a missing wrapper or unmapped name returns None silently
+4. **1Password Environment** (requires `OP_ENVIRONMENT_ID`)
    - Primary: Python SDK (DesktopAuth or service token)
    - Fallback: CLI via `op environment read <environment_id>`
-4. **1Password SDK** (requires `OP_SERVICE_ACCOUNT_TOKEN`)
-5. **1Password CLI** (uses `op read` for legacy secret references)
-6. **Manual Prompt** (Rich console input)
+5. **1Password SDK** (requires `OP_SERVICE_ACCOUNT_TOKEN`)
+6. **1Password CLI** (uses `op read` for legacy secret references)
+7. **Manual Prompt** (Rich console input)
 
 **For executables**: SDK is unavailable (native dependencies), so skip to step 2 (environment variables).
 
@@ -131,7 +132,7 @@ All retrieval is logged (DEBUG level); failures don't raise exceptions—they re
 
 **`ai_summary.py`**: AI summary generation (two providers)
 
-- **Claude CLI path (`get_claude_summary`)** — the **default** generative source (`AISource.CLAUDE`). Shells out to the local `claude` CLI in headless print mode (`claude -p` over stdin) using the user's Claude Code OAuth / Max subscription — no API key, not subject to Gemini quotas. Model via `CLAUDE_SUMMARY_MODEL` (default `claude-haiku-4-5-20251001`), timeout via `CLAUDE_SUMMARY_TIMEOUT`. A usage-limit hit sets the global `_claude_available=False` to skip the rest of the run; missing CLI / errors / timeouts return None → caller falls back to base notes. `claude_cli_available()` checks PATH. The low-level subprocess runner `run_claude_cli(prompt, system_prompt, …)` (env-scrubs `ANTHROPIC_API_KEY`/`AUTH_TOKEN` to force subscription auth, isolates cwd, detects usage limits) is **shared** with `eta_calculator.get_claude_eta`.
+- **Claude CLI path (`get_claude_summary`)** — the **default** generative source (`AISource.CLAUDE`). Shells out to the local `claude` CLI in headless print mode (`claude -p` over stdin) using the user's Claude Code OAuth / Max subscription — no API key, not subject to Gemini quotas. Model via `CLAUDE_SUMMARY_MODEL` (default `claude-haiku-4-5-20251001`), timeout via `CLAUDE_SUMMARY_TIMEOUT`. A usage-limit hit sets the global `_claude_available=False` to skip the rest of the run; missing CLI / errors / timeouts return None → caller falls back to base notes. `claude_cli_available()` checks PATH. The low-level subprocess runner `run_claude_cli(prompt, system_prompt, …)` (env-scrubs `ANTHROPIC_API_KEY`/`AUTH_TOKEN` to force subscription auth, isolates cwd, passes `--strict-mcp-config` so no user MCP servers spawn per call (an `op run`-launched server would raise a 1Password prompt each time), detects usage limits) is **shared** with `eta_calculator.get_claude_eta`.
 - **Google Gemini path (`get_ai_summary`)** — selectable via `AISource.GEMINI`; `AISource.BOTH` resolves the ClickUp `Summary` field first, then falls back to **Claude** (not Gemini).
 - Gemini **Tiered model strategy** (on rate limit, automatically switches tiers):
   - Tier 1: `gemini-2.5-flash-lite` (500 RPD free tier)

@@ -55,6 +55,7 @@ A powerful, cross-platform Python application for extracting, processing, and ex
    - Command line: `python main.py --api-key YOUR_API_KEY`
    - Environment variable: `export CLICKUP_API_KEY=YOUR_API_KEY`
    - 1Password Environment: store `CLICKUP_API_KEY` in a 1Password Environment and set `OP_ENVIRONMENT_ID`
+   - 1Password service account via `op-secret`: if an `op-secret` wrapper is on `PATH` and maps `clickup-api-key`, the key is resolved headlessly before any desktop-prompting 1Password method
 
 > 💡 The CLI auto-relaunches inside `.venv/` when present, so activating the virtualenv manually is optional as long as dependencies live there.
 
@@ -80,12 +81,20 @@ cp .env.example .env
 | `CLICKUP_API_KEY` | ClickUp API key | empty |
 | `CLICKUP_API_SECRET_REFERENCE` | `op://` reference for the ClickUp key in 1Password | empty (1Password lookup skipped) |
 | `GEMINI_API_SECRET_REFERENCE` | `op://` reference for the Gemini key in 1Password | empty (1Password lookup skipped) |
+| `CLICKUP_API_OP_SECRET_NAME` | `op-secret` logical name for the ClickUp key | `clickup-api-key` |
+| `GEMINI_API_OP_SECRET_NAME` | `op-secret` logical name for the Gemini key | `gemini-api-key` |
 | `CLICKUP_AI_SUMMARY_FIELD_ID` | Override the "Summary" custom-field ID | built-in field ID |
 | `OP_ENVIRONMENT_ID` | 1Password Environment ID, if you use Environments | empty |
 
 When the `*_SECRET_REFERENCE` variables are empty, the tool skips the 1Password
 lookup and relies on the `CLICKUP_API_KEY` env var, the `--api-key` /
 `--gemini-api-key` flags, or an interactive prompt.
+
+**Service account first.** When neither `--api-key` nor `CLICKUP_API_KEY` is set,
+the tool first runs `op-secret <logical-name>` (a 1Password service-account
+routing wrapper) if one is on `PATH`. It resolves without a desktop unlock or
+approval prompt. If the wrapper is missing or the name is not mapped, the tool
+falls through silently to the Environment / SDK / CLI methods above.
 
 ### Using the Executable
 
