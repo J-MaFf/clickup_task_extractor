@@ -20,6 +20,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **The KFJ log file no longer crashes on emoji.** `setup_logging` opened its `FileHandler` with the locale codec (cp1252 on Windows), so the `✅ ... loaded from 1Password SDK` records printed a `--- Logging error ---` traceback and were dropped from `output/kfj_task_extractor.log`. The file handler now writes UTF-8. ([#190](https://github.com/J-MaFf/clickup_task_extractor/issues/190))
 - **Claude CLI calls now survive OAuth refresh contention.** When the stored access token had expired at run start (e.g. the Monday scheduled KFJ run), the concurrent AI workers all raced to refresh it and every loser failed fast with "another Claude Code process is refreshing it" — the 2026-09-28 run got 0 of 24 Claude ETAs. `run_claude_cli` now retries that error with backoff (~75s, serialized so one worker waits while the rest queue behind it), and disables the Claude path for the run with a single message if the lock never clears. ([#191](https://github.com/J-MaFf/clickup_task_extractor/issues/191))
 
+### Changed
+
+- **Claude summaries and ETAs now default to the newest Haiku.** `CLAUDE_SUMMARY_MODEL` defaulted to the pinned `claude-haiku-4-5-20251001`; it now defaults to the Claude Code alias `haiku`, which resolves to `claude-haiku-5-5` today and follows future Haiku releases with no code change. Set a full model ID to pin one. ([#207](https://github.com/J-MaFf/clickup_task_extractor/issues/207))
+
 ## [1.1.0] - 2026-08-26
 
 ### Fixed
