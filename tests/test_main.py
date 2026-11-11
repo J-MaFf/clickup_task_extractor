@@ -241,9 +241,9 @@ class MainEntrypointTests(unittest.TestCase):
     def test_secret_reference_loaded_from_dotenv_after_import(self) -> None:
         """Regression: a CLICKUP_API_SECRET_REFERENCE from .env must be honored.
 
-        _load_dotenv() runs in the __main__ guard, after config.py has already
-        been imported. The reference must be read from os.environ at call time,
-        not from config's import-time snapshot (which is still empty).
+        main() reads the reference from os.environ at call time, not only from
+        config's import-time snapshot, so a value set after import (here: the
+        patched environ) still takes effect.
         """
         main_module = self._import_main_module()
 
@@ -325,6 +325,71 @@ class MainEntrypointTests(unittest.TestCase):
         mock_fallback.assert_not_called()
         mock_console.input.assert_not_called()
         mock_api_client_cls.assert_called_once_with("sa-key")
+
+
+class DotenvLoadOrderTests(unittest.TestCase):
+    """Issue #209: .env must load before any project module reads settings.
+
+    config / ai_summary / eta_calculator read env vars into constants at import
+    time, so main.py must call _load_dotenv() (script runs only) before its first
+    project import, or values set in .env are silently ignored.
+    """
+
+    PROJECT_MODULES = frozenset({
+        "ai_summary", "api_client", "auth", "config", "eta_calculator",
+        "extractor", "logger_config", "mappers", "version",
+    })
+
+    def _top_level(self):
+        import ast
+
+        source = (Path(__file__).resolve().parents[1] / "main.py").read_text(
+            encoding="utf-8"
+        )
+        return ast.parse(source).body
+
+    @staticmethod
+    def _is_main_guarded_dotenv_call(node) -> bool:
+        import ast
+
+        if not isinstance(node, ast.If):
+            return False
+        test = node.test
+        guarded = (
+            isinstance(test, ast.Compare)
+            and isinstance(test.left, ast.Name)
+            and test.left.id == "__name__"
+            and any(
+                isinstance(c, ast.Constant) and c.value == "__main__"
+                for c in test.comparators
+            )
+        )
+        calls = [
+            n.func.id
+            for n in ast.walk(node)
+            if isinstance(n, ast.Call) and isinstance(n.func, ast.Name)
+        ]
+        return guarded and "_load_dotenv" in calls
+
+    def test_dotenv_loads_before_first_project_import(self) -> None:
+        import ast
+
+        body = self._top_level()
+        first_project_import = next(
+            i
+            for i, node in enumerate(body)
+            if isinstance(node, ast.ImportFrom)
+            and (node.module or "").split(".")[0] in self.PROJECT_MODULES
+        )
+        dotenv_calls = [
+            i for i, node in enumerate(body) if self._is_main_guarded_dotenv_call(node)
+        ]
+        self.assertTrue(dotenv_calls, "no __main__-guarded _load_dotenv() call")
+        self.assertLess(
+            dotenv_calls[0],
+            first_project_import,
+            "_load_dotenv() must run before main.py imports project modules",
+        )
 
 
 class OpRunReexecTests(unittest.TestCase):

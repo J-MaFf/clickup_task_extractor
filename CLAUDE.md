@@ -100,7 +100,7 @@ All retrieval is logged (DEBUG level); failures don't raise exceptions—they re
 ### Core Modules
 
 **`main.py`**: CLI orchestrator
-- Loads a project-local `.env` (`_load_dotenv`, in the `__main__` guard before the re-exec helpers and config reads) so documented vars (workspace/space names, `OP_ENVIRONMENT_ID`, keys) apply without the shell/IDE having inherited them; real env vars / CLI flags take precedence. Dependency-free; only runs on CLI execution, not on import (tests unaffected)
+- Loads a project-local `.env` (`_load_dotenv`) at the **top of the module, before any project import**, guarded by `if __name__ == "__main__"`. `config` / `ai_summary` / `eta_calculator` read settings into constants at import time, so loading later silently ignores `.env` values (#209); `test_dotenv_loads_before_first_project_import` guards this ordering. Real env vars / CLI flags take precedence. Dependency-free; only runs on CLI execution, not on import (tests unaffected). `kfj_task_extractor.py` follows the same pattern for `.env.kfj`
 - Re-launches inside `.venv` if present (cross-platform compatibility)
 - Builds `ClickUpConfig` from CLI args + prompts
 - Chains authentication fallback

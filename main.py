@@ -28,6 +28,51 @@ except ImportError:
     print("Or install just rich: pip install rich>=10.0.0")
     sys.exit(1)
 
+def _load_dotenv(env_path: str | None = None) -> None:
+    """Load KEY=VALUE pairs from a project-local ``.env`` into ``os.environ``.
+
+    Called at the top of this module, before any project import, and only when
+    run as a script (``__name__ == "__main__"``). ``config``, ``ai_summary`` and
+    ``eta_calculator`` read settings into constants at import time, so loading
+    ``.env`` any later silently ignores those values (#209). Importing this
+    module (tests, tooling) never reads ``.env``.
+
+    Precedence: real environment variables win — an already-set key is never
+    overwritten. Dependency-free; supports blank lines, ``#`` comments, an
+    optional ``export `` prefix, and single/double-quoted values.
+
+    Args:
+        env_path: Path to the .env file; defaults to ``.env`` next to this script.
+    """
+    if env_path is None:
+        env_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env")
+    try:
+        with open(env_path, "r", encoding="utf-8") as handle:
+            lines = handle.readlines()
+    except OSError:
+        return  # No .env present — nothing to load.
+    for raw in lines:
+        line = raw.strip()
+        if not line or line.startswith("#"):
+            continue
+        if line.startswith("export "):
+            line = line[len("export ") :].lstrip()
+        key, sep, value = line.partition("=")
+        if not sep:
+            continue
+        key = key.strip()
+        value = value.strip()
+        if len(value) >= 2 and value[0] == value[-1] and value[0] in ("'", '"'):
+            value = value[1:-1]
+        if key and key not in os.environ:
+            os.environ[key] = value
+
+
+# Load .env before the project imports below: those modules read settings at
+# import time. Script runs only, so importing main has no side effect.
+if __name__ == "__main__":
+    _load_dotenv()
+
 # Import project modules
 from ai_summary import (
     claude_cli_authenticated,
@@ -109,46 +154,6 @@ console = Console(force_terminal=True, legacy_windows=False)
 # re-adding handlers) and may open a file handler — side effects that should
 # not fire merely from importing this module (e.g. under test/tooling).
 logger = None
-
-
-def _load_dotenv(env_path: str | None = None) -> None:
-    """Load KEY=VALUE pairs from a project-local ``.env`` into ``os.environ``.
-
-    Called from the ``__main__`` guard before the re-exec helpers and before
-    ``main()`` reads ``CLICKUP_WORKSPACE_NAME`` / ``CLICKUP_SPACE_NAME`` /
-    ``OP_ENVIRONMENT_ID`` / API keys, so those settings apply without relying on
-    the shell or IDE having inherited them. It only runs on real CLI execution
-    (never on import), so tests are unaffected.
-
-    Precedence: real environment variables win — an already-set key is never
-    overwritten. Dependency-free; supports blank lines, ``#`` comments, an
-    optional ``export `` prefix, and single/double-quoted values.
-
-    Args:
-        env_path: Path to the .env file; defaults to ``.env`` next to this script.
-    """
-    if env_path is None:
-        env_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env")
-    try:
-        with open(env_path, "r", encoding="utf-8") as handle:
-            lines = handle.readlines()
-    except OSError:
-        return  # No .env present — nothing to load.
-    for raw in lines:
-        line = raw.strip()
-        if not line or line.startswith("#"):
-            continue
-        if line.startswith("export "):
-            line = line[len("export ") :].lstrip()
-        key, sep, value = line.partition("=")
-        if not sep:
-            continue
-        key = key.strip()
-        value = value.strip()
-        if len(value) >= 2 and value[0] == value[-1] and value[0] in ("'", '"'):
-            value = value[1:-1]
-        if key and key not in os.environ:
-            os.environ[key] = value
 
 
 def _reexec_in_venv() -> None:
@@ -423,8 +428,8 @@ def main():
                 style="yellow",
             )
         )
-        # Read os.environ at call time: _load_dotenv() runs in the __main__ guard
-        # after config.py was imported, so config's snapshot misses .env values.
+        # Read os.environ at call time (config's constant is an import-time
+        # snapshot), so the value is current even when main() is called directly.
         secret_reference = (
             os.environ.get("CLICKUP_API_SECRET_REFERENCE")
             or CLICKUP_API_SECRET_REFERENCE
@@ -705,8 +710,8 @@ def main():
 
     config = ClickUpConfig(
         api_key=api_key,
-        # Read the env vars here (not config's import-time defaults) so values
-        # loaded from .env by _load_dotenv() in the __main__ guard take effect.
+        # Read the env vars here (not config's import-time defaults) so the
+        # values are current even when main() is called directly.
         workspace_name=args.workspace or os.environ.get("CLICKUP_WORKSPACE_NAME", ""),
         space_name=args.space or os.environ.get("CLICKUP_SPACE_NAME", ""),
         list_name=args.list,
@@ -766,13 +771,12 @@ def main():
 if __name__ == "__main__":
     # Side effects that must only run when executed as a script, never on import:
     #   1. Reconfigure stdio to UTF-8 (mutates sys.stdout/sys.stderr).
-    #   2. Load .env so configured vars apply before the re-exec helpers and
-    #      main() read them (workspace/space names, OP_ENVIRONMENT_ID, keys).
-    #   3. Re-exec under the project venv if not already running from it.
-    #   4. Re-exec under 'op run' to inject 1Password env vars without
+    #   2. Re-exec under the project venv if not already running from it.
+    #   3. Re-exec under 'op run' to inject 1Password env vars without
     #      handle redirection (which would hang the op CLI on Windows).
+    # .env was already loaded at the top of this module, before the project
+    # imports (#209).
     _configure_stdio_encoding()
-    _load_dotenv()
     _reexec_in_venv()
     _reexec_under_op_run()
     main()

@@ -589,8 +589,7 @@ def load_gemini_api_key_from_environment():
     # to avoid any import-order coupling with the config module.
     from config import GEMINI_API_SECRET_REFERENCE
 
-    # Prefer the live env var: config's value is an import-time snapshot that
-    # misses anything main._load_dotenv() set afterwards.
+    # Prefer the live env var: config's value is an import-time snapshot.
     gemini_secret_reference = (
         os.environ.get("GEMINI_API_SECRET_REFERENCE") or GEMINI_API_SECRET_REFERENCE
     )
