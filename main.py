@@ -34,7 +34,7 @@ from ai_summary import (
     claude_cli_available,
     mark_claude_unavailable,
 )
-from auth import load_secret_with_fallback
+from auth import load_secret_via_op_secret, load_secret_with_fallback
 from config import (
     CLICKUP_AI_SUMMARY_FIELD_ID,
     CLICKUP_API_SECRET_REFERENCE,
@@ -390,6 +390,10 @@ def main():
     # empty by default so no personal vault path is baked into source.
     api_key = args.api_key or os.environ.get("CLICKUP_API_KEY")
 
+    # Service account first: op-secret resolves headlessly (no desktop prompt).
+    if not api_key:
+        api_key = load_secret_via_op_secret("ClickUp API key")
+
     if not api_key:
         # Try to get API key from 1Password with fallback
         is_frozen = getattr(sys, "frozen", False)
@@ -419,7 +423,12 @@ def main():
                 style="yellow",
             )
         )
-        secret_reference = CLICKUP_API_SECRET_REFERENCE
+        # Read os.environ at call time: _load_dotenv() runs in the __main__ guard
+        # after config.py was imported, so config's snapshot misses .env values.
+        secret_reference = (
+            os.environ.get("CLICKUP_API_SECRET_REFERENCE")
+            or CLICKUP_API_SECRET_REFERENCE
+        )
         # The Environment path inside load_secret_with_fallback() is keyed on
         # OP_ENVIRONMENT_ID and needs no op:// reference. Attempt the lookup
         # whenever a secret reference is configured OR an Environment ID is set;
@@ -478,10 +487,18 @@ def main():
         if gemini_api_key:
             return True
 
+        gemini_api_key = load_secret_via_op_secret("Gemini API key")
+        if gemini_api_key:
+            return True
+
         # Try to get Gemini API key from 1Password with fallback. The secret
         # reference comes from GEMINI_API_SECRET_REFERENCE (config module) and is
         # empty by default so no personal vault path is baked into source.
-        gemini_secret_reference = GEMINI_API_SECRET_REFERENCE
+        # Read at call time so a value loaded from .env is honored (see above).
+        gemini_secret_reference = (
+            os.environ.get("GEMINI_API_SECRET_REFERENCE")
+            or GEMINI_API_SECRET_REFERENCE
+        )
         # As with the ClickUp key, the Environment lookup is keyed on
         # OP_ENVIRONMENT_ID and needs no op:// reference. Attempt it when either
         # is configured (compute the ID locally — this nested function can run
