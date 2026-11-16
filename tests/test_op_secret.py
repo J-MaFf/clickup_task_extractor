@@ -19,7 +19,11 @@ class TestLoadSecretViaOpSecret(unittest.TestCase):
     def setUp(self) -> None:
         env = patch.dict(
             "os.environ",
-            {"CLICKUP_API_OP_SECRET_NAME": "", "GEMINI_API_OP_SECRET_NAME": ""},
+            {
+                "CLICKUP_API_OP_SECRET_NAME": "",
+                "GEMINI_API_OP_SECRET_NAME": "",
+                "KFJ_GOOGLE_SA_OP_SECRET_NAME": "",
+            },
         )
         env.start()
         self.addCleanup(env.stop)
@@ -39,6 +43,24 @@ class TestLoadSecretViaOpSecret(unittest.TestCase):
         ) as mock_run:
             self.assertEqual(load_secret_via_op_secret("Gemini API key"), "g-key")
         self.assertEqual(mock_run.call_args.args[0][1], "gemini-api-key")
+
+    def test_kfj_google_sa_default_logical_name(self) -> None:
+        with patch("auth.shutil.which", return_value="op-secret"), patch(
+            "auth.subprocess.run", return_value=_completed(stdout='{"a": 1}')
+        ) as mock_run:
+            self.assertEqual(
+                load_secret_via_op_secret("Google sheets credentials JSON"), '{"a": 1}'
+            )
+        self.assertEqual(mock_run.call_args.args[0][1], "kfj-google-sa-json")
+
+    def test_kfj_google_sa_name_override(self) -> None:
+        with patch.dict(
+            "os.environ", {"KFJ_GOOGLE_SA_OP_SECRET_NAME": "other-sa"}
+        ), patch("auth.shutil.which", return_value="op-secret"), patch(
+            "auth.subprocess.run", return_value=_completed(stdout="{}")
+        ) as mock_run:
+            load_secret_via_op_secret("Google sheets credentials JSON")
+        self.assertEqual(mock_run.call_args.args[0][1], "other-sa")
 
     def test_env_overrides_logical_name(self) -> None:
         with patch.dict(

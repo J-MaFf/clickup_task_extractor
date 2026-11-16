@@ -231,6 +231,7 @@ variables (see `.env.kfj.example` for the full list):
 | `KFJ_CLICKUP_SECRET_REFERENCE` | `op://` reference for the ClickUp key | No (skips 1Password if empty) |
 | `KFJ_GOOGLE_SA_SECRET_REFERENCE` | `op://` reference for the service-account JSON | No (skips 1Password if empty) |
 | `KFJ_OP_ACCOUNT_NAME` / `KFJ_OP_ACCOUNT_URL` | 1Password account display name / URL | No |
+| `KFJ_GOOGLE_SA_OP_SECRET_NAME` | `op-secret` logical name for the service-account JSON | No (default `kfj-google-sa-json`) |
 | `OP_SERVICE_ACCOUNT_TOKEN` | 1Password service-account token for headless runs (set via the OS, **never** in `.env.kfj`) | No (opt-in for unattended runs) |
 
 > Finding the IDs: the **list ID** is the number in the ClickUp list URL; the
@@ -260,13 +261,18 @@ op run --account my.1password.com --env-file=.env.kfj -- python kfj_task_extract
 | `--date M/D/YY` | Override the date used in the tab name (for backfill) | Today |
 
 **Authentication:** ClickUp uses `CLICKUP_API_KEY` from the environment first,
-then (if `KFJ_CLICKUP_SECRET_REFERENCE` is set) the 1Password chain:
+then the `op-secret` service-account wrapper (logical name `clickup-api-key`,
+override with `CLICKUP_API_OP_SECRET_NAME`) when it is on `PATH`. That step is
+headless and routes by name, so a 1Password item that moves vault or account
+needs only a map edit. Then, if `KFJ_CLICKUP_SECRET_REFERENCE` is set, the
+1Password chain:
 service-account token SDK (only when `OP_SERVICE_ACCOUNT_TOKEN` is set — the
 headless opt-in below) → desktop-app SDK (DesktopAuth, the default interactive
 path) → the repo's fallback chain → `op read`. The Google service account JSON
-is resolved the same way (env var `GOOGLE_SHEETS_CREDENTIALS_JSON` → 1Password
-if `KFJ_GOOGLE_SA_SECRET_REFERENCE` is set) and parsed in-memory — credentials
-are never written to disk.
+is resolved the same way (env var `GOOGLE_SHEETS_CREDENTIALS_JSON` → `op-secret
+kfj-google-sa-json`, override with `KFJ_GOOGLE_SA_OP_SECRET_NAME` → 1Password if
+`KFJ_GOOGLE_SA_SECRET_REFERENCE` is set) and parsed in-memory — credentials are
+never written to disk.
 
 ### Unattended / headless scheduled runs (optional)
 

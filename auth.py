@@ -54,6 +54,11 @@ except ImportError:
 _OP_SECRET_NAMES: dict[str, tuple[str, str]] = {
     "ClickUp API key": ("CLICKUP_API_OP_SECRET_NAME", "clickup-api-key"),
     "Gemini API key": ("GEMINI_API_OP_SECRET_NAME", "gemini-api-key"),
+    # KFJ weekly sync (kfj_task_extractor.py): the Google Sheets service account.
+    "Google sheets credentials JSON": (
+        "KFJ_GOOGLE_SA_OP_SECRET_NAME",
+        "kfj-google-sa-json",
+    ),
 }
 # Logical names are map keys; restricting the charset also keeps cmd.exe
 # metacharacters away from the Windows `op-secret.cmd` shim.

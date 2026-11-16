@@ -688,6 +688,91 @@ class TestEtaConcurrency(unittest.TestCase):
             self.assertEqual(_eta_concurrency(10), 1)
 
 
+def setUpModule():
+    """Keep the real op-secret wrapper (if installed) out of these tests."""
+    global _which_patch
+    _which_patch = mock.patch("auth.shutil.which", return_value=None)
+    _which_patch.start()
+
+
+def tearDownModule():
+    _which_patch.stop()
+
+
+class TestOpSecretFirst(unittest.TestCase):
+    """op-secret is tried right after the env var (issue #211).
+
+    A vault/account move re-mints a 1Password item id; op-secret routes by
+    logical name, so the KFJ sync survives a move with a map edit, and it
+    resolves headlessly (no desktop app) for the scheduled run.
+    """
+
+    def test_clickup_key_from_op_secret_before_desktop_paths(self):
+        with (
+            mock.patch.dict(os.environ, {}, clear=True),
+            mock.patch(
+                "kfj_task_extractor.load_secret_via_op_secret", return_value="pk_sa"
+            ) as op_secret,
+            mock.patch("kfj_task_extractor.resolve_secret_with_desktop_sdk") as sdk,
+            mock.patch("kfj_task_extractor.read_secret_via_service_token") as token,
+        ):
+            self.assertEqual(resolve_clickup_api_key(), "pk_sa")
+        op_secret.assert_called_once_with("ClickUp API key")
+        sdk.assert_not_called()
+        token.assert_not_called()
+
+    def test_google_creds_from_op_secret(self):
+        with (
+            mock.patch.dict(os.environ, {}, clear=True),
+            mock.patch(
+                "kfj_task_extractor.load_secret_via_op_secret",
+                return_value='{"type": "service_account"}',
+            ) as op_secret,
+            mock.patch("kfj_task_extractor.resolve_secret_with_desktop_sdk") as sdk,
+        ):
+            self.assertEqual(
+                load_google_credentials_json(), '{"type": "service_account"}'
+            )
+        op_secret.assert_called_once_with("Google sheets credentials JSON")
+        sdk.assert_not_called()
+
+    def test_op_secret_works_without_a_secret_reference(self):
+        with (
+            mock.patch.dict(os.environ, {}, clear=True),
+            mock.patch("kfj_task_extractor.GOOGLE_SA_SECRET_REFERENCE", ""),
+            mock.patch(
+                "kfj_task_extractor.load_secret_via_op_secret", return_value="{}"
+            ),
+        ):
+            self.assertEqual(load_google_credentials_json(), "{}")
+
+    def test_falls_through_when_op_secret_misses(self):
+        with (
+            mock.patch.dict(os.environ, {}, clear=True),
+            mock.patch(
+                "kfj_task_extractor.CLICKUP_SECRET_REFERENCE",
+                "op://vault/item/credential",
+            ),
+            mock.patch(
+                "kfj_task_extractor.load_secret_via_op_secret", return_value=None
+            ),
+            mock.patch(
+                "kfj_task_extractor.resolve_secret_with_desktop_sdk",
+                return_value="pk_from_sdk",
+            ) as sdk,
+        ):
+            self.assertEqual(resolve_clickup_api_key(), "pk_from_sdk")
+        sdk.assert_called_once()
+
+    def test_env_var_still_wins(self):
+        with (
+            mock.patch.dict(os.environ, {"CLICKUP_API_KEY": "pk_env"}, clear=True),
+            mock.patch("kfj_task_extractor.load_secret_via_op_secret") as op_secret,
+        ):
+            self.assertEqual(resolve_clickup_api_key(), "pk_env")
+        op_secret.assert_not_called()
+
+
 class TestCredentialResolution(unittest.TestCase):
     """Secrets resolve in order: env var -> desktop SDK -> fallback chain."""
 
