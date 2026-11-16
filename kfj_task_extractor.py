@@ -177,6 +177,7 @@ from ai_summary import (
 from api_client import APIError, AuthenticationError, ClickUpAPIClient
 from auth import (
     get_secret_from_1password,
+    load_secret_via_op_secret,
     load_secret_with_fallback,
     resolve_secret_with_desktop_sdk,
 )
@@ -323,11 +324,14 @@ def _resolve_secret(
     Resolve a secret through the full chain:
 
     1. Environment variable (e.g. injected via `op run`)
-    2. 1Password SDK via service-account token (only if OP_SERVICE_ACCOUNT_TOKEN
+    2. `op-secret` service-account wrapper, by logical name (issue #211):
+       headless, and routes by name, so a 1Password item that moves vault or
+       account (which re-mints its id) needs only a map edit
+    3. 1Password SDK via service-account token (only if OP_SERVICE_ACCOUNT_TOKEN
        is set — the headless/unattended opt-in; see issue #166)
-    3. 1Password Python SDK via desktop app auth
-    4. Repo fallback chain (1Password Environment / service-token SDK / CLI)
-    5. Direct `op read` with explicit account
+    4. 1Password Python SDK via desktop app auth
+    5. Repo fallback chain (1Password Environment / service-token SDK / CLI)
+    6. Direct `op read` with explicit account
 
     Returns:
         The secret string, or None if every source failed
@@ -335,6 +339,11 @@ def _resolve_secret(
     value = os.environ.get(env_var)
     if value:
         logger.debug(f"Using {secret_name} from environment variable {env_var}")
+        return value
+    # Service account first: needs no op:// reference and never prompts. A
+    # missing wrapper or unmapped name returns None and falls through.
+    value = load_secret_via_op_secret(secret_name)
+    if value:
         return value
     # Without a configured 1Password reference, skip the 1Password lookups and
     # rely on the environment variable above (e.g. injected via `op run`).
