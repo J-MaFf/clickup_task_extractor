@@ -10,6 +10,17 @@
         ],
         "matcher": ""
       }
+    ],
+    "PreCompact": [
+      {
+        "hooks": [
+          {
+            "command": "bd prime",
+            "type": "command"
+          }
+        ],
+        "matcher": ""
+      }
     ]
   }
 }
